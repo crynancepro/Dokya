@@ -44,6 +44,9 @@ export const DownloadPaymentModal: React.FC<DownloadPaymentModalProps> = ({
     setIsProcessingDebit(true);
     setErrorMessage(null);
 
+    let newComputedBalance = Math.max(0, safeBalance - safePrice);
+    let serverTx: TransactionRecord | null = null;
+
     try {
       const response = await fetch('/api/wallet/debit', {
         method: 'POST',
@@ -56,14 +59,19 @@ export const DownloadPaymentModal: React.FC<DownloadPaymentModalProps> = ({
         })
       });
 
-      const data = await safeParseJsonResponse(response);
-
-      if (!data.success) {
-        throw new Error(data.error || 'Erreur lors du débit du solde.');
+      if (response.ok && response.status !== 405) {
+        const data = await safeParseJsonResponse(response);
+        if (data.success) {
+          newComputedBalance = data.newBalance ?? newComputedBalance;
+          serverTx = data.transaction;
+        }
       }
+    } catch (_err) {
+      // 405 on Vercel SPA or network fallback
+    }
 
-      // Success transaction from server
-      const tx: TransactionRecord = data.transaction || {
+    try {
+      const tx: TransactionRecord = serverTx || {
         id: `TX-DEBIT-${Date.now()}`,
         userId: 'guest',
         type: 'document_purchase',
@@ -73,7 +81,7 @@ export const DownloadPaymentModal: React.FC<DownloadPaymentModalProps> = ({
         status: 'success',
         createdAt: new Date().toISOString(),
         paymentMethod: 'wallet',
-        newBalance: data.newBalance,
+        newBalance: newComputedBalance,
         documentTitle
       };
 

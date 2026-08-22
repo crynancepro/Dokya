@@ -9,6 +9,7 @@ import {
 import { BusinessDocData, BusinessDocItem } from '../types';
 import { SECTOR_PRESETS, INDIVIDUAL_SERVICES_CATALOG } from '../data/businessPresets';
 import { numberToFrenchWords } from '../utils/numberToWords';
+import { generateBusinessDocWithGemini } from '../lib/geminiService';
 
 interface DevisFactureFormProps {
   data: BusinessDocData;
@@ -175,18 +176,13 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
     setAiSuccessMsg(null);
 
     try {
-      const response = await fetch('/api/generate-business-doc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          docType: data.type,
-          issuer: data.issuer,
-          client: data.client,
-          items: data.items
-        })
+      const resData = await generateBusinessDocWithGemini({
+        docType: data.type,
+        issuer: data.issuer,
+        client: data.client,
+        items: data.items
       });
 
-      const resData = await response.json();
       if (resData.success && resData.items) {
         onChange({
           ...data,

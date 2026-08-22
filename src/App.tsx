@@ -17,6 +17,7 @@ import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx } from './lib/exportUtils';
 import { fetchWithRetry, safeParseJsonResponse } from './utils/apiHelpers';
 import { auth, saveUserDocument, saveTransactionRecord } from './lib/firebase';
+import { generateCVWithGemini } from './lib/geminiService';
 
 import { 
   FileText, Sparkles, Download, CheckCircle2, 
@@ -149,6 +150,51 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   useEffect(() => {
     localStorage.setItem('senegal_cv_paid_docs', JSON.stringify(paidDocTypes));
   }, [paidDocTypes]);
+
+  // Handle return from SenePay / Checkout return URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const status = urlParams.get('status');
+      const reference = urlParams.get('reference') || urlParams.get('orderReference');
+      const amountParam = Number(urlParams.get('amount') || 0);
+
+      if (status === 'success' || (reference && !status)) {
+        // Unlock all document types or specific document
+        setPaidDocTypes(prev => ({
+          ...prev,
+          cv: true,
+          letter: true,
+          devis: true,
+          facture: true,
+          pack_business: true
+        }));
+
+        if (reference?.startsWith('RECHARGE-') && amountParam > 0) {
+          setUserBalance(prev => {
+            const nextBal = prev + amountParam;
+            try {
+              const profile = JSON.parse(localStorage.getItem('senegal_cv_user_profile') || '{}');
+              profile.balance = nextBal;
+              localStorage.setItem('senegal_cv_user_profile', JSON.stringify(profile));
+            } catch (_e) {}
+            return nextBal;
+          });
+          setSuccessMessage(`Recharge de ${(amountParam).toLocaleString('fr-FR')} FCFA validée avec succès ! Votre solde est à jour.`);
+        } else {
+          setSuccessMessage('Paiement sécurisé validé avec succès ! Vos documents sont débloqués pour le téléchargement.');
+        }
+
+        setTimeout(() => setSuccessMessage(null), 6000);
+
+        // Clean up URL query parameters without reloading
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    } catch (_e) {}
+  }, []);
 
   // Payment Modal State (Replaced old 4-step wizard with clean 2-option modal)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
@@ -373,21 +419,15 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     setTimeout(() => setSuccessMessage(null), 3500);
   };
 
-  // Main Submit Call to /api/generate
+  // Main Submit Call using Gemini SDK directly (works seamlessly on Vercel SPA and Fullstack)
   const handleGenerate = async () => {
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
-      const response = await fetchWithRetry('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      }, 3, 2500);
+      const result = await generateCVWithGemini(formData);
 
-      const result = await safeParseJsonResponse(response);
-
-      if (!result.success) {
+      if (!result.success || !result.data) {
         throw new Error(result.error || 'Erreur lors de la génération avec l\'IA.');
       }
 

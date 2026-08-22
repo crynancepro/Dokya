@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CreditCard, Loader2, ArrowRight, ExternalLink, CheckCircle } from 'lucide-react';
-import { safeParseJsonResponse } from '../utils/apiHelpers';
+import { createSenePayCheckoutSession } from '../lib/senepayService';
 
 interface SenePayCheckoutButtonProps {
   amount?: number;
@@ -30,45 +30,19 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
     setErrorMessage(null);
     setRedirectUrl(null);
 
-    // Définition de la base du domaine marchand pour SenePay
-    const BASE_URL = (
-      (typeof process !== 'undefined' && (process.env?.NEXT_PUBLIC_APP_URL || process.env?.APP_URL)) ||
-      (typeof (import.meta as any) !== 'undefined' && ((import.meta as any).env?.VITE_APP_URL || (import.meta as any).env?.NEXT_PUBLIC_APP_URL)) ||
-      'https://cv-ia-self.vercel.app'
-    ).replace(/\/+$/, '');
-
-    const generatedRef = orderReference || `CMD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const returnUrl = `${BASE_URL}/payment/success`;
-    const cancelUrl = `${BASE_URL}/payment/cancel`;
-
     try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount,
-          currency: 'XOF',
-          orderReference: generatedRef,
-          description,
-          country: 'SN',
-          returnUrl,
-          return_url: returnUrl,
-          cancelUrl,
-          cancel_url: cancelUrl,
-          redirect_url: returnUrl
-        }),
+      const result = await createSenePayCheckoutSession({
+        amount,
+        description,
+        orderReference,
+        currency: 'XOF'
       });
 
-      const data = await safeParseJsonResponse(response);
-
-      const checkoutUrl = data.checkoutUrl || data.redirectUrl;
-
-      if (!checkoutUrl) {
-        throw new Error(data.error || 'Impossible d\'obtenir l\'URL de redirection SenePay Checkout.');
+      if (!result.success || !result.checkoutUrl) {
+        throw new Error(result.error || 'Impossible d\'obtenir l\'URL de redirection SenePay.');
       }
 
+      const checkoutUrl = result.checkoutUrl;
       setRedirectUrl(checkoutUrl);
 
       if (onSuccessRedirect) {
@@ -78,11 +52,9 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
       // 1. Ouvrir dans un nouvel onglet principal (contourne les restrictions X-Frame-Options d'iframe)
       const newWin = window.open(checkoutUrl, '_blank');
 
-      // 2. Si non bloqué par un bloqueur de pop-up, c'est réussi
       if (newWin && !newWin.closed) {
         newWin.focus();
       } else {
-        // 3. Sinon, tenter la redirection de la fenêtre parente si disponible
         try {
           if (window.top && window.top !== window) {
             window.top.location.href = checkoutUrl;
@@ -90,12 +62,12 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
             window.location.href = checkoutUrl;
           }
         } catch (_e) {
-          // Bloqué par sécurité cross-origin iframe : l'utilisateur cliquera sur le bouton direct sous la modal
+          // Bloqué par sécurité iframe : bouton direct de secours affiché ci-dessous
         }
       }
 
     } catch (err: any) {
-      console.error('Erreur Checkout:', err);
+      console.error('Erreur Checkout SenePay:', err);
       const errMsg = err.message || 'Une erreur est survenue lors de l\'initialisation du paiement sécurisé.';
       setErrorMessage(errMsg);
       if (onError) onError(errMsg);
