@@ -1,0 +1,6 @@
+{
+  "name": "Dokya",
+  "description": "Dokya - Plateforme IA complète de création de CV ATS, lettres de motivation, devis professionnels et factures clients avec paiements Wave, Orange Money et portefeuille intégré.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

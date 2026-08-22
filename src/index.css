@@ -1,0 +1,212 @@
+@import "tailwindcss";
+
+@layer utilities {
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fadeIn {
+    animation: fadeIn 0.25s ease-out forwards;
+  }
+
+  @keyframes marqueeLeft {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-50%); }
+  }
+
+  @keyframes marqueeRight {
+    0% { transform: translateX(-50%); }
+    100% { transform: translateX(0%); }
+  }
+
+  .animate-marquee-left {
+    display: flex;
+    width: max-content;
+    animation: marqueeLeft 40s linear infinite;
+  }
+
+  .animate-marquee-right {
+    display: flex;
+    width: max-content;
+    animation: marqueeRight 40s linear infinite;
+  }
+
+  .animate-marquee-left:hover,
+  .animate-marquee-right:hover {
+    animation-play-state: paused;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Print Specific Rules for CVs & Letters PDF Generation */
+@page {
+  size: auto;
+  margin: 10mm;
+}
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+  
+  #cv-preview,
+  #cv-preview *,
+  #letter-preview,
+  #letter-preview * {
+    visibility: visible !important;
+    opacity: 1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #cv-preview p, #cv-preview h1, #cv-preview h2, #cv-preview h3, #cv-preview span, #cv-preview div, #cv-preview li,
+  #letter-preview p, #letter-preview h1, #letter-preview h2, #letter-preview h3, #letter-preview span, #letter-preview div {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  #cv-preview,
+  #letter-preview {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 15mm 15mm 15mm 15mm !important;
+  }
+
+  .print\:hidden,
+  button,
+  header,
+  nav,
+  footer {
+    display: none !important;
+  }
+
+  .page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .page-break-always {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Compteurs automatiques pour numérotation de pages à l'impression */
+  #kdp-printable-manuscript {
+    counter-reset: kdp-page 0;
+  }
+
+  #kdp-printable-manuscript .kdp-page-break,
+  #kdp-printable-manuscript .page-break-always {
+    counter-increment: kdp-page;
+  }
+
+  #cv-preview {
+    counter-reset: cv-page 0;
+  }
+
+  #cv-preview .page-break,
+  #cv-preview .page-break-always {
+    counter-increment: cv-page;
+  }
+
+  /* Règles d'évitement de coupure de page pour le CV et la Lettre de Motivation */
+  #cv-preview section,
+  #cv-preview article,
+  #cv-preview .experience-item,
+  #cv-preview .education-item,
+  #cv-preview .cv-block,
+  #cv-preview .cv-section,
+  #cv-preview .group\/item,
+  #cv-preview .group\/edu,
+  #cv-preview .group\/section,
+  #cv-preview h1,
+  #cv-preview h2,
+  #cv-preview h3,
+  #cv-preview li,
+  #letter-preview section,
+  #letter-preview article,
+  #letter-preview .letter-paragraph,
+  #letter-preview p,
+  #letter-preview h1,
+  #letter-preview h2,
+  #letter-preview h3 {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+
+/* Global Page-Break Avoid rules for html2pdf rendering */
+#cv-preview section,
+#cv-preview article,
+#cv-preview .experience-item,
+#cv-preview .education-item,
+#cv-preview .cv-block,
+#cv-preview .cv-section,
+#cv-preview .group\/item,
+#cv-preview .group\/edu,
+#cv-preview .group\/section,
+#cv-preview h1,
+#cv-preview h2,
+#cv-preview h3,
+#letter-preview section,
+#letter-preview article,
+#letter-preview .letter-paragraph,
+#letter-preview h1,
+#letter-preview h2,
+#letter-preview h3 {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Rules for Amazon KDP Printable Manuscript Engine */
+#kdp-printable-manuscript,
+#kdp-printable-manuscript * {
+  box-sizing: border-box !important;
+  color: #000000 !important;
+}
+
+#kdp-printable-manuscript {
+  background-color: #ffffff !important;
+  text-align: justify !important;
+  word-wrap: break-word !important;
+}
+
+#kdp-printable-manuscript h1,
+#kdp-printable-manuscript h2,
+#kdp-printable-manuscript h3 {
+  break-after: avoid !important;
+  page-break-after: avoid !important;
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+  color: #000000 !important;
+}
+
+#kdp-printable-manuscript .kdp-no-break {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+#kdp-printable-manuscript .kdp-page-break,
+#kdp-printable-manuscript .page-break-always {
+  break-before: page !important;
+  page-break-before: always !important;
+}
+
