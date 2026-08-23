@@ -151,17 +151,26 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     localStorage.setItem('senegal_cv_paid_docs', JSON.stringify(paidDocTypes));
   }, [paidDocTypes]);
 
-  // Handle return from SenePay / Checkout return URL
+  // Handle return from SenePay Hosted Checkout return URL (supports search & hash format)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const status = urlParams.get('status');
-      const reference = urlParams.get('reference') || urlParams.get('orderReference');
-      const amountParam = Number(urlParams.get('amount') || 0);
+      const searchParams = new URLSearchParams(window.location.search);
+      let status = searchParams.get('status');
+      let reference = searchParams.get('reference') || searchParams.get('orderReference');
+      let amountParam = Number(searchParams.get('amount') || 0);
 
-      if (status === 'success' || (reference && !status)) {
+      // Check hash params (e.g., /#editor?status=success&reference=DOKYA-...)
+      if (!status && window.location.hash.includes('?')) {
+        const hashQuery = window.location.hash.substring(window.location.hash.indexOf('?') + 1);
+        const hashParams = new URLSearchParams(hashQuery);
+        status = hashParams.get('status') || status;
+        reference = hashParams.get('reference') || hashParams.get('orderReference') || reference;
+        amountParam = Number(hashParams.get('amount') || amountParam);
+      }
+
+      if (status === 'success' || (reference && status !== 'cancel')) {
         // Unlock all document types or specific document
         setPaidDocTypes(prev => ({
           ...prev,
@@ -184,14 +193,17 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           });
           setSuccessMessage(`Recharge de ${(amountParam).toLocaleString('fr-FR')} FCFA validée avec succès ! Votre solde est à jour.`);
         } else {
-          setSuccessMessage('Paiement sécurisé validé avec succès ! Vos documents sont débloqués pour le téléchargement.');
+          setSuccessMessage('Paiement sécurisé validé avec succès sur SenePay ! Vos documents sont débloqués.');
         }
 
         setTimeout(() => setSuccessMessage(null), 6000);
 
         // Clean up URL query parameters without reloading
-        const cleanUrl = window.location.pathname;
+        const cleanUrl = window.location.pathname + (window.location.hash.split('?')[0] || '');
         window.history.replaceState({}, document.title, cleanUrl);
+      } else if (status === 'cancel') {
+        setErrorMessage('Le paiement a été annulé sur le guichet SenePay. Vous pouvez réessayer ou utiliser votre solde.');
+        setTimeout(() => setErrorMessage(null), 5000);
       }
     } catch (_e) {}
   }, []);

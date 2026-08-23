@@ -1050,14 +1050,13 @@ Rédige le Chapitre ${chapterNumber} complet.`;
 // ==========================================
 app.post(['/api/checkout', '/api/checkout/sessions', '/api/v1/checkout/sessions', '/api/senepay/checkout'], async (req, res) => {
   try {
-    const rawApiKey = (process.env.SENEPAY_API_KEY || '').trim().replace(/^["']|["']$/g, '');
-    const rawSecretKey = (process.env.SENEPAY_SECRET_KEY || '').trim().replace(/^["']|["']$/g, '');
+    const rawApiKey = (process.env.VITE_SENEPAY_PUBLIC_KEY || '').trim().replace(/^["']|["']$/g, '');
+    const rawSecretKey = (process.env.VITE_SENEPAY_SECRET_KEY || '').trim().replace(/^["']|["']$/g, '');
     const isKeyConfigured = rawApiKey.length > 5 && !rawApiKey.includes('MY_SENEPAY') && rawApiKey !== 'sk_test_placeholder';
 
-    // Base URL sécurisée pointant vers le domaine marchand déclaré (https://cv-ia-self.vercel.app)
+    // Base URL sécurisée pointant vers le domaine marchand déclaré (VITE_APP_URL)
     const rawBaseUrl = (
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.APP_URL ||
+      process.env.VITE_APP_URL ||
       'https://cv-ia-self.vercel.app'
     ).trim();
 
@@ -1094,10 +1093,10 @@ app.post(['/api/checkout', '/api/checkout/sessions', '/api/v1/checkout/sessions'
 
     // Si les clés API réelles SenePay ne sont pas encore configurées dans les variables d'environnement Vercel
     if (!isKeyConfigured) {
-      console.warn('[SenePay Warning] Clés SENEPAY_API_KEY / SENEPAY_SECRET_KEY non configurées ou fictives.');
+      console.warn('[SenePay Warning] Clés VITE_SENEPAY_PUBLIC_KEY / VITE_SENEPAY_SECRET_KEY non configurées ou fictives.');
       return res.status(400).json({
         success: false,
-        error: "Configuration SenePay manquante : Veuillez ajouter la clé 'SENEPAY_API_KEY' (et 'SENEPAY_SECRET_KEY') dans les variables d'environnement de votre projet Vercel.",
+        error: "Configuration SenePay manquante : Veuillez ajouter la clé 'VITE_SENEPAY_PUBLIC_KEY' (et 'VITE_SENEPAY_SECRET_KEY') dans les variables d'environnement de votre projet Vercel.",
         missingCredentials: true
       });
     }
@@ -1212,7 +1211,7 @@ app.post(['/api/checkout', '/api/checkout/sessions', '/api/v1/checkout/sessions'
 
   } catch (err: any) {
     console.error('[SenePay Exception] Erreur backend checkout:', err);
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://cv-ia-self.vercel.app').replace(/\/+$/, '');
+    const baseUrl = (process.env.VITE_APP_URL || 'https://cv-ia-self.vercel.app').replace(/\/+$/, '');
     const fallbackUrl = `${baseUrl}/payment/success?reference=CMD-${Date.now()}&status=success`;
     return res.json({
       success: true,

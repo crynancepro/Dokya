@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CreditCard, Loader2, ArrowRight, ExternalLink, CheckCircle } from 'lucide-react';
-import { createSenePayCheckoutSession } from '../lib/senepayService';
+import { createHostedCheckoutSession } from '../services/senepay';
 
 interface SenePayCheckoutButtonProps {
   amount?: number;
@@ -14,10 +14,10 @@ interface SenePayCheckoutButtonProps {
 
 export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
   amount = 1500,
-  description = "Création de document",
+  description = "Paiement de document sur Dokya",
   orderReference,
   className,
-  buttonText = "Recharger Mon Solde",
+  buttonText = "Payer par Mobile Money ou Carte",
   onSuccessRedirect,
   onError
 }) => {
@@ -31,39 +31,42 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
     setRedirectUrl(null);
 
     try {
-      const result = await createSenePayCheckoutSession({
+      const result = await createHostedCheckoutSession({
         amount,
         description,
-        orderReference,
-        currency: 'XOF'
+        orderReference
       });
 
-      if (!result.success || !result.checkoutUrl) {
-        throw new Error(result.error || 'Impossible d\'obtenir l\'URL de redirection SenePay.');
+      const targetUrl = result.redirectUrl || result.checkoutUrl;
+
+      if (!result.success || !targetUrl) {
+        throw new Error(result.error || 'Impossible d\'initialiser la session de paiement SenePay.');
       }
 
-      const checkoutUrl = result.checkoutUrl;
-      setRedirectUrl(checkoutUrl);
+      setRedirectUrl(targetUrl);
 
       if (onSuccessRedirect) {
-        onSuccessRedirect(checkoutUrl);
+        onSuccessRedirect(targetUrl);
       }
 
-      // 1. Ouvrir dans un nouvel onglet principal (contourne les restrictions X-Frame-Options d'iframe)
-      const newWin = window.open(checkoutUrl, '_blank');
-
-      if (newWin && !newWin.closed) {
-        newWin.focus();
-      } else {
-        try {
-          if (window.top && window.top !== window) {
-            window.top.location.href = checkoutUrl;
+      // Redirection immédiate du client
+      // 1. Tenter la redirection directe
+      try {
+        if (typeof window !== 'undefined') {
+          // Si nous sommes dans une iframe (ex: aperçu), ouvrir un nouvel onglet ou tenter la fenêtre principale
+          if (window.self !== window.top) {
+            const newWin = window.open(targetUrl, '_blank');
+            if (newWin && !newWin.closed) {
+              newWin.focus();
+            } else {
+              window.top!.location.href = targetUrl;
+            }
           } else {
-            window.location.href = checkoutUrl;
+            window.location.href = targetUrl;
           }
-        } catch (_e) {
-          // Bloqué par sécurité iframe : bouton direct de secours affiché ci-dessous
         }
+      } catch (_e) {
+        // En cas de blocage d'iframe ou de pop-up, l'utilisateur a le bouton direct ci-dessous
       }
 
     } catch (err: any) {
@@ -84,40 +87,40 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
         disabled={loading}
         className={
           className ||
-          "px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed w-full"
+          "px-4 py-3 text-xs sm:text-sm font-black rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed w-full"
         }
       >
         {loading ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin text-white" />
-            <span>Initialisation du paiement sécurisé...</span>
+            <span>Redirection vers SenePay Checkout...</span>
           </>
         ) : (
           <>
             <CreditCard className="w-4 h-4" />
             <span>{buttonText}</span>
-            <ArrowRight className="w-3.5 h-3.5 opacity-80" />
+            <ArrowRight className="w-4 h-4 opacity-90" />
           </>
         )}
       </button>
 
-      {/* Message de confirmation de session & Lien direct si la redirection automatique est bloquée par l'iframe */}
+      {/* Message de confirmation de session & Lien direct si la redirection automatique est bloquée */}
       {redirectUrl && (
-        <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs space-y-2 animate-in fade-in shadow-md">
+        <div className="mt-2.5 p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs space-y-2 animate-in fade-in shadow-md">
           <div className="flex items-center gap-2 font-semibold text-emerald-800">
             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>Session de paiement sécurisée prête !</span>
           </div>
           <p className="text-[11px] text-emerald-700 leading-relaxed">
-            Si la page de paiement ne s'est pas ouverte automatiquement dans un nouvel onglet, cliquez sur le bouton ci-dessous :
+            Si la redirection vers SenePay ne démarre pas automatiquement, cliquez ci-dessous pour choisir votre opérateur (Wave, Orange Money, Free Money) :
           </p>
           <a
             href={redirectUrl}
-            target="_blank"
+            target="_top"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs w-full"
           >
-            <span>Ouvrir la page de paiement sécurisée</span>
+            <span>Procéder au paiement sur SenePay</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>
@@ -130,7 +133,7 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
             <div className="space-y-1">
               <p className="font-bold text-[11px] text-amber-950">{errorMessage}</p>
               <p className="text-[10px] text-amber-800 leading-normal">
-                Astuce : Vous pouvez débloquer votre document immédiatement et sans frais en saisissant le code promo <strong className="font-extrabold text-amber-950 underline cursor-pointer">PETER</strong> ou <strong className="font-extrabold text-amber-950 underline cursor-pointer">LIL</strong> ci-dessus, ou en utilisant votre solde Portefeuille.
+                Vous pouvez également débloquer votre document immédiatement via votre <strong>Solde Portefeuille Dokya</strong> ou en saisissant un code promo (ex: <strong>PETER</strong> ou <strong>LIL</strong>).
               </p>
             </div>
           </div>
@@ -139,5 +142,3 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
     </div>
   );
 };
-
-
