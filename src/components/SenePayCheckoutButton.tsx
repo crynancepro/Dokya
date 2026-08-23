@@ -40,7 +40,7 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
       const targetUrl = result.redirectUrl || result.checkoutUrl;
 
       if (!result.success || !targetUrl) {
-        throw new Error(result.error || 'Impossible d\'initialiser la session de paiement SenePay.');
+        throw new Error(result.error || "Impossible d'obtenir l'URL de paiement de SenePay.");
       }
 
       setRedirectUrl(targetUrl);
@@ -49,11 +49,9 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
         onSuccessRedirect(targetUrl);
       }
 
-      // Redirection immédiate du client
-      // 1. Tenter la redirection directe
-      try {
-        if (typeof window !== 'undefined') {
-          // Si nous sommes dans une iframe (ex: aperçu), ouvrir un nouvel onglet ou tenter la fenêtre principale
+      // Redirection DIRECTE du client vers l'URL externe fournie par l'API SenePay
+      if (typeof window !== 'undefined') {
+        try {
           if (window.self !== window.top) {
             const newWin = window.open(targetUrl, '_blank');
             if (newWin && !newWin.closed) {
@@ -64,14 +62,14 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
           } else {
             window.location.href = targetUrl;
           }
+        } catch (_e) {
+          window.location.href = targetUrl;
         }
-      } catch (_e) {
-        // En cas de blocage d'iframe ou de pop-up, l'utilisateur a le bouton direct ci-dessous
       }
 
     } catch (err: any) {
       console.error('Erreur Checkout SenePay:', err);
-      const errMsg = err.message || 'Une erreur est survenue lors de l\'initialisation du paiement sécurisé.';
+      const errMsg = err.message || 'Une erreur est survenue lors de l\'initialisation du paiement sécurisé SenePay.';
       setErrorMessage(errMsg);
       if (onError) onError(errMsg);
     } finally {
@@ -104,21 +102,21 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
         )}
       </button>
 
-      {/* Message de confirmation de session & Lien direct si la redirection automatique est bloquée */}
+      {/* Bouton direct vers l'URL SenePay si le navigateur bloque l'ouverture automatique */}
       {redirectUrl && (
         <div className="mt-2.5 p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs space-y-2 animate-in fade-in shadow-md">
           <div className="flex items-center gap-2 font-semibold text-emerald-800">
             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Session de paiement sécurisée prête !</span>
+            <span>Page de paiement SenePay prête !</span>
           </div>
           <p className="text-[11px] text-emerald-700 leading-relaxed">
-            Si la redirection vers SenePay ne démarre pas automatiquement, cliquez ci-dessous pour choisir votre opérateur (Wave, Orange Money, Free Money) :
+            Si la page SenePay ne s&apos;est pas ouverte automatiquement, cliquez ci-dessous :
           </p>
           <a
             href={redirectUrl}
             target="_top"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs w-full"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs w-full"
           >
             <span>Procéder au paiement sur SenePay</span>
             <ExternalLink className="w-3.5 h-3.5" />

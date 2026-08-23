@@ -20,6 +20,7 @@ export interface SenePaySessionResponse {
   checkoutUrl?: string;
   orderReference?: string;
   error?: string;
+  errorCode?: string;
   isFallback?: boolean;
 }
 
@@ -60,9 +61,42 @@ export function getAppUrl(): string {
 }
 
 /**
+ * Extrait l'URL de redirection Checkout de SenePay depuis la réponse de l'API
+ */
+function extractCheckoutUrl(data: any): string | null {
+  if (!data || typeof data !== 'object') return null;
+
+  const candidate =
+    data.redirectUrl ||
+    data.checkoutUrl ||
+    data.url ||
+    data.redirect_url ||
+    data.checkout_url ||
+    data.data?.redirectUrl ||
+    data.data?.checkoutUrl ||
+    data.data?.url ||
+    data.data?.redirect_url ||
+    data.data?.checkout_url;
+
+  if (typeof candidate === 'string' && candidate.startsWith('http')) {
+    return candidate;
+  }
+
+  // Si SenePay renvoie uniquement le sessionToken, construire l'URL officielle SenePay
+  const sessionToken = data.sessionToken || data.session_token || data.data?.sessionToken;
+  if (typeof sessionToken === 'string' && sessionToken.trim()) {
+    return `https://api.sene-pay.com/checkout.html?session=${encodeURIComponent(sessionToken.trim())}`;
+  }
+
+  return null;
+}
+
+/**
  * Crée une session de paiement SenePay Checkout Hébergé (Méthode A v1)
  * Envoie la requête POST à https://api.sene-pay.com/api/v1/checkout/sessions
- * avec les en-têtes officiels X-Api-Key et X-Api-Secret
+ * avec les en-têtes officiels X-Api-Key et X-Api-Secret.
+ *
+ * Retourne EXCLUSIVEMENT l'URL externe de la passerelle SenePay.
  */
 export async function createHostedCheckoutSession(
   params: SenePaySessionParams
@@ -76,6 +110,15 @@ export async function createHostedCheckoutSession(
 
   const apiKey = getSenePayPublicKey();
   const apiSecret = getSenePaySecretKey();
+
+  if (!apiKey) {
+    return {
+      success: false,
+      orderReference,
+      error: "Clé publique SenePay manquante. Veuillez définir VITE_SENEPAY_PUBLIC_KEY dans vos variables d'environnement.",
+      errorCode: 'MISSING_API_KEY'
+    };
+  }
 
   // Payload conforme à la documentation v1 Méthode A
   const payload = {
@@ -96,6 +139,9 @@ export async function createHostedCheckoutSession(
     ...(apiSecret ? { 'X-Api-Secret': apiSecret } : {})
   };
 
+  let lastErrorMessage: string | null = null;
+  let lastErrorCode: string | null = null;
+
   // 1. Appel direct au endpoint officiel SenePay Checkout Hébergé
   try {
     const response = await fetch('https://api.sene-pay.com/api/v1/checkout/sessions', {
@@ -104,34 +150,37 @@ export async function createHostedCheckoutSession(
       body: JSON.stringify(payload)
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      const redirectUrl =
-        data.redirectUrl ||
-        data.redirect_url ||
-        data.checkoutUrl ||
-        data.checkout_url ||
-        data.data?.redirectUrl ||
-        data.data?.checkoutUrl ||
-        data.data?.redirect_url ||
-        data.data?.checkout_url;
+    const responseText = await response.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      // Ignored
+    }
 
-      if (redirectUrl) {
+    if (response.ok && data) {
+      const targetUrl = extractCheckoutUrl(data);
+      if (targetUrl) {
         return {
           success: true,
-          redirectUrl,
-          checkoutUrl: redirectUrl,
+          redirectUrl: targetUrl,
+          checkoutUrl: targetUrl,
           orderReference
         };
       }
-    } else {
-      console.warn(`[SenePay Direct] Réponse ${response.status}:`, await response.text().catch(() => ''));
+    }
+
+    if (!response.ok) {
+      lastErrorCode = data?.code || data?.errorCode || (response.status === 401 ? '401_UNAUTHORIZED' : `HTTP_${response.status}`);
+      lastErrorMessage = data?.message || data?.error || (response.status === 401 ? 'Authentification SenePay échouée (401). Vérifiez vos clés VITE_SENEPAY_PUBLIC_KEY et VITE_SENEPAY_SECRET_KEY.' : `Erreur SenePay ${response.status}`);
+      console.warn(`[SenePay Direct Error ${response.status}]:`, data || responseText);
     }
   } catch (directErr: any) {
-    console.warn('[SenePay Direct] Erreur réseau / CORS vers api.sene-pay.com :', directErr?.message);
+    console.warn('[SenePay Direct Network/CORS Error]:', directErr?.message);
+    lastErrorMessage = directErr?.message;
   }
 
-  // 2. Appel au proxy local serveur (si actif en environnement fullstack)
+  // 2. Appel au proxy local serveur (si actif dans l'environnement avec backend)
   try {
     const serverRes = await fetch('/api/checkout', {
       method: 'POST',
@@ -141,26 +190,25 @@ export async function createHostedCheckoutSession(
 
     if (serverRes.ok && serverRes.status !== 405) {
       const serverData = await serverRes.json();
-      const redirectUrl = serverData.redirectUrl || serverData.checkoutUrl || serverData.data?.redirectUrl;
-      if (redirectUrl) {
+      const targetUrl = extractCheckoutUrl(serverData);
+      if (targetUrl) {
         return {
           success: true,
-          redirectUrl,
-          checkoutUrl: redirectUrl,
+          redirectUrl: targetUrl,
+          checkoutUrl: targetUrl,
           orderReference
         };
       }
     }
   } catch (_proxyErr) {
-    // Mode de secours
+    // Proxy unavailable
   }
 
-  // 3. Mode de secours sécurisé (Fallback résilient)
+  // Si l'API SenePay n'a pas pu renvoyer d'URL externe de paiement valide
   return {
-    success: true,
-    redirectUrl: returnUrl,
-    checkoutUrl: returnUrl,
+    success: false,
     orderReference,
-    isFallback: true
+    error: lastErrorMessage || "Impossible d'ouvrir la passerelle de paiement SenePay. Vérifiez vos clés et votre compte marchand SenePay.",
+    errorCode: lastErrorCode || 'GATEWAY_ERROR'
   };
 }
