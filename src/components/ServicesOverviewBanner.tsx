@@ -2,12 +2,12 @@ import React from 'react';
 import { 
   FileText, Mail, FileCheck, Receipt, Sparkles, 
   CheckCircle2, ArrowRight, ShieldCheck, Zap, 
-  Layers, Package, Star, Clock, CreditCard, User, Download, FileCode
+  Layers, Package, Star, Clock, CreditCard, User, Download, FileCode, BookOpen
 } from 'lucide-react';
 
 interface ServicesOverviewBannerProps {
   currentTab: string;
-  onSelectService: (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'dashboard') => void;
+  onSelectService: (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'dashboard') => void;
   onOpenRecharge?: () => void;
   onLoadSample?: () => void;
 }
@@ -95,8 +95,8 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
           </div>
         </div>
 
-        {/* 4 LARGE STRUCTURED SERVICE CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+        {/* 5 LARGE STRUCTURED SERVICE CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-5">
           
           {/* SERVICE 1: CV PROFESSIONNEL ATS */}
           <div 
@@ -326,6 +326,64 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
               className="w-full py-3 px-4 rounded-2xl bg-emerald-600 group-hover:bg-emerald-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-emerald-200 transition-all cursor-pointer"
             >
               <span>Émettre une Facture (1 000 F)</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+
+          {/* SERVICE 5: EBOOK & LIVRE NUMÉRIQUE */}
+          <div 
+            onClick={() => onSelectService('ebook')}
+            className="group relative bg-white rounded-3xl p-6 border-2 border-slate-200 hover:border-purple-600 hover:shadow-2xl transition-all duration-200 cursor-pointer flex flex-col justify-between hover:-translate-y-1"
+          >
+            <div>
+              {/* Header card */}
+              <div className="flex items-start justify-between gap-2 mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-200 group-hover:scale-110 transition-transform">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-black text-purple-700">1 500 FCFA</div>
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Tarif unique</span>
+                </div>
+              </div>
+
+              {/* Title & Badge */}
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="text-lg font-black text-slate-900 group-hover:text-purple-600 transition-colors">
+                  5. Ebook & Livre
+                </h3>
+                <span className="text-[10px] bg-purple-100 text-purple-800 font-extrabold px-2 py-0.5 rounded-full">
+                  Nouveau
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                Génération complète de livre numérique : 4 propositions de couverture, quatrième de couverture et rédaction des chapitres par l'IA.
+              </p>
+
+              {/* Key Features List */}
+              <div className="bg-slate-50 rounded-2xl p-3.5 mb-5 border border-slate-100 space-y-2">
+                <div className="flex items-center gap-2 text-xs text-slate-700 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span><strong>4 Couvertures avant</strong> au choix + upload</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-700 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span><strong>4e de couverture</strong> (Pitch, Bio & ISBN)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-700 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Format <strong>Auto-Édition 6x9</strong> & multilingue</span>
+                </div>
+              </div>
+            </div>
+
+            {/* CTA Button */}
+            <button
+              type="button"
+              className="w-full py-3 px-4 rounded-2xl bg-purple-600 group-hover:bg-purple-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-purple-200 transition-all cursor-pointer"
+            >
+              <span>Créer mon Ebook (1 500 F)</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>

@@ -1,24 +1,27 @@
 import React, { useState } from 'react';
-import { CVFormData, AIOptimizedData, BusinessDocData, TemplateStyle, LetterTone, BusinessDocTemplateId } from '../types';
+import { CVFormData, AIOptimizedData, BusinessDocData, EbookData, TemplateStyle, LetterTone, BusinessDocTemplateId } from '../types';
 import { ALL_CV_TEMPLATES } from '../data/cvTemplatesList';
 import { BUSINESS_DOC_TEMPLATES } from '../data/businessDocTemplates';
 import { CVTemplate } from './CVTemplate';
 import { CoverLetterTemplate } from './CoverLetterTemplate';
 import { DevisFactureTemplate } from './DevisFactureTemplate';
+import { EbookTemplate } from './EbookTemplate';
 import { 
   ArrowLeft, Download, FileText, Printer, 
   Sparkles, CheckCircle2, Eye, Palette, ZoomIn, ZoomOut, 
   RotateCcw, Mail, FileCheck, Receipt, Package, ArrowLeftRight,
   Lock, Unlock, CreditCard, ShieldCheck, Loader2, ChevronDown,
-  X, Check, LayoutGrid
+  X, Check, LayoutGrid, BookOpen
 } from 'lucide-react';
 
 interface DocumentDedicatedPreviewProps {
-  docType: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business';
+  docType: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook';
   formData: CVFormData;
   setFormData: React.Dispatch<React.SetStateAction<CVFormData>>;
   businessDocData: BusinessDocData;
   setBusinessDocData: React.Dispatch<React.SetStateAction<BusinessDocData>>;
+  ebookData?: EbookData;
+  setEbookData?: React.Dispatch<React.SetStateAction<EbookData>>;
   aiData: AIOptimizedData | null;
   userBalance?: number;
   isPaid?: boolean;
@@ -44,6 +47,8 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   setFormData,
   businessDocData,
   setBusinessDocData,
+  ebookData,
+  setEbookData,
   aiData,
   userBalance = 0,
   isPaid = false,
@@ -63,12 +68,13 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   const [isBusinessTemplateModalOpen, setIsBusinessTemplateModalOpen] = useState<boolean>(false);
 
   // Determine current active document in preview
-  let activePreviewKind: 'cv' | 'letter' | 'devis' | 'facture' = 'cv';
+  let activePreviewKind: 'cv' | 'letter' | 'devis' | 'facture' | 'ebook' = 'cv';
   if (docType === 'cv') activePreviewKind = 'cv';
   else if (docType === 'letter') activePreviewKind = 'letter';
   else if (docType === 'devis') activePreviewKind = 'devis';
   else if (docType === 'facture') activePreviewKind = 'facture';
   else if (docType === 'pack_business') activePreviewKind = (packBusinessSubTab || 'devis') as 'devis' | 'facture';
+  else if (docType === 'ebook') activePreviewKind = 'ebook';
 
   const selectedBusinessTemplate = BUSINESS_DOC_TEMPLATES.find(
     (t) => t.id === (businessDocData.templateId || 'classique_ohada')
@@ -77,6 +83,14 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   // Pricing & Labels
   const getDocumentMeta = () => {
     switch (docType) {
+      case 'ebook':
+        return {
+          title: "Livre Numérique (Ebook Pro)",
+          subTitle: `${ebookData?.title || 'Mon Livre'} • Format Auto-Édition 6×9 (${ebookData?.language || 'Français'})`,
+          price: 1500,
+          badgeColor: "bg-indigo-50 text-indigo-900 border-indigo-200",
+          icon: BookOpen
+        };
       case 'cv':
         return {
           title: "CV Pro ATS",
@@ -391,6 +405,33 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
             </div>
           )}
 
+          {/* Customizer for Ebook */}
+          {activePreviewKind === 'ebook' && ebookData && setEbookData && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-700 text-xs">Nombre de pages :</span>
+                {[5, 10, 15, 20, 30, 50].map((pg) => (
+                  <button
+                    key={pg}
+                    type="button"
+                    onClick={() => setEbookData({ ...ebookData, targetPageCount: pg })}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                      (ebookData.targetPageCount || 10) === pg
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {pg}p
+                  </button>
+                ))}
+              </div>
+
+              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                🎯 {ebookData.targetPageCount || 10} pages exactes (1re couv + garde + sommaire + {Math.max(1, (ebookData.targetPageCount || 10) - 3)} int. + 4e couv)
+              </span>
+            </div>
+          )}
+
           {/* Customizer for Letter */}
           {activePreviewKind === 'letter' && (
             <div className="flex items-center gap-3 flex-wrap">
@@ -534,6 +575,17 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         >
           
           {/* Render Active Document */}
+          {activePreviewKind === 'ebook' && ebookData && (
+            <div className="w-full flex justify-center">
+              <EbookTemplate 
+                data={ebookData} 
+                unlocked={isPaid}
+                isEditingDirectly={isEditingDirectly}
+                onUpdateData={(newData) => setEbookData && setEbookData(prev => ({ ...prev, ...newData }))}
+              />
+            </div>
+          )}
+
           {activePreviewKind === 'cv' && (
             <CVTemplate 
               formData={formData} 

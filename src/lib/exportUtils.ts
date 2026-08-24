@@ -1,5 +1,5 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, Table, TableRow, TableCell, WidthType } from 'docx';
-import { CVFormData, AIOptimizedData, BusinessDocData } from '../types';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, Table, TableRow, TableCell, WidthType, PageBreak } from 'docx';
+import { CVFormData, AIOptimizedData, BusinessDocData, EbookData } from '../types';
 
 /**
  * Exports the CV as a formatted DOCX document using the docx library.
@@ -939,6 +939,488 @@ export async function exportBusinessDocToDocx(data: BusinessDocData) {
   // Pack and Download
   const blob = await Packer.toBlob(doc);
   const fileName = `${isQuote ? 'Devis' : 'Facture'}_${data.docNumber || 'Document'}.docx`;
+
+  const downloadAnchor = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  downloadAnchor.href = url;
+  downloadAnchor.download = fileName;
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Exports the complete Ebook (Front Cover, Copyright, Table of Contents, Chapters, Back Cover) to DOCX format.
+ */
+export async function exportEbookToDocx(ebookData: EbookData) {
+  const docChildren: any[] = [];
+  const frontProposal = ebookData.frontCover.proposals?.[ebookData.frontCover.selectedIndex] || ebookData.frontCover.proposals?.[0];
+  const backProposal = ebookData.backCover.proposals?.[ebookData.backCover.selectedIndex] || ebookData.backCover.proposals?.[0];
+
+  // 1. FRONT COVER (Page 1)
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 1200, after: 300 },
+      children: [
+        new TextRun({
+          text: (frontProposal?.genreBadge || ebookData.genre || "ÉDITION OFFICIELLE").toUpperCase(),
+          bold: true,
+          size: 20, // 10pt
+          color: '4F46E5',
+        }),
+      ],
+    })
+  );
+
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 400, after: 400 },
+      children: [
+        new TextRun({
+          text: ebookData.title || "Titre du Livre",
+          bold: true,
+          size: 52, // 26pt
+          color: '0F172A',
+        }),
+      ],
+    })
+  );
+
+  if (ebookData.subtitle) {
+    docChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 800 },
+        children: [
+          new TextRun({
+            text: ebookData.subtitle,
+            italics: true,
+            size: 26, // 13pt
+            color: '475569',
+          }),
+        ],
+      })
+    );
+  }
+
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 1800, after: 200 },
+      children: [
+        new TextRun({
+          text: `Par ${ebookData.author || 'L\'auteur'}`,
+          bold: true,
+          size: 28, // 14pt
+          color: '1E293B',
+        }),
+      ],
+    })
+  );
+
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 400 },
+      children: [
+        new TextRun({
+          text: "Dokya AI Publishing • Auto-Édition Standard 6x9",
+          size: 18,
+          color: '64748B',
+        }),
+      ],
+    })
+  );
+
+  // Page Break to Copyright Page
+  docChildren.push(
+    new Paragraph({
+      children: [new PageBreak()],
+    })
+  );
+
+  // 2. COPYRIGHT PAGE (Page 2)
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 1600, after: 300 },
+      children: [
+        new TextRun({
+          text: ebookData.title,
+          bold: true,
+          size: 32,
+          color: '0F172A',
+        }),
+      ],
+    })
+  );
+
+  docChildren.push(
+    new Paragraph({
+      spacing: { before: 2000, after: 200 },
+      children: [
+        new TextRun({
+          text: `© ${new Date().getFullYear()} ${ebookData.author}. Tous droits réservés.`,
+          bold: true,
+          size: 20,
+        }),
+      ],
+    })
+  );
+
+  docChildren.push(
+    new Paragraph({
+      spacing: { after: 300 },
+      children: [
+        new TextRun({
+          text: "Aucune partie de cette publication ne peut être reproduite, distribuée ou transmise sous quelque forme que ce soit sans l'autorisation écrite préalable de l'auteur.",
+          size: 18,
+          color: '64748B',
+        }),
+      ],
+    })
+  );
+
+  docChildren.push(
+    new Paragraph({
+      spacing: { after: 200 },
+      children: [
+        new TextRun({
+          text: `Langue : ${ebookData.language || 'Français'} | Format : Auto-Édition 6x9 | ISBN : ${backProposal?.isbnNumber || '978-2-84000-123-4'}`,
+          size: 16,
+          color: '94A3B8',
+        }),
+      ],
+    })
+  );
+
+  // Page Break to Table of Contents
+  docChildren.push(
+    new Paragraph({
+      children: [new PageBreak()],
+    })
+  );
+
+  // 3. TABLE OF CONTENTS (Page 3)
+  docChildren.push(
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 400, after: 400 },
+      children: [
+        new TextRun({
+          text: "Table des Matières",
+          bold: true,
+          size: 36,
+          color: '4F46E5',
+        }),
+      ],
+    })
+  );
+
+  if (ebookData.tableOfContents) {
+    ebookData.tableOfContents.forEach((toc, idx) => {
+      docChildren.push(
+        new Paragraph({
+          spacing: { before: 150, after: 150 },
+          children: [
+            new TextRun({
+              text: `Chapitre ${toc.chapterNumber || (idx + 1)} : `,
+              bold: true,
+              size: 22,
+              color: '1E293B',
+            }),
+            new TextRun({
+              text: toc.title,
+              size: 22,
+              color: '334155',
+            }),
+          ],
+        })
+      );
+    });
+  }
+
+  // 4. CHAPTERS CONTENT
+  if (ebookData.chapters) {
+    ebookData.chapters.forEach((chap, cIdx) => {
+      docChildren.push(
+        new Paragraph({
+          children: [new PageBreak()],
+        })
+      );
+
+      // Chapter Heading
+      docChildren.push(
+        new Paragraph({
+          spacing: { before: 300, after: 100 },
+          children: [
+            new TextRun({
+              text: `CHAPITRE ${chap.chapterNumber || (cIdx + 1)}`.toUpperCase(),
+              bold: true,
+              size: 20,
+              color: '4F46E5',
+            }),
+          ],
+        })
+      );
+
+      docChildren.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_1,
+          spacing: { after: 200 },
+          children: [
+            new TextRun({
+              text: chap.title,
+              bold: true,
+              size: 36,
+              color: '0F172A',
+            }),
+          ],
+        })
+      );
+
+      if (chap.subtitle) {
+        docChildren.push(
+          new Paragraph({
+            spacing: { after: 300 },
+            children: [
+              new TextRun({
+                text: chap.subtitle,
+                italics: true,
+                size: 22,
+                color: '64748B',
+              }),
+            ],
+          })
+        );
+      }
+
+      // Chapter paragraphs
+      const paragraphs = (chap.content || '').split('\n\n');
+      paragraphs.forEach((pText) => {
+        const trimmed = pText.trim();
+        if (!trimmed) return;
+
+        if (trimmed.startsWith('## ')) {
+          docChildren.push(
+            new Paragraph({
+              heading: HeadingLevel.HEADING_2,
+              spacing: { before: 300, after: 150 },
+              children: [
+                new TextRun({
+                  text: trimmed.replace('## ', ''),
+                  bold: true,
+                  size: 26,
+                  color: '1E293B',
+                }),
+              ],
+            })
+          );
+        } else if (trimmed.startsWith('### ')) {
+          docChildren.push(
+            new Paragraph({
+              heading: HeadingLevel.HEADING_3,
+              spacing: { before: 200, after: 100 },
+              children: [
+                new TextRun({
+                  text: trimmed.replace('### ', ''),
+                  bold: true,
+                  size: 22,
+                  color: '334155',
+                }),
+              ],
+            })
+          );
+        } else if (trimmed.startsWith('>')) {
+          docChildren.push(
+            new Paragraph({
+              spacing: { before: 200, after: 200 },
+              indent: { left: 400, right: 400 },
+              children: [
+                new TextRun({
+                  text: trimmed.replace(/^>\s*/, '').replace(/[*_]/g, ''),
+                  italics: true,
+                  size: 20,
+                  color: '4338CA',
+                }),
+              ],
+            })
+          );
+        } else {
+          docChildren.push(
+            new Paragraph({
+              spacing: { after: 150 },
+              children: [
+                new TextRun({
+                  text: trimmed,
+                  size: 22,
+                  color: '1E293B',
+                }),
+              ],
+            })
+          );
+        }
+      });
+
+      // Key Takeaways
+      if (chap.keyTakeaways && chap.keyTakeaways.length > 0) {
+        docChildren.push(
+          new Paragraph({
+            spacing: { before: 300, after: 100 },
+            children: [
+              new TextRun({
+                text: "Points Clés à Retenir :",
+                bold: true,
+                size: 22,
+                color: 'B45309',
+              }),
+            ],
+          })
+        );
+        chap.keyTakeaways.forEach((pt) => {
+          docChildren.push(
+            new Paragraph({
+              spacing: { after: 60 },
+              bullet: { level: 0 },
+              children: [
+                new TextRun({
+                  text: pt,
+                  size: 20,
+                  color: '451A03',
+                }),
+              ],
+            })
+          );
+        });
+      }
+    });
+  }
+
+  // 5. BACK COVER (Final Page)
+  docChildren.push(
+    new Paragraph({
+      children: [new PageBreak()],
+    })
+  );
+
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 400, after: 300 },
+      children: [
+        new TextRun({
+          text: "QUATRIÈME DE COUVERTURE",
+          bold: true,
+          size: 24,
+          color: '4F46E5',
+        }),
+      ],
+    })
+  );
+
+  if (backProposal?.synopsis) {
+    docChildren.push(
+      new Paragraph({
+        spacing: { before: 200, after: 200 },
+        children: [
+          new TextRun({
+            text: "Résumé :",
+            bold: true,
+            size: 22,
+            color: '0F172A',
+          }),
+        ],
+      })
+    );
+    docChildren.push(
+      new Paragraph({
+        spacing: { after: 300 },
+        children: [
+          new TextRun({
+            text: backProposal.synopsis,
+            size: 20,
+            color: '334155',
+          }),
+        ],
+      })
+    );
+  }
+
+  if (backProposal?.authorBio) {
+    docChildren.push(
+      new Paragraph({
+        spacing: { before: 200, after: 100 },
+        children: [
+          new TextRun({
+            text: `À propos de l'auteur (${ebookData.author}) :`,
+            bold: true,
+            size: 22,
+            color: '0F172A',
+          }),
+        ],
+      })
+    );
+    docChildren.push(
+      new Paragraph({
+        spacing: { after: 300 },
+        children: [
+          new TextRun({
+            text: backProposal.authorBio,
+            size: 20,
+            color: '475569',
+          }),
+        ],
+      })
+    );
+  }
+
+  if (backProposal?.quoteOrCallToAction) {
+    docChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 400, after: 300 },
+        children: [
+          new TextRun({
+            text: backProposal.quoteOrCallToAction,
+            italics: true,
+            bold: true,
+            size: 22,
+            color: '4338CA',
+          }),
+        ],
+      })
+    );
+  }
+
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 600 },
+      children: [
+        new TextRun({
+          text: `Dokya AI Publishing • ISBN ${backProposal?.isbnNumber || '978-2-84000-123-4'}`,
+          size: 16,
+          color: '94A3B8',
+        }),
+      ],
+    })
+  );
+
+  // Generate Docx Document
+  const doc = new Document({
+    sections: [
+      {
+        properties: {},
+        children: docChildren,
+      },
+    ],
+  });
+
+  const blob = await Packer.toBlob(doc);
+  const fileName = `Ebook_${(ebookData.title || 'Livre').replace(/[^a-zA-Z0-9]/g, '_')}.docx`;
 
   const downloadAnchor = document.createElement('a');
   const url = URL.createObjectURL(blob);

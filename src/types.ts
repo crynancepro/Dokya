@@ -45,7 +45,112 @@ export interface Language {
   level: 'Débutant' | 'Intermédiaire' | 'Avancé' | 'Courant' | 'Bilingue / Maternelle';
 }
 
-export type GenerationMode = 'cv_only' | 'letter_only' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'pass_illimite';
+export type GenerationMode = 'cv_only' | 'letter_only' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'pass_illimite';
+
+export interface EbookCoverProposal {
+  id: string;
+  title: string;
+  subtitle: string;
+  author: string;
+  genreBadge?: string;
+  tagline?: string;
+  artStyle: 'photorealistic' | 'illustration' | 'minimalist' | 'abstract';
+  artStyleLabel: string;
+  paletteName: string;
+  bgGradient: string;
+  bgPattern?: 'grid' | 'dots' | 'radial' | 'minimal' | 'waves' | 'mesh' | 'gold_frame' | 'geometric' | 'stars' | 'watercolor' | 'marble';
+  textColor: string;
+  subtitleColor: string;
+  accentColor: string;
+  fontFamily: 'serif' | 'sans' | 'display' | 'mono';
+  layoutVariant: 'centered' | 'editorial' | 'bold_modern' | 'split_frame' | 'minimalist_luxury' | 'geometric' | 'illustrated_storybook' | 'cinematic_poster';
+  coverArtEmojiOrIcon?: string;
+  artImageUrl?: string;
+  imagePrompt?: string;
+  artTexture?: 'linen' | 'leather' | 'marble' | 'parchment' | 'gold_foil' | 'slate' | 'cyber_grid' | 'watercolor_paper' | 'none';
+  customImageUrl?: string;
+}
+
+export interface EbookBackCoverProposal {
+  id: string;
+  synopsis: string;
+  authorBio: string;
+  keyTakeaways: string[];
+  quoteOrCallToAction: string;
+  artStyle: 'photorealistic' | 'illustration' | 'minimalist' | 'abstract';
+  artStyleLabel: string;
+  paletteName?: string;
+  isbnNumber?: string;
+  barcodeDigits?: string;
+  bgGradient: string;
+  textColor: string;
+  accentColor: string;
+  layoutVariant: 'card_synopsis' | 'editorial_split' | 'minimal_quote' | 'author_focus' | 'illustrated_story' | 'cinematic_dark';
+  artImageUrl?: string;
+  imagePrompt?: string;
+  artTexture?: 'linen' | 'leather' | 'marble' | 'parchment' | 'gold_foil' | 'slate' | 'cyber_grid' | 'watercolor_paper' | 'none';
+  customImageUrl?: string;
+}
+
+export interface EbookTOCItem {
+  id: string;
+  chapterNumber: number;
+  title: string;
+  summary?: string;
+}
+
+export interface EbookChapter {
+  id: string;
+  chapterNumber: number;
+  title: string;
+  subtitle?: string;
+  content: string;
+  keyTakeaways?: string[];
+  readingTimeMinutes?: number;
+}
+
+export interface EbookData {
+  id: string;
+  title: string;
+  subtitle: string;
+  author: string;
+  language: string; // 'Français' | 'Anglais' | 'Espagnol' | 'Arabe' | 'Allemand' | 'Italien' | 'Portugais' | 'Wolof'
+  genre: string;
+  targetAudience: string;
+  tone: string;
+  summaryOrPrompt: string;
+  chapterCount: number;
+  targetPageCount: number; // Nombre exact de pages que le livre doit contenir (ex: 5, 10, 15, 20, 30, 50, 100...)
+  pageFormat: '6x9' | 'A5' | 'A4'; // 6x9 standard self-publishing
+  fontFamily: 'serif' | 'sans' | 'garamond';
+  fontSize: 'normal' | 'large' | 'compact';
+  
+  // Étape 1 : Couverture Avant (Front Cover)
+  frontCover: {
+    selectedIndex: number;
+    proposals: EbookCoverProposal[];
+    customPrompt: string;
+    customImageUrl: string;
+    mode: 'proposal' | 'custom_prompt' | 'uploaded';
+  };
+
+  // Étape 2 : Page de Fermeture (Quatrième de couverture / Back Cover)
+  backCover: {
+    selectedIndex: number;
+    proposals: EbookBackCoverProposal[];
+    customPrompt: string;
+    customImageUrl: string;
+    mode: 'proposal' | 'custom_prompt' | 'uploaded';
+  };
+
+  // Étape 3 : Rédaction & Structure
+  tableOfContents: EbookTOCItem[];
+  chapters: EbookChapter[];
+  
+  currentStep: 1 | 2 | 3;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface BusinessDocItem {
   id: string;
@@ -357,6 +462,7 @@ export interface PlatformPricingConfig {
   devisPrice: number;        // 1000 FCFA
   facturePrice: number;      // 1000 FCFA
   businessPackPrice: number; // 1499 FCFA (Pack Business Devis + Facture)
+  ebookPrice?: number;       // 1500 FCFA (Génération Ebook Complet)
   unlimitedPassPrice: number;// 3499 FCFA (Pass Illimité Mois)
   unlimitedPassMonthlyPrice?: number; // 3499 FCFA
   unlimitedPassAnnualPrice?: number;  // 39999 FCFA (Pass Illimité Annuel)

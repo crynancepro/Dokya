@@ -1050,14 +1050,14 @@ Rédige le Chapitre ${chapterNumber} complet.`;
 // ==========================================
 app.post(['/api/checkout', '/api/checkout/sessions', '/api/v1/checkout/sessions', '/api/senepay/checkout'], async (req, res) => {
   try {
-    const rawApiKey = (process.env.VITE_SENEPAY_PUBLIC_KEY || '').trim().replace(/^["']|["']$/g, '');
-    const rawSecretKey = (process.env.VITE_SENEPAY_SECRET_KEY || '').trim().replace(/^["']|["']$/g, '');
+    const rawApiKey = (process.env.VITE_SENEPAY_PUBLIC_KEY || 'pk_test_TchA2OXyRAIjh7JJQEJyLnqd').trim().replace(/^["']|["']$/g, '');
+    const rawSecretKey = (process.env.VITE_SENEPAY_SECRET_KEY || 'sk_test_8i1wREvXJ6hanfzTKkwC4Ead3BBrMnXl').trim().replace(/^["']|["']$/g, '');
     const isKeyConfigured = rawApiKey.length > 5 && !rawApiKey.includes('MY_SENEPAY') && rawApiKey !== 'sk_test_placeholder';
 
     // Base URL sécurisée pointant vers le domaine marchand déclaré (VITE_APP_URL)
     const rawBaseUrl = (
       process.env.VITE_APP_URL ||
-      'https://cv-ia-self.vercel.app'
+      'https://dokya-seven.vercel.app'
     ).trim();
 
     // Nettoyage automatique des éventuels crochets markdown [url](url) ou [url
@@ -1073,7 +1073,8 @@ app.post(['/api/checkout', '/api/checkout/sessions', '/api/v1/checkout/sessions'
     const {
       amount = 1000,
       currency = 'XOF',
-      orderReference = `CMD-${Date.now()}`,
+      reference,
+      orderReference,
       description = 'Déblocage de document',
       country = 'SN',
       returnUrl,
@@ -1086,10 +1087,10 @@ app.post(['/api/checkout', '/api/checkout/sessions', '/api/v1/checkout/sessions'
       customerName
     } = req.body || {};
 
+    const cleanRef = String(reference || orderReference || `DOKYA-${Date.now()}`);
     const numericAmount = Math.max(100, Math.round(Number(amount) || 1000));
-    const effectiveReturnUrl = String(return_url || returnUrl || `${BASE_URL}/payment/success`);
-    const effectiveCancelUrl = String(cancel_url || cancelUrl || `${BASE_URL}/payment/cancel`);
-    const effectiveCallbackUrl = `${BASE_URL}/api/webhook/senepay`;
+    const effectiveReturnUrl = String(returnUrl || return_url || `${BASE_URL}/?status=success`);
+    const effectiveCancelUrl = String(cancelUrl || cancel_url || `${BASE_URL}/?status=cancel`);
 
     // Si les clés API réelles SenePay ne sont pas encore configurées dans les variables d'environnement Vercel
     if (!isKeyConfigured) {
@@ -1101,123 +1102,91 @@ app.post(['/api/checkout', '/api/checkout/sessions', '/api/v1/checkout/sessions'
       });
     }
 
-    // Formatage du payload standard SenePay REST API
-    const authBearer = rawApiKey.startsWith('Bearer ') ? rawApiKey : `Bearer ${rawApiKey}`;
+    // Formatage des en-têtes officiels SenePay REST API (Documentation v1)
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Authorization': authBearer,
-      'x-api-key': rawApiKey,
       'X-Api-Key': rawApiKey
     };
     if (rawSecretKey) {
-      headers['x-api-secret'] = rawSecretKey;
       headers['X-Api-Secret'] = rawSecretKey;
     }
 
     const payload = {
       amount: numericAmount,
       currency: currency || 'XOF',
-      description: String(description || 'Déblocage de document'),
-      reference: String(orderReference),
-      order_id: String(orderReference),
-      orderReference: String(orderReference),
-      return_url: effectiveReturnUrl,
-      cancel_url: effectiveCancelUrl,
-      callback_url: effectiveCallbackUrl,
+      reference: cleanRef,
+      orderReference: cleanRef,
+      description: String(description || 'Paiement de document sur Dokya'),
+      returnUrl: effectiveReturnUrl,
+      cancelUrl: effectiveCancelUrl,
       country: country || 'SN',
-      customer: {
-        email: customerEmail || 'contact@dokya.com',
-        name: customerName || 'Client Dokya',
-        phone: customerPhone || '+221770000000'
-      },
-      metadata: {
-        order_id: String(orderReference),
-        description: String(description || 'Document')
-      }
+      expiresInMinutes: 60
     };
 
     console.log(`[SenePay Checkout] Initialisation session pour la commande ${payload.reference} (${payload.amount} ${payload.currency})...`);
 
-    // Tenter les endpoints SenePay dans l'ordre de priorité standard
-    const endpoints = [
-      'https://api.sene-pay.com/api/v1/checkout/sessions',
-      'https://api.sene-pay.com/api/v1/payments',
-      'https://api.sene-pay.com/api/v1/checkout'
-    ];
-
+    // Endpoint officiel SenePay Checkout Hébergé (v1)
+    const endpoint = 'https://api.sene-pay.com/api/v1/checkout/sessions';
     let lastResponseText = '';
     let lastStatus = 500;
     let lastData: any = null;
 
-    for (const endpoint of endpoints) {
+    try {
+      const senePayResponse = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      lastStatus = senePayResponse.status;
+      lastResponseText = await senePayResponse.text();
+
       try {
-        const senePayResponse = await fetch(endpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload)
-        });
-
-        lastStatus = senePayResponse.status;
-        lastResponseText = await senePayResponse.text();
-
-        try {
-          lastData = JSON.parse(lastResponseText);
-        } catch {
-          lastData = null;
-        }
-
-        const checkoutUrl = 
-          lastData?.checkoutUrl || 
-          lastData?.checkout_url ||
-          lastData?.data?.checkoutUrl || 
-          lastData?.data?.checkout_url ||
-          lastData?.redirectUrl || 
-          lastData?.redirect_url ||
-          lastData?.url ||
-          lastData?.data?.url;
-
-        if (senePayResponse.ok && checkoutUrl) {
-          console.log(`[SenePay Success via ${endpoint}] Session créée : ${checkoutUrl}`);
-          return res.json({
-            success: true,
-            redirectUrl: checkoutUrl,
-            checkoutUrl: checkoutUrl,
-            data: lastData
-          });
-        }
-
-        // Si l'endpoint a répondu avec une erreur 400 explicite concernant les données ou l'authentification
-        if (senePayResponse.status === 400 || senePayResponse.status === 401 || senePayResponse.status === 403) {
-          break;
-        }
-      } catch (err: any) {
-        console.warn(`[SenePay Attempt Failed on ${endpoint}]:`, err.message);
+        lastData = JSON.parse(lastResponseText);
+      } catch {
+        lastData = null;
       }
+
+      const checkoutUrl = 
+        lastData?.checkoutUrl || 
+        lastData?.checkout_url ||
+        lastData?.data?.checkoutUrl || 
+        lastData?.data?.checkout_url ||
+        lastData?.redirectUrl || 
+        lastData?.redirect_url ||
+        lastData?.url ||
+        lastData?.data?.url;
+
+      if (senePayResponse.ok && checkoutUrl) {
+        console.log(`[SenePay Success] Session créée : ${checkoutUrl}`);
+        return res.json({
+          success: true,
+          redirectUrl: checkoutUrl,
+          checkoutUrl: checkoutUrl,
+          data: lastData
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[SenePay Attempt Failed]:`, err.message);
     }
 
-    // Si la passerelle en direct n'a pas pu créer l'URL ou a retourné 401, activer le mode sécurisé avec redirection fluide
-    const fallbackCheckoutUrl = `${effectiveReturnUrl}?reference=${encodeURIComponent(String(orderReference))}&amount=${numericAmount}&method=senepay&status=success`;
+    // Si SenePay a refusé la requête (ex: 401 Unauthorized, 403, etc.)
+    const errorMsg = lastData?.message || lastData?.error || (lastStatus === 401 ? "Authentification SenePay échouée (401) : Clés API invalides ou compte SenePay en attente d'activation KYC." : `Erreur SenePay ${lastStatus || 400}`);
+    console.warn(`[SenePay Response ${lastStatus}]:`, lastData || lastResponseText);
 
-    console.info(`[SenePay Gateway] Session prête (mode résilient/sandbox): ${fallbackCheckoutUrl}`);
-
-    return res.json({
-      success: true,
-      redirectUrl: fallbackCheckoutUrl,
-      checkoutUrl: fallbackCheckoutUrl,
-      isSimulated: true,
-      message: "Session de paiement sécurisée initialisée avec succès."
+    return res.status(lastStatus >= 400 && lastStatus < 600 ? lastStatus : 400).json({
+      success: false,
+      error: errorMsg,
+      errorCode: lastData?.code || lastData?.errorCode || (lastStatus === 401 ? '401_UNAUTHORIZED' : 'GATEWAY_ERROR'),
+      details: lastData || lastResponseText
     });
 
   } catch (err: any) {
     console.error('[SenePay Exception] Erreur backend checkout:', err);
-    const baseUrl = (process.env.VITE_APP_URL || 'https://cv-ia-self.vercel.app').replace(/\/+$/, '');
-    const fallbackUrl = `${baseUrl}/payment/success?reference=CMD-${Date.now()}&status=success`;
-    return res.json({
-      success: true,
-      redirectUrl: fallbackUrl,
-      checkoutUrl: fallbackUrl,
-      message: 'Session de paiement prête.'
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Erreur interne du serveur lors de la création de la session SenePay.'
     });
   }
 });

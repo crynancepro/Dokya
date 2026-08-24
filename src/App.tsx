@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { CVFormData, AIOptimizedData, CandidateProfile, SavedUserDocument, BusinessDocData } from './types';
+import { CVFormData, AIOptimizedData, CandidateProfile, SavedUserDocument, BusinessDocData, EbookData } from './types';
 import { SAMPLE_CV_DATA } from './data/sampleData';
+import { SAMPLE_EBOOK_DATA } from './data/sampleEbookData';
 import { Header } from './components/Header';
 import { StepForm } from './components/StepForm';
 import { LetterEditorForm } from './components/LetterEditorForm';
@@ -11,10 +12,12 @@ import { PaymentModal } from './components/PaymentModal';
 import { RechargeWalletModal } from './components/RechargeWalletModal';
 import { DevisFactureForm } from './components/DevisFactureForm';
 import { DevisFactureTemplate } from './components/DevisFactureTemplate';
+import { EbookWizardForm } from './components/EbookWizardForm';
+import { EbookTemplate } from './components/EbookTemplate';
 import { DocumentDedicatedPreview } from './components/DocumentDedicatedPreview';
 import { ServicesOverviewBanner } from './components/ServicesOverviewBanner';
 import { downloadElementAsPDF } from './lib/pdfUtils';
-import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx } from './lib/exportUtils';
+import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
 import { fetchWithRetry, safeParseJsonResponse } from './utils/apiHelpers';
 import { auth, saveUserDocument, saveTransactionRecord } from './lib/firebase';
 import { generateCVWithGemini } from './lib/geminiService';
@@ -22,7 +25,7 @@ import { generateCVWithGemini } from './lib/geminiService';
 import { 
   FileText, Sparkles, Download, CheckCircle2, 
   MessageSquare, Loader2, User, ArrowRight, ArrowLeft,
-  Receipt, FileCheck, Package, Check, Zap, Eye, Mail
+  Receipt, FileCheck, Package, Check, Zap, Eye, Mail, BookOpen
 } from 'lucide-react';
 
 const INITIAL_BUSINESS_DOC: BusinessDocData = {
@@ -90,6 +93,14 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     return INITIAL_BUSINESS_DOC;
   });
 
+  const [ebookData, setEbookData] = useState<EbookData>(() => {
+    const saved = localStorage.getItem('ebook_data');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
+    }
+    return SAMPLE_EBOOK_DATA;
+  });
+
   const [aiData, setAiData] = useState<AIOptimizedData | null>(() => {
     const saved = localStorage.getItem('cv_ai_data');
     if (saved) {
@@ -115,6 +126,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     | 'facture_preview'
     | 'pack_business'
     | 'pack_business_preview'
+    | 'ebook'
+    | 'ebook_preview'
     | 'dashboard'
   >('services');
 
@@ -210,7 +223,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
   // Payment Modal State (Replaced old 4-step wizard with clean 2-option modal)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
-  const [paymentDocType, setPaymentDocType] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business'>('cv');
+  const [paymentDocType, setPaymentDocType] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook'>('cv');
   const [paymentDocTitle, setPaymentDocTitle] = useState<string>('');
   const [paymentDocTypeLabel, setPaymentDocTypeLabel] = useState<string>('CV Pro ATS');
   const [paymentPrice, setPaymentPrice] = useState<number>(1000);
@@ -219,7 +232,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   // -------------------------------------------------------------
   // Open Payment Modal Handlers for each service
   // -------------------------------------------------------------
-  const handleOpenPaymentModal = (docType: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business') => {
+  const handleOpenPaymentModal = (docType: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook') => {
     setPaymentDocType(docType);
     if (docType === 'cv') {
       const title = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - CV Pro ATS`.trim();
@@ -239,6 +252,10 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       setPaymentDocTitle(`Facture Client - ${businessDocData.docNumber}`);
       setPaymentDocTypeLabel('Facture Client');
       setPaymentPrice(1000);
+    } else if (docType === 'ebook') {
+      setPaymentDocTitle(ebookData.title || 'Mon Livre Numérique');
+      setPaymentDocTypeLabel('Livre Numérique (Ebook Pro)');
+      setPaymentPrice(1500);
     } else {
       setPaymentDocTitle(`Pack Business (Devis + Facture) - ${businessDocData.docNumber}`);
       setPaymentDocTypeLabel('Pack Business (Devis + Facture)');
@@ -314,7 +331,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   // -------------------------------------------------------------
   // Service Selection Dispatcher from Home / Catalog
   // -------------------------------------------------------------
-  const handleSelectService = (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business') => {
+  const handleSelectService = (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'dashboard') => {
     if (service === 'cv' || service === 'full_pack') {
       setFormData(prev => ({ ...prev, generationMode: 'cv_only' }));
       setActiveTab('cv');
@@ -331,6 +348,10 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       setBusinessDocData(prev => ({ ...prev, type: 'devis' }));
       setPackBusinessSubTab('devis');
       setActiveTab('pack_business');
+    } else if (service === 'ebook') {
+      setActiveTab('ebook');
+    } else if (service === 'dashboard') {
+      setActiveTab('dashboard');
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -343,6 +364,10 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   useEffect(() => {
     localStorage.setItem('business_doc_data', JSON.stringify(businessDocData));
   }, [businessDocData]);
+
+  useEffect(() => {
+    localStorage.setItem('ebook_data', JSON.stringify(ebookData));
+  }, [ebookData]);
 
   useEffect(() => {
     if (aiData) {
@@ -530,6 +555,21 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     }
   };
 
+  const downloadEbookPDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      const fileName = `Ebook_${(ebookData.title || 'Livre_Numerique').replace(/[\s\/\\]+/g, '_')}.pdf`;
+      await downloadElementAsPDF('ebook-printable-area', fileName);
+      setSuccessMessage("Livre Numérique (Ebook) téléchargé avec succès en PDF !");
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error('Error generating Ebook PDF:', err);
+      window.print();
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
   const downloadFullPackPDF = async () => {
     setIsGeneratingPDF(true);
     setErrorMessage(null);
@@ -566,6 +606,9 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       ) {
         await exportBusinessDocToDocx(businessDocData);
         setSuccessMessage(`${businessDocData.type === 'devis' ? 'Devis' : 'Facture'} exporté(e) au format Word (.docx) avec succès !`);
+      } else if (activeTab === 'ebook' || activeTab === 'ebook_preview') {
+        await exportEbookToDocx(ebookData);
+        setSuccessMessage("Livre Numérique (Ebook) exporté au format Word (.docx) avec succès !");
       } else {
         await exportCVToDocx(formData, aiData);
         setSuccessMessage("CV exporté au format Word (.docx) avec succès !");
@@ -927,6 +970,55 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadBusinessDocPDF}
+              onGoServices={() => setActiveTab('services')}
+            />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 8A : ÉTAPE 1 - CRÉATION D'EBOOK / LIVRE NUMÉRIQUE (1 500 FCFA)       */}
+        {/* ========================================================================= */}
+        {activeTab === 'ebook' && (
+          <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
+            <EbookWizardForm
+              data={ebookData}
+              setData={setEbookData}
+              onGoPreview={() => {
+                setActiveTab('ebook_preview');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onGoServices={() => setActiveTab('services')}
+            />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 8B : ÉTAPE 2 - APERÇU PLEIN ÉCRAN DÉDIÉ DU LIVRE NUMÉRIQUE           */}
+        {/* ========================================================================= */}
+        {activeTab === 'ebook_preview' && (
+          <div className="animate-in fade-in">
+            <DocumentDedicatedPreview
+              docType="ebook"
+              formData={formData}
+              setFormData={setFormData}
+              aiData={aiData}
+              businessDocData={businessDocData}
+              setBusinessDocData={setBusinessDocData}
+              ebookData={ebookData}
+              setEbookData={setEbookData}
+              isPaid={!!paidDocTypes['ebook']}
+              isEditingDirectly={isEditingDirectly}
+              setIsEditingDirectly={setIsEditingDirectly}
+              onEditForm={() => {
+                setActiveTab('ebook');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onPayToUnlock={() => handleOpenPaymentModal('ebook')}
+              onDownloadPDF={downloadEbookPDF}
+              onExportDocx={handleExportDOCX}
+              isGeneratingPDF={isGeneratingPDF}
+              isGeneratingDocx={isGeneratingDocx}
+              onPrint={downloadEbookPDF}
               onGoServices={() => setActiveTab('services')}
             />
           </div>

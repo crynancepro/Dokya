@@ -68,8 +68,8 @@ export const SenePayCheckoutButton: React.FC<SenePayCheckoutButtonProps> = ({
       }
 
     } catch (err: any) {
-      console.error('Erreur Checkout SenePay:', err);
-      const errMsg = err.message || 'Une erreur est survenue lors de l\'initialisation du paiement sécurisé SenePay.';
+      const errMsg = err?.message || 'Une erreur est survenue lors de l\'initialisation du paiement sécurisé SenePay.';
+      console.warn('[SenePay Checkout]:', errMsg);
       setErrorMessage(errMsg);
       if (onError) onError(errMsg);
     } finally {

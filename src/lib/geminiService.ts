@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { CVFormData } from '../types';
+import { generateContextualEbookProposals, buildPollinationsImageUrl } from '../data/sampleEbookData';
 
 /**
  * Get the Gemini API key from Vite / Next / Process environment variables
@@ -413,6 +414,368 @@ Instructions :
       success: true,
       items: fallbackItems,
       notes: fallbackNotes
+    };
+  }
+}
+
+/**
+ * Generate 4 distinct, professional Ebook Cover and Back Cover proposals with total style diversity
+ */
+export async function generateEbookCoversWithGemini(data: {
+  title: string;
+  subtitle?: string;
+  author: string;
+  genre: string;
+  language: string;
+  targetAudience?: string;
+  tone?: string;
+  summaryOrPrompt?: string;
+  customPrompt?: string;
+}) {
+  const apiKey = getGeminiApiKey();
+  const lang = data.language || 'Français';
+  const genre = data.genre || 'Business & Entrepreneuriat';
+  const author = data.author || 'Auteur';
+  const title = data.title || 'Livre Numérique';
+  const subtitle = data.subtitle || 'Guide Pratique';
+
+  // Generate high-fidelity contextual proposals across 4 distinct artistic styles
+  const contextual = generateContextualEbookProposals({
+    title,
+    subtitle,
+    author,
+    genre,
+    language: lang,
+    targetAudience: data.targetAudience,
+    summaryOrPrompt: data.summaryOrPrompt,
+    customPrompt: data.customPrompt
+  });
+
+  const fallbackFrontProposals = contextual.frontProposals;
+  const fallbackBackProposals = contextual.backProposals;
+
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.includes('placeholder')) {
+    return {
+      success: true,
+      frontProposals: fallbackFrontProposals,
+      backProposals: fallbackBackProposals
+    };
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `Tu es un directeur artistique et éditeur professionnel d'ebooks de premier plan (Amazon KDP, Fnac, IngramSpark, Apple Books).
+Langue de rédaction demandée : ${lang}.
+Sujet du livre : "${title}" (${subtitle || ''}).
+Auteur : "${author}".
+Genre : "${genre}".
+Public cible : "${data.targetAudience || 'Grand public & Professionnels'}".
+Ton souhaité : "${data.tone || 'Inspirant & Pédagogique'}".
+Description / Instructions personnalisées : "${data.summaryOrPrompt || ''} ${data.customPrompt || ''}".
+
+MISSION :
+Génère UNE SEULE proposition de Première de Couverture (frontProposal) et UNE SEULE proposition de Quatrième de Couverture (dos / backProposal) de très haute qualité professionnelle, ultra-rapide et parfaitement adaptée au contexte du livre.
+
+EXIGENCE D'ADAPTATION ARTISTIQUE STRICTE SELON LE SUJET :
+- Si c'est un livre pour enfant / conte : style dessin animé féerique, coloré et chaleureux ("illustration", type Pixar/Aquarelle).
+- Si c'est un roman / romance / thriller : style cinématique et émotionnel ("photorealistic" ou clair-obscur).
+- Si c'est un livre de finance / business / argent / crypto : style prestige luxe avec touches dorées ("photorealistic" ou "minimalist").
+- Si c'est un manga / shonen : style anime illustration dynamique avec effets d'énergie.
+- Si c'est un essai / développement personnel : style éditorial pur et impactant.
+
+Le champ "imagePrompt" DOIT être en anglais descriptif précis pour le générateur d'image (ex: "cinematic photorealistic book cover visual representing ...", 8k masterpiece).
+Tout le texte affiché (tagline, badge, résumé synopsis, bio auteur, citation, points clés) DOIT être intégralement rédigé en ${lang}.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.7-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            frontProposal: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                title: { type: Type.STRING },
+                subtitle: { type: Type.STRING },
+                author: { type: Type.STRING },
+                genreBadge: { type: Type.STRING },
+                tagline: { type: Type.STRING },
+                paletteName: { type: Type.STRING },
+                bgGradient: { type: Type.STRING },
+                textColor: { type: Type.STRING },
+                subtitleColor: { type: Type.STRING },
+                accentColor: { type: Type.STRING },
+                fontFamily: { type: Type.STRING },
+                layoutVariant: { type: Type.STRING },
+                artStyle: { type: Type.STRING },
+                artStyleLabel: { type: Type.STRING },
+                coverArtEmojiOrIcon: { type: Type.STRING },
+                imagePrompt: { type: Type.STRING },
+              },
+              required: ['title', 'author', 'paletteName', 'bgGradient', 'textColor', 'accentColor', 'layoutVariant', 'imagePrompt'],
+            },
+            backProposal: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                synopsis: { type: Type.STRING },
+                authorBio: { type: Type.STRING },
+                keyTakeaways: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                quoteOrCallToAction: { type: Type.STRING },
+                isbnNumber: { type: Type.STRING },
+                barcodeDigits: { type: Type.STRING },
+                bgGradient: { type: Type.STRING },
+                textColor: { type: Type.STRING },
+                accentColor: { type: Type.STRING },
+                layoutVariant: { type: Type.STRING },
+                artStyle: { type: Type.STRING },
+                artStyleLabel: { type: Type.STRING },
+                imagePrompt: { type: Type.STRING },
+              },
+              required: ['synopsis', 'authorBio', 'keyTakeaways', 'quoteOrCallToAction', 'bgGradient', 'textColor', 'accentColor', 'layoutVariant'],
+            },
+          },
+          required: ['frontProposal', 'backProposal'],
+        },
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    
+    // Merge Gemini output with dynamic thematic image URLs
+    const baseSeed = Math.abs(title.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 100) + Math.floor(Math.random() * 50);
+
+    const fallbackFront = fallbackFrontProposals[0];
+    const rawFront = parsed.frontProposal || (Array.isArray(parsed.frontProposals) ? parsed.frontProposals[0] : fallbackFront);
+    const frontPrompt = rawFront.imagePrompt || fallbackFront?.imagePrompt || `cinematic book cover of ${title}, 8k artwork`;
+
+    const singleFront = {
+      ...fallbackFront,
+      ...rawFront,
+      id: rawFront.id || `front-${Date.now()}-1`,
+      imagePrompt: frontPrompt,
+      artImageUrl: buildPollinationsImageUrl(frontPrompt, baseSeed + 101),
+      artStyle: rawFront.artStyle || fallbackFront?.artStyle || 'photorealistic',
+      artStyleLabel: rawFront.artStyleLabel || fallbackFront?.artStyleLabel || '📸 Édition Haute Définition',
+      artTexture: fallbackFront?.artTexture || 'gold_foil'
+    };
+
+    const fallbackBack = fallbackBackProposals[0];
+    const rawBack = parsed.backProposal || (Array.isArray(parsed.backProposals) ? parsed.backProposals[0] : fallbackBack);
+    const backPrompt = rawBack.imagePrompt || frontPrompt || `cinematic book cover back for ${title}, 8k artwork`;
+
+    const singleBack = {
+      ...fallbackBack,
+      ...rawBack,
+      id: rawBack.id || `back-${Date.now()}-1`,
+      imagePrompt: backPrompt,
+      artImageUrl: buildPollinationsImageUrl(backPrompt, baseSeed + 101),
+      artStyle: rawBack.artStyle || fallbackBack?.artStyle || 'photorealistic',
+      artStyleLabel: rawBack.artStyleLabel || fallbackBack?.artStyleLabel || '📸 Fermeture Officielle',
+      artTexture: fallbackBack?.artTexture || 'gold_foil'
+    };
+
+    return {
+      success: true,
+      frontProposals: [singleFront],
+      backProposals: [singleBack]
+    };
+  } catch (err: any) {
+    console.warn('[Gemini Ebook Covers] Fallback activé :', err?.message);
+    return {
+      success: true,
+      frontProposals: fallbackFrontProposals,
+      backProposals: fallbackBackProposals
+    };
+  }
+}
+
+/**
+ * Generates the structured Table of Contents and in-depth chapters in the requested language
+ */
+export async function generateEbookContentWithGemini(data: {
+  title: string;
+  subtitle?: string;
+  author: string;
+  genre: string;
+  language: string;
+  targetAudience?: string;
+  tone?: string;
+  summaryOrPrompt?: string;
+  chapterCount?: number;
+  targetPageCount?: number;
+}) {
+  const apiKey = getGeminiApiKey();
+  const lang = data.language || 'Français';
+  const genre = data.genre || 'Business & Entrepreneuriat';
+  const author = data.author || 'Auteur';
+  const title = data.title || 'Livre Numérique';
+  const totalTargetPages = Math.max(4, data.targetPageCount || 10);
+  const targetInteriorPages = Math.max(1, totalTargetPages - 3);
+  const count = data.chapterCount || Math.min(10, Math.max(3, Math.round(targetInteriorPages / 2)));
+
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.includes('placeholder')) {
+    // Generate high quality chapters based on title and language
+    const sampleTOC = [
+      { id: 'toc-1', chapterNumber: 1, title: `Introduction & Fondements : Comprendre ${title}`, summary: "Les bases indispensables et la mise en contexte." },
+      { id: 'toc-2', chapterNumber: 2, title: `Les Piliers Clés & Stratégies Éprouvées`, summary: "Méthodologie et cadre opérationnel." },
+      { id: 'toc-3', chapterNumber: 3, title: `Mise en Pratique : Du Concept à l'Exécution`, summary: "Guide pas à pas avec exemples concrets." },
+      { id: 'toc-4', chapterNumber: 4, title: `Optimisation, Évolution & Évitement des Pièges`, summary: "Résolution des problèmes et passage à l'échelle." },
+      { id: 'toc-5', chapterNumber: 5, title: `Feuille de Route & Conclusion Stratégique`, summary: "Plan d'action personnel pour un succès pérenne." }
+    ].slice(0, count);
+
+    const sampleChapters = sampleTOC.map((toc) => ({
+      id: `chap-${toc.chapterNumber}`,
+      chapterNumber: toc.chapterNumber,
+      title: toc.title,
+      subtitle: toc.summary,
+      readingTimeMinutes: 7 + toc.chapterNumber,
+      keyTakeaways: [
+        `Comprendre les enjeux prioritaires du chapitre ${toc.chapterNumber}.`,
+        `Appliquer directement les conseils pratiques dans votre quotidien.`,
+        `Mesurer vos progrès grâce à des indicateurs clairs.`
+      ],
+      content: `## ${toc.chapterNumber}.1 Vue d'Ensemble & Objectifs
+
+Dans ce chapitre dédié à **${toc.title}**, nous posons les jalons d'une compréhension approfondie et sans compromis. L'objectif est de vous doter d'une grille de lecture claire, pratique et directement applicable.
+
+L'auto-édition et la transmission de savoir exigent rigueur et méthode. Trop de manuels se contentent de survoler la surface sans jamais donner les leviers opérationnels. Ici, chaque paragraphe est pensé pour vous faire gagner un temps précieux.
+
+> *« Le savoir n'a de valeur que lorsqu'il est mis au service d'une action délibérée et constante. »*
+
+## ${toc.chapterNumber}.2 Les Concepts Opérationnels
+
+Pour réussir votre démarche, concentrez-vous sur ces aspects essentiels :
+
+1. **La Clarté d'Intention** : Définir précisément le résultat attendu avant d'engager des ressources.
+2. **La Systématisation** : Remplacer l'improvisation par des processus reproductibles.
+3. **Le Feedback Continu** : Tester, mesurer et ajuster en temps réel.
+
+## ${toc.chapterNumber}.3 Exercice Pratique & Plan d'Action
+
+Prenez 10 minutes pour formaliser votre propre plan :
+- Notez les 3 enseignements clés que vous retenez.
+- Choisissez une action immédiate à réaliser dans les 24 heures.
+- Partagez vos conclusions avec un pair ou dans votre carnet de bord.`
+    }));
+
+    return {
+      success: true,
+      tableOfContents: sampleTOC,
+      chapters: sampleChapters
+    };
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `Tu es un auteur à succès et éditeur chevronné de livres numériques et livres professionnels au format auto-édition (Amazon KDP 6x9 pouces).
+Ta mission est de concevoir la TABLE DES MATIÈRES (Sommaire) et de RÉDIGER INTÉGRALEMENT LES ${count} CHAPITRES d'un livre d'excellence.
+
+CALIBRAGE STRICT DU NOMBRE EXACT DE PAGES :
+Le livre complet doit faire EXACTEMENT ${totalTargetPages} PAGES au total :
+- Page 1 : 1re de Couverture Avant (Titre, Auteur, Illustration)
+- Page 2 : Page de Titre & Copyright / Mentions Légales
+- Page 3 : Table des Matières / Sommaire
+- Pages 4 à ${totalTargetPages - 1} (soit exactement ${targetInteriorPages} pages intérieures rédigées) : Corps du livre réparti sur les ${count} chapitres
+- Page ${totalTargetPages} : 4e de Couverture Arrière (Synopsis, Points clés, Bio auteur, Code-barres)
+
+IMPORTANT : Le livre entier (titres, sous-titres, résumés, contenu détaillé des chapitres, points clés à retenir) DOIT être rédigé UNIQUEMENT en ${lang}.
+
+Détails du livre :
+- Titre : "${title}"
+- Sous-titre : "${data.subtitle || ''}"
+- Auteur : "${author}"
+- Genre : "${genre}"
+- Langue exigée : "${lang}"
+- Public cible : "${data.targetAudience || 'Professionnels et grand public'}"
+- Ton : "${data.tone || 'Pédagogique, Inspirant & Actionnable'}"
+- Contexte / Synopsis : "${data.summaryOrPrompt || ''}"
+- Nombre total de pages exact exigé : ${totalTargetPages} pages (dont ${targetInteriorPages} pages intérieures)
+- Nombre de chapitres exigé : ${count} chapitres
+
+Instructions de rédaction pour chaque chapitre :
+1. Chaque chapitre doit contenir un contenu riche, professionnel, volumineux et substantiel avec des sous-titres markdown (##), des paragraphes bien développés, des citations inspirantes (>), des listes structurées, et des exemples concrets, parfaitement dimensionné pour remplir l'équivalent de ${Math.max(1, Math.round(targetInteriorPages / count))} page(s) imprimée(s).
+2. Fournis 3 points clés à retenir (keyTakeaways) par chapitre.
+3. Estime le temps de lecture en minutes (readingTimeMinutes).`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.7-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        maxOutputTokens: 8192,
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            tableOfContents: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  chapterNumber: { type: Type.NUMBER },
+                  title: { type: Type.STRING },
+                  summary: { type: Type.STRING },
+                },
+                required: ['chapterNumber', 'title', 'summary'],
+              },
+            },
+            chapters: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  chapterNumber: { type: Type.NUMBER },
+                  title: { type: Type.STRING },
+                  subtitle: { type: Type.STRING },
+                  content: { type: Type.STRING },
+                  keyTakeaways: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  readingTimeMinutes: { type: Type.NUMBER },
+                },
+                required: ['chapterNumber', 'title', 'content'],
+              },
+            },
+          },
+          required: ['tableOfContents', 'chapters'],
+        },
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    return {
+      success: true,
+      tableOfContents: Array.isArray(parsed.tableOfContents) ? parsed.tableOfContents : [],
+      chapters: Array.isArray(parsed.chapters) ? parsed.chapters : []
+    };
+  } catch (err: any) {
+    console.warn('[Gemini Ebook Content] Fallback activé :', err?.message);
+    const sampleTOC = [
+      { id: 'toc-1', chapterNumber: 1, title: `Fondements : Comprendre ${title}`, summary: "Introduction et cadrage stratégique." },
+      { id: 'toc-2', chapterNumber: 2, title: `Méthodes & Principes Clés`, summary: "Les piliers essentiels pour réussir." },
+      { id: 'toc-3', chapterNumber: 3, title: `Passage à l'Action & Études de Cas`, summary: "Applications concrètes et retours d'expérience." }
+    ];
+    return {
+      success: true,
+      tableOfContents: sampleTOC,
+      chapters: sampleTOC.map((t) => ({
+        id: `chap-${t.chapterNumber}`,
+        chapterNumber: t.chapterNumber,
+        title: t.title,
+        subtitle: t.summary,
+        readingTimeMinutes: 8,
+        keyTakeaways: [`Appliquer les principes du chapitre ${t.chapterNumber}`],
+        content: `## ${t.chapterNumber}.1 Introduction\n\nBienvenue dans ce chapitre consacré à ${t.title}.\n\n> *« La constance est le secret des grands accomplissements. »*`
+      }))
     };
   }
 }

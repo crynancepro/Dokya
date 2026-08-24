@@ -382,8 +382,73 @@ export function sanitizeClonedDocumentForHtml2Canvas(clonedDoc: Document, target
 }
 
 /**
+ * Preloads and decodes all images (<img> tags and CSS background-images) inside an HTML element
+ * before canvas capture to ensure 100% complete rendering without missing images or blank canvas.
+ */
+export async function preloadAllImages(element: HTMLElement): Promise<void> {
+  const imgElements = Array.from(element.querySelectorAll('img'));
+  const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
+
+  const loadPromises: Promise<void>[] = [];
+
+  // 1. Wait for standard <img> tags
+  imgElements.forEach((img) => {
+    if (!img.complete || img.naturalWidth === 0) {
+      loadPromises.push(
+        new Promise<void>((resolve) => {
+          img.crossOrigin = 'anonymous';
+          const onDone = () => resolve();
+          img.addEventListener('load', onDone, { once: true });
+          img.addEventListener('error', onDone, { once: true });
+          if (img.decode) {
+            img.decode().then(resolve).catch(resolve);
+          }
+          // Max safety timeout 3s
+          setTimeout(resolve, 3000);
+        })
+      );
+    }
+  });
+
+  // 2. Wait for CSS background-image URLs
+  allElements.forEach((el) => {
+    try {
+      const inlineBg = el.style.backgroundImage;
+      const computedBg = window.getComputedStyle(el).backgroundImage;
+      const bgStr = inlineBg || computedBg;
+
+      if (bgStr && bgStr.startsWith('url(')) {
+        const match = bgStr.match(/url\(["']?([^"']+)["']?\)/);
+        if (match && match[1] && !match[1].startsWith('data:')) {
+          const url = match[1];
+          loadPromises.push(
+            new Promise<void>((resolve) => {
+              const testImg = new Image();
+              testImg.crossOrigin = 'anonymous';
+              testImg.onload = () => resolve();
+              testImg.onerror = () => resolve();
+              testImg.src = url;
+              setTimeout(resolve, 3000);
+            })
+          );
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  });
+
+  if (loadPromises.length > 0) {
+    await Promise.all(loadPromises);
+  }
+  // Short frame tick for browser paint flush
+  await new Promise((r) => setTimeout(r, 100));
+}
+
+/**
  * Downloads an HTML element as a PDF file directly.
- * Falls back seamlessly to native window.print() if needed.
+ * Employs strict inline print styling (white background #ffffff, dark text #1a1a1a),
+ * image preloading with useCORS/allowTaint, and page-by-page rendering to prevent blank pages.
  */
 export async function downloadElementAsPDF(elementId: string, fileName: string): Promise<boolean> {
   const element = document.getElementById(elementId);
@@ -394,12 +459,157 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
   // 1. Sanitize style tags & inline oklch/oklab colors first
   sanitizeDocumentStyles(document);
 
+  // 2. Preload and decode all images inside the element
+  await preloadAllImages(element);
+
   try {
-    // Export garanti 1 seule page A4 pour les CV et Lettres de motivation
-    if (elementId === 'cv-preview' || elementId === 'letter-preview' || element.getAttribute('data-single-page') === 'true') {
-      // Convert unsupported CSS color functions (oklch, oklab, color-mix) to standard RGB/RGBA on live element before canvas capture
-      const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
-      const styleRestorers: Array<{ el: HTMLElement; color: string; bg: string; border: string }> = [];
+    // Check if this is a multi-page book/ebook document (has .kdp-page-break or [id^="ebook-page-"])
+    const isEbook = elementId === 'ebook-printable-area' || element.classList.contains('kdp-printable-manuscript');
+    const childPages = Array.from(element.querySelectorAll<HTMLElement>('.kdp-page-break, [id^="ebook-page-"]'));
+
+    // =========================================================================
+    // A. MULTI-PAGE EBOOK / MANUSCRIPT EXPORT (Page-by-page rendering)
+    // =========================================================================
+    if (isEbook && childPages.length > 0) {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+
+      for (let pIdx = 0; pIdx < childPages.length; pIdx++) {
+        const pageEl = childPages[pIdx];
+
+        // Ensure page element is visible with non-zero dimensions & full opacity
+        const origOpacity = pageEl.style.opacity;
+        const origDisplay = pageEl.style.display;
+        const origBreakAfter = pageEl.style.breakAfter;
+        const origPageBreakAfter = pageEl.style.pageBreakAfter;
+
+        pageEl.style.opacity = '1';
+        pageEl.style.display = 'flex';
+        pageEl.style.breakAfter = 'page';
+        pageEl.style.pageBreakAfter = 'always';
+
+        // Check if page is front or back cover (has rich dark background / gradient / background-image)
+        const isCoverPage = pageEl.id === 'ebook-page-1' || pageEl.id === `ebook-page-${childPages.length}` || pIdx === 0 || pIdx === childPages.length - 1;
+
+        // Apply strict explicit print styles to elements inside interior pages
+        const styleRestorers: Array<{ el: HTMLElement; color: string; bg: string; border: string; opacity: string }> = [];
+        const descendants = Array.from(pageEl.querySelectorAll<HTMLElement>('*'));
+
+        if (!isCoverPage) {
+          // Interior Page: Force pure white paper #ffffff and dark text #1a1a1a
+          pageEl.style.backgroundColor = '#ffffff';
+          pageEl.style.color = '#1a1a1a';
+
+          descendants.forEach((desc) => {
+            if (!desc.style) return;
+            const computed = window.getComputedStyle(desc);
+            styleRestorers.push({
+              el: desc,
+              color: desc.style.color,
+              bg: desc.style.backgroundColor,
+              border: desc.style.borderColor,
+              opacity: desc.style.opacity
+            });
+
+            // Prevent invisible or zero opacity elements
+            desc.style.opacity = '1';
+
+            // Clean OKLCH colors
+            if (computed.color && (computed.color.includes('oklch') || computed.color.includes('oklab') || computed.color.includes('color-mix'))) {
+              desc.style.color = replaceUnsupportedColorsInString(computed.color);
+            }
+            if (computed.backgroundColor && (computed.backgroundColor.includes('oklch') || computed.backgroundColor.includes('oklab') || computed.backgroundColor.includes('color-mix'))) {
+              desc.style.backgroundColor = replaceUnsupportedColorsInString(computed.backgroundColor);
+            }
+            if (computed.borderColor && (computed.borderColor.includes('oklch') || computed.borderColor.includes('oklab') || computed.borderColor.includes('color-mix'))) {
+              desc.style.borderColor = replaceUnsupportedColorsInString(computed.borderColor);
+            }
+          });
+        } else {
+          // Cover Page: Convert unsupported OKLCH colors while keeping dark palette
+          descendants.forEach((desc) => {
+            if (!desc.style) return;
+            const computed = window.getComputedStyle(desc);
+            styleRestorers.push({
+              el: desc,
+              color: desc.style.color,
+              bg: desc.style.backgroundColor,
+              border: desc.style.borderColor,
+              opacity: desc.style.opacity
+            });
+
+            desc.style.opacity = '1';
+
+            if (computed.color && (computed.color.includes('oklch') || computed.color.includes('oklab') || computed.color.includes('color-mix'))) {
+              desc.style.color = replaceUnsupportedColorsInString(computed.color);
+            }
+            if (computed.backgroundColor && (computed.backgroundColor.includes('oklch') || computed.backgroundColor.includes('oklab') || computed.backgroundColor.includes('color-mix'))) {
+              desc.style.backgroundColor = replaceUnsupportedColorsInString(computed.backgroundColor);
+            }
+          });
+        }
+
+        // Render page cleanly to canvas
+        const canvas = await html2canvas(pageEl, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: isCoverPage ? null : '#ffffff',
+          scrollX: 0,
+          scrollY: 0,
+        });
+
+        // Restore styles
+        styleRestorers.forEach(({ el, color, bg, border, opacity }) => {
+          el.style.color = color;
+          el.style.backgroundColor = bg;
+          el.style.borderColor = border;
+          el.style.opacity = opacity;
+        });
+        pageEl.style.opacity = origOpacity;
+        pageEl.style.display = origDisplay;
+        pageEl.style.breakAfter = origBreakAfter;
+        pageEl.style.pageBreakAfter = origPageBreakAfter;
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+
+        // Add page to PDF
+        if (pIdx > 0) {
+          pdf.addPage();
+        }
+
+        const canvasRatio = canvas.height / canvas.width;
+        let renderWidth = pdfWidth - 10; // Small 5mm safe margin
+        let renderHeight = renderWidth * canvasRatio;
+
+        if (renderHeight > (pdfHeight - 10)) {
+          renderHeight = pdfHeight - 10;
+          renderWidth = renderHeight / canvasRatio;
+        }
+
+        const xOffset = (pdfWidth - renderWidth) / 2;
+        const yOffset = (pdfHeight - renderHeight) / 2;
+
+        pdf.addImage(imgData, 'JPEG', xOffset, yOffset, renderWidth, renderHeight);
+      }
+
+      pdf.save(fileName);
+      return true;
+    }
+
+    // =========================================================================
+    // B. SINGLE-PAGE DOCUMENT EXPORT (CV, Letter, Devis, Facture)
+    // =========================================================================
+    if (elementId === 'cv-preview' || elementId === 'letter-preview' || elementId === 'business-doc-preview' || element.getAttribute('data-single-page') === 'true') {
+      const allElements = [element, ...Array.from(element.querySelectorAll<HTMLElement>('*'))];
+      const styleRestorers: Array<{ el: HTMLElement; color: string; bg: string; border: string; opacity: string }> = [];
 
       allElements.forEach((el) => {
         if (!el.style) return;
@@ -408,8 +618,14 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
           const origColor = el.style.color;
           const origBg = el.style.backgroundColor;
           const origBorder = el.style.borderColor;
+          const origOpacity = el.style.opacity;
 
           let modified = false;
+
+          if (computed.opacity === '0') {
+            el.style.opacity = '1';
+            modified = true;
+          }
 
           if (computed.color && (computed.color.includes('oklch') || computed.color.includes('color-mix') || computed.color.includes('oklab') || computed.color.includes('lab'))) {
             el.style.color = replaceUnsupportedColorsInString(computed.color);
@@ -425,7 +641,7 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
           }
 
           if (modified) {
-            styleRestorers.push({ el, color: origColor, bg: origBg, border: origBorder });
+            styleRestorers.push({ el, color: origColor, bg: origBg, border: origBorder, opacity: origOpacity });
           }
         } catch {
           // Ignore style extraction errors
@@ -437,15 +653,17 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
         useCORS: true,
         logging: false,
         allowTaint: true,
+        backgroundColor: '#ffffff',
         scrollX: 0,
         scrollY: 0
       });
 
       // Restore original inline styles
-      styleRestorers.forEach(({ el, color, bg, border }) => {
+      styleRestorers.forEach(({ el, color, bg, border, opacity }) => {
         el.style.color = color;
         el.style.backgroundColor = bg;
         el.style.borderColor = border;
+        el.style.opacity = opacity;
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
@@ -469,12 +687,16 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
       }
 
       const xOffset = (pdfWidth - renderWidth) / 2;
+      const yOffset = Math.max(0, (pdfHeight - renderHeight) / 2);
 
-      pdf.addImage(imgData, 'JPEG', xOffset, 0, renderWidth, renderHeight);
+      pdf.addImage(imgData, 'JPEG', xOffset, yOffset, renderWidth, renderHeight);
       pdf.save(fileName);
       return true;
     }
 
+    // =========================================================================
+    // C. GENERIC MULTI-PAGE FALLBACK
+    // =========================================================================
     const opt = {
       margin: [6, 6, 6, 6],
       filename: fileName,
@@ -491,7 +713,7 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: {
         mode: ['avoid-all', 'css', 'legacy'],
-        before: ['.page-break', '.page-break-before', '.page-break-always'],
+        before: ['.page-break', '.page-break-before', '.page-break-always', '.kdp-page-break'],
         after: ['.page-break-after'],
         avoid: [
           'section',
@@ -503,6 +725,7 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
           '.group\\/item',
           '.group\\/edu',
           '.group\\/section',
+          '.kdp-no-break',
           'h1',
           'h2',
           'h3',
@@ -516,7 +739,7 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
     await (html2pdf as any)().set(opt).from(element).save();
     return true;
   } catch (err) {
-    console.warn('Erreur html2pdf, basculement vers impression système :', err);
+    console.warn('Erreur génération PDF, basculement vers impression système :', err);
     window.print();
     return false;
   }

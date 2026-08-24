@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, RotateCcw, Zap, User, ShieldCheck, LogIn, 
-  ArrowLeft, FileText, Mail, FileCheck, Receipt, Package, Wallet, Check
+  ArrowLeft, FileText, Mail, FileCheck, Receipt, Package, Wallet, Check, BookOpen
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
@@ -89,6 +89,15 @@ export const Header: React.FC<HeaderProps> = ({
           icon: Package,
           bg: "bg-amber-50 border-amber-300 text-amber-950",
           iconColor: "text-amber-700"
+        };
+      case 'ebook':
+      case 'ebook_preview':
+        return {
+          title: currentView === 'ebook_preview' ? "Aperçu : Livre Numérique" : "Générateur d'Ebook & Livre",
+          price: "1 500 FCFA",
+          icon: BookOpen,
+          bg: "bg-purple-50 border-purple-200/80 text-purple-950",
+          iconColor: "text-purple-600"
         };
       case 'dashboard':
         return {

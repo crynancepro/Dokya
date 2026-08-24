@@ -111,6 +111,9 @@ export async function fetchUserProfile(userId: string): Promise<CandidateProfile
 }
 
 export async function saveCandidateProfile(profile: CandidateProfile): Promise<boolean> {
+  if (!auth.currentUser) {
+    return true;
+  }
   const path = `user_profiles/${profile.uid}`;
   try {
     const docRef = doc(db, 'user_profiles', profile.uid);
@@ -126,6 +129,7 @@ export async function saveCandidateProfile(profile: CandidateProfile): Promise<b
 }
 
 export async function fetchUserDocuments(userId: string): Promise<SavedUserDocument[]> {
+  if (!userId || userId === 'guest') return [];
   const path = 'user_documents';
   try {
     const q = query(collection(db, path), where('userId', '==', userId));
@@ -142,10 +146,18 @@ export async function fetchUserDocuments(userId: string): Promise<SavedUserDocum
 }
 
 export async function saveUserDocument(userDoc: SavedUserDocument): Promise<boolean> {
-  const path = `user_documents/${userDoc.id}`;
+  if (!auth.currentUser) {
+    // For unauthenticated guest sessions, document is saved in local storage
+    return true;
+  }
+  const cleanDoc = {
+    ...userDoc,
+    userId: auth.currentUser.uid
+  };
+  const path = `user_documents/${cleanDoc.id}`;
   try {
-    const docRef = doc(db, 'user_documents', userDoc.id);
-    await setDoc(docRef, userDoc);
+    const docRef = doc(db, 'user_documents', cleanDoc.id);
+    await setDoc(docRef, cleanDoc);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -210,6 +222,9 @@ export async function saveGeneratedDocumentMetadata(params: SaveDocumentMetadata
 }
 
 export async function deleteUserDocument(docId: string): Promise<boolean> {
+  if (!auth.currentUser) {
+    return true;
+  }
   const path = `user_documents/${docId}`;
   try {
     const docRef = doc(db, 'user_documents', docId);
