@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { 
-  X, Check, Sparkles, FileText, FileCode, Wallet, CreditCard, 
+  X, Check, Sparkles, FileText, FileCode, Wallet, 
   ArrowRight, ArrowLeft, ShieldCheck, CheckCircle2, Download, 
-  Loader2, AlertCircle, RefreshCw, Zap
+  Loader2, AlertCircle, RefreshCw, Zap, Smartphone
 } from 'lucide-react';
 import { CVFormData, AIOptimizedData, TransactionRecord } from '../types';
-import { SenePayCheckoutButton } from './SenePayCheckoutButton';
+import { ReceiptDropzone } from './ReceiptDropzone';
 import { saveGeneratedDocumentMetadata, auth } from '../lib/firebase';
 import { safeParseJsonResponse } from '../utils/apiHelpers';
+
 
 interface DocumentCheckoutWizardModalProps {
   isOpen: boolean;
@@ -194,18 +195,18 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
     }
   };
 
-  // Handle SenePay success callback
-  const handleSenePaySuccess = async () => {
+  // Handle Receipt OCR success callback
+  const handleReceiptSuccess = async (ocrRes: any) => {
     const tx: TransactionRecord = {
-      id: `TX-SENEPAY-${Date.now()}`,
+      id: ocrRes.transactionId || `TX-OCR-${Date.now()}`,
       userId: userId || 'guest',
       type: 'document_purchase',
       amount: -currentPrice,
       currency: 'XOF',
-      description: `Achat SenePay Direct : ${documentTitle}`,
-      status: 'success',
+      description: `Achat document : ${documentTitle} (Validé par IA - Ref: ${ocrRes.transactionId})`,
+      status: 'COMPLETED',
       createdAt: new Date().toISOString(),
-      paymentMethod: 'senepay',
+      paymentMethod: ocrRes.method === 'wave' ? 'wave' : 'orange_money',
       documentTitle
     };
 
@@ -219,6 +220,7 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
     setCurrentStep(4);
     await triggerDownloads();
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
@@ -664,34 +666,33 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
                   </span>
                 </div>
 
-                {/* OPTION 2 : GUICHET SENEPAY */}
+                {/* OPTION 2 : SCAN REÇU OCR IA */}
                 <div className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
-                        <CreditCard className="w-4 h-4" />
+                        <Smartphone className="w-4 h-4" />
                       </div>
                       <div>
                         <h5 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                          Option 2 : Guichet SenePay Direct
+                          Option 2 : Scan Reçu Wave & Orange Money (OCR IA)
                         </h5>
-                        <p className="text-[11px] text-slate-500">Wave, Orange Money, Free Money, Carte Bancaire</p>
+                        <p className="text-[11px] text-slate-500">Importez votre reçu • Validation instantanée</p>
                       </div>
                     </div>
+
+                    <span className="text-[10px] font-extrabold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-md">
+                      IA Vision
+                    </span>
                   </div>
 
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Paiement direct de <strong className="text-indigo-900">{(currentPrice || 0).toLocaleString('fr-FR')} FCFA</strong> via votre application Mobile Money sans recharger le solde.
-                  </p>
-
                   <div className="w-full pt-1">
-                    <SenePayCheckoutButton
-                      amount={currentPrice || 0}
-                      description={`Achat document Dokya (${currentPrice || 0} FCFA)`}
-                      orderReference={`DOC-${Date.now()}`}
-                      buttonText={`Payer ${(currentPrice || 0).toLocaleString('fr-FR')} FCFA via SenePay`}
-                      className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      onSuccessRedirect={handleSenePaySuccess}
+                    <ReceiptDropzone
+                      expectedAmount={currentPrice || 1000}
+                      documentTitle={documentTitle}
+                      purpose="document_unlock"
+                      onSuccess={handleReceiptSuccess}
+                      onError={(err) => setErrorMessage(err)}
                     />
                   </div>
                 </div>

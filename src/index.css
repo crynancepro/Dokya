@@ -43,6 +43,37 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  @keyframes laserScan {
+    0% {
+      top: 2%;
+      opacity: 0.85;
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      top: 96%;
+      opacity: 0.85;
+    }
+  }
+
+  .animate-laser-scan {
+    animation: laserScan 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes laserPulse {
+    0%, 100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  .animate-laser-pulse {
+    animation: laserPulse 1.5s ease-in-out infinite;
+  }
 }
 
 /* Print Specific Rules for CVs & Letters PDF Generation */

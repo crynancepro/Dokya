@@ -206,7 +206,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           });
           setSuccessMessage(`Recharge de ${(amountParam).toLocaleString('fr-FR')} FCFA validée avec succès ! Votre solde est à jour.`);
         } else {
-          setSuccessMessage('Paiement sécurisé validé avec succès sur SenePay ! Vos documents sont débloqués.');
+          setSuccessMessage('Paiement sécurisé validé avec succès ! Vos documents sont débloqués.');
         }
 
         setTimeout(() => setSuccessMessage(null), 6000);
@@ -215,7 +215,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         const cleanUrl = window.location.pathname + (window.location.hash.split('?')[0] || '');
         window.history.replaceState({}, document.title, cleanUrl);
       } else if (status === 'cancel') {
-        setErrorMessage('Le paiement a été annulé sur le guichet SenePay. Vous pouvez réessayer ou utiliser votre solde.');
+        setErrorMessage('Le paiement a été annulé. Vous pouvez réessayer ou utiliser votre solde.');
         setTimeout(() => setErrorMessage(null), 5000);
       }
     } catch (_e) {}

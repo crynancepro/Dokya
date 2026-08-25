@@ -412,19 +412,61 @@ export interface SavedUserDocument {
 export interface TransactionRecord {
   id: string;
   userId: string;
+  userEmail?: string;
+  userName?: string;
   type: 'recharge' | 'document_purchase' | 'debit' | 'admin_adjustment';
   amount: number; // e.g. +3000 FCFA for recharge, -1000 FCFA for purchase
+  expectedAmount?: number;
+  extractedAmount?: number;
   currency: string;
   description: string;
-  status: 'success' | 'pending' | 'cancel';
+  status: 'success' | 'COMPLETED' | 'pending' | 'cancel' | 'failed' | 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN';
+  aiStatus?: 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'PENDING';
   createdAt: string;
-  paymentMethod?: 'wallet' | 'senepay' | 'kkiapay' | 'wave' | 'orange_money' | 'admin_manual';
+  paymentMethod?: 'wallet' | 'wave' | 'orange_money' | 'receipt_ai' | 'admin_manual';
+  transactionId?: string;
+  receiptTimestamp?: string;
+  rejectionReason?: string;
+  rejectionCode?: string;
+  receiptImage?: string;
+  extractedData?: {
+    recipient_phone?: string;
+    recipient_name?: string;
+    amount?: number;
+    expectedAmount?: number;
+    transaction_id?: string;
+    date_time?: string;
+    validation_reason?: string;
+    details?: string;
+    rawAiText?: string;
+  };
+  manuallyValidatedBy?: string;
+  manuallyValidatedAt?: string;
+  adminValidationNote?: string;
   newBalance?: number;
   documentTitle?: string;
   creditsAdded?: number;
   reason?: string;
   adminEmail?: string;
+  purpose?: string;
 }
+
+export interface ReceiptVerificationResult {
+  success: boolean;
+  status?: 'COMPLETED' | 'REJECTED' | 'INVALID';
+  method?: 'wave' | 'orange_money' | 'unknown';
+  transactionId?: string;
+  amount?: number;
+  currency?: string;
+  date?: string;
+  senderPhone?: string;
+  recipientNameOrPhone?: string;
+  error?: string;
+  errorCode?: 'INVALID_RECEIPT' | 'ALREADY_USED' | 'INSUFFICIENT_AMOUNT' | 'EXPIRED_RECEIPT' | 'INVALID_RECIPIENT' | 'AI_ERROR' | 'UNSUPPORTED_FORMAT';
+  message?: string;
+  newBalance?: number;
+}
+
 
 export interface AdminUserRecord {
   uid: string;

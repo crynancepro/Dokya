@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { 
-  Download, Wallet, CreditCard, Sparkles, CheckCircle2, 
-  AlertCircle, ShieldCheck, ArrowRight, Loader2, RefreshCw, X, Zap 
+  Download, Wallet, Sparkles, CheckCircle2, 
+  AlertCircle, ShieldCheck, ArrowRight, Loader2, RefreshCw, X, Zap, Smartphone
 } from 'lucide-react';
-import { SenePayCheckoutButton } from './SenePayCheckoutButton';
+import { ReceiptDropzone } from './ReceiptDropzone';
 import { TransactionRecord } from '../types';
 import { safeParseJsonResponse } from '../utils/apiHelpers';
 
@@ -15,7 +15,7 @@ interface DownloadPaymentModalProps {
   price?: number; // e.g. 1000 FCFA
   userBalance?: number;
   isAlreadyPaid?: boolean;
-  onConfirmDownload: (paymentMethod: 'wallet' | 'senepay' | 'free', transaction?: TransactionRecord) => void;
+  onConfirmDownload: (paymentMethod: 'wallet' | 'mobile_money' | 'free', transaction?: TransactionRecord) => void;
   onOpenRechargeModal: () => void;
 }
 
@@ -245,53 +245,48 @@ export const DownloadPaymentModal: React.FC<DownloadPaymentModalProps> = ({
                 </span>
               </div>
 
-              {/* OPTION 2: SENEPAY DIRECT CHECKOUT */}
+              {/* OPTION 2: VALIDATION INSTANTANÉE PAR REÇU OCR IA */}
               <div className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
-                      <CreditCard className="w-4 h-4" />
+                      <Smartphone className="w-4 h-4" />
                     </div>
                     <div>
                       <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                        Option 2 : Guichet SenePay Direct
+                        Option 2 : Scan Reçu Wave & Orange Money (OCR IA)
                       </h4>
-                      <p className="text-[11px] text-slate-500 font-medium">Wave, Orange Money, Free Money, Carte</p>
+                      <p className="text-[11px] text-slate-500 font-medium">Importez votre reçu • Activation instantanée</p>
                     </div>
                   </div>
 
                   <span className="text-[10px] font-extrabold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-md">
-                    Paiement exact
+                    IA Vision
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Réglez le montant exact de <strong className="text-indigo-900">{(safePrice || 0).toLocaleString('fr-FR')} FCFA</strong> via le guichet SenePay sans recharger votre solde.
-                </p>
-
                 <div className="w-full pt-1">
-                  <SenePayCheckoutButton
-                    amount={safePrice}
-                    description={`Achat document Dokya (${safePrice} FCFA)`}
-                    orderReference={`DOC-${Date.now()}`}
-                    buttonText={`Payer ${(safePrice || 0).toLocaleString('fr-FR')} FCFA avec Wave / Orange Money`}
-                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                    onSuccessRedirect={() => {
-                      // Save transaction & launch download callback
+                  <ReceiptDropzone
+                    expectedAmount={safePrice}
+                    documentTitle={documentTitle}
+                    purpose="document_unlock"
+                    onSuccess={(ocrRes) => {
                       const tx: TransactionRecord = {
-                        id: `TX-SENEPAY-${Date.now()}`,
+                        id: ocrRes.transactionId || `TX-${Date.now()}`,
                         userId: 'guest',
                         type: 'document_purchase',
-                        amount: -price,
+                        amount: -safePrice,
                         currency: 'XOF',
-                        description: `Achat SenePay Direct : ${documentTitle}`,
-                        status: 'success',
+                        description: `Achat document : ${documentTitle} (Reçu IA - Ref: ${ocrRes.transactionId})`,
+                        status: 'COMPLETED',
                         createdAt: new Date().toISOString(),
-                        paymentMethod: 'senepay',
+                        paymentMethod: ocrRes.method === 'wave' ? 'wave' : 'orange_money',
                         documentTitle
                       };
-                      onConfirmDownload('senepay', tx);
+                      onConfirmDownload('mobile_money', tx);
+                      onClose();
                     }}
+                    onError={(err) => setErrorMessage(err)}
                   />
                 </div>
               </div>
@@ -310,3 +305,4 @@ export const DownloadPaymentModal: React.FC<DownloadPaymentModalProps> = ({
     </div>
   );
 };
+

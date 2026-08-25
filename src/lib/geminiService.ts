@@ -122,18 +122,36 @@ function sanitizeForPrompt(data: any): any {
 }
 
 /**
- * Generate optimized CV, Cover Letter and ATS keywords directly using @google/genai SDK
+ * Generate optimized CV, Cover Letter and ATS keywords directly using @google/genai SDK or server proxy
  */
 export async function generateCVWithGemini(formData: CVFormData): Promise<{ success: boolean; data: any; error?: string }> {
   if (!formData || !formData.personalInfo) {
     return { success: false, error: 'Données de formulaire invalides ou manquantes.', data: null };
   }
 
+  // 1. First attempt via the Server-Side API endpoint (Recommended & most robust with multi-model failover)
+  try {
+    const serverRes = await fetch('/api/gemini/generate-cv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+
+    if (serverRes.ok) {
+      const result = await serverRes.json();
+      if (result.success && result.data) {
+        return { success: true, data: result.data };
+      }
+    }
+  } catch (_serverErr) {
+    console.info('[Gemini Client] Serveur indisponible, tentative locale ou fallback...');
+  }
+
   const apiKey = getGeminiApiKey();
 
   // If no Gemini key is provided, use high-fidelity structured generation
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.includes('placeholder')) {
-    console.warn('[Gemini Client] Clé API non fournie ou mode SPA sans backend, génération intelligente activée.');
+    console.info('[Gemini Client] Génération intelligente avec modèle structurel activée.');
     return {
       success: true,
       data: generateFallbackCVData(formData)
@@ -241,7 +259,7 @@ Génère la réponse en JSON.`;
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-flash-latest',
       contents: userPrompt,
       config: {
         systemInstruction: systemPrompt,
@@ -374,7 +392,7 @@ Instructions :
 3. Rédige une clause de conditions commerciales adaptée au Sénégal.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-flash-latest',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -487,7 +505,7 @@ Le champ "imagePrompt" DOIT être en anglais descriptif précis pour le généra
 Tout le texte affiché (tagline, badge, résumé synopsis, bio auteur, citation, points clés) DOIT être intégralement rédigé en ${lang}.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-flash-latest',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -705,7 +723,7 @@ Instructions de rédaction pour chaque chapitre :
 3. Estime le temps de lecture en minutes (readingTimeMinutes).`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-flash-latest',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',

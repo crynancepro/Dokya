@@ -16,7 +16,6 @@ import {
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { SenePayCheckoutButton } from './SenePayCheckoutButton';
 import { RechargeWalletModal } from './RechargeWalletModal';
 import { PaymentModal } from './PaymentModal';
 import { downloadElementAsPDF } from '../lib/pdfUtils';
@@ -253,7 +252,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   // Handle document purchase download
   const handleDownloadConfirm = async (
     docItem: SavedUserDocument, 
-    paymentMethod: 'wallet' | 'senepay' | 'free', 
+    paymentMethod: 'wallet' | 'mobile_money' | 'senepay' | 'free', 
     tx?: TransactionRecord
   ) => {
     if (tx) {
@@ -527,7 +526,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Compte SenePay Actif
+                  Compte Dokya Actif
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">

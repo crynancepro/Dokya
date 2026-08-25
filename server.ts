@@ -29,62 +29,50 @@ function getGenAIClient() {
   });
 }
 
-// Robust Gemini call wrapper with automatic retries and model failovers for 503 / 429 demand spikes
+// Robust Gemini call wrapper with automatic retries and instant model failovers for 503 / 429 demand spikes
 async function generateContentWithRetry(ai: GoogleGenAI, params: any) {
-  const primaryModel = params.model || 'gemini-flash-latest';
-  // Deduplicated fallback list using valid Gemini models with separate quota pools
+  const requestedModel = params.model || 'gemini-flash-latest';
+  // Deduplicated fallback list using valid Gemini models with separate quota & demand pools
   const rawModels = [
-    primaryModel,
+    requestedModel,
     'gemini-flash-latest',
-    'gemini-3.7-flash',
     'gemini-3.1-flash-lite',
+    'gemini-3.7-flash',
   ];
   const modelsToTry = Array.from(new Set(rawModels));
   
   let lastError: any = null;
 
   for (const model of modelsToTry) {
-    const maxRetries = 1; // 1 quick retry per model before fallback
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`[Gemini API] Tentative avec modèle '${model}' (essai ${attempt + 1}/${maxRetries + 1})...`);
-        const response = await ai.models.generateContent({
-          ...params,
-          model,
-        });
-        return response;
-      } catch (err: any) {
-        lastError = err;
-        const errMessage = err?.message || String(err);
+    try {
+      console.log(`[Gemini API] Appel IA avec modèle '${model}'...`);
+      const response = await ai.models.generateContent({
+        ...params,
+        model,
+      });
+      return response;
+    } catch (err: any) {
+      lastError = err;
+      const errMessage = err?.message || String(err);
 
-        // Fail immediately on 403 / PERMISSION_DENIED / missing key identity
-        const isAuthError = errMessage.includes('PERMISSION_DENIED') || errMessage.includes('403') || errMessage.includes('unregistered callers') || errMessage.includes('API key') || errMessage.includes('API consumer identity');
-        if (isAuthError) {
-          console.error(`[Gemini API Error] Authentification échouée (${model}):`, errMessage);
-          throw new Error(`Erreur d'authentification Gemini API (403): La clé GEMINI_API_KEY est manquante ou invalide. (${errMessage})`);
-        }
-
-        const isQuotaError = errMessage.includes('429') || errMessage.includes('RESOURCE_EXHAUSTED') || errMessage.includes('Quota exceeded') || errMessage.includes('quota');
-        const isTransientServerOverload = errMessage.includes('503') || errMessage.includes('high demand') || errMessage.includes('UNAVAILABLE') || errMessage.includes('Overloaded');
-
-        console.warn(`[Gemini API Warning] Erreur avec modèle '${model}' (essai ${attempt + 1}):`, errMessage);
-
-        if (isQuotaError) {
-          console.warn(`[Gemini API] Quota atteint pour le modèle '${model}'. Basculement vers le modèle suivant...`);
-          break; // Immediately try next model in fallback list
-        }
-
-        if (isTransientServerOverload) {
-          if (attempt < maxRetries) {
-            console.log(`[Gemini API] Modèle '${model}' surchargé (503). Pause de 600ms avant réessai...`);
-            await new Promise((resolve) => setTimeout(resolve, 600));
-            continue;
-          }
-          console.warn(`[Gemini API] Modèle '${model}' indisponible (503). Basculement automatique vers le modèle de secours...`);
-          break;
-        }
-        break;
+      // Fail immediately on 403 / PERMISSION_DENIED / missing key identity
+      const isAuthError = errMessage.includes('PERMISSION_DENIED') || errMessage.includes('403') || errMessage.includes('unregistered callers') || errMessage.includes('API key') || errMessage.includes('API consumer identity');
+      if (isAuthError) {
+        console.error(`[Gemini API Error] Authentification échouée (${model}):`, errMessage);
+        throw new Error(`Erreur d'authentification Gemini API (403): La clé GEMINI_API_KEY est manquante ou invalide. (${errMessage})`);
       }
+
+      const isQuotaError = errMessage.includes('429') || errMessage.includes('RESOURCE_EXHAUSTED') || errMessage.includes('Quota exceeded') || errMessage.includes('quota');
+      const isTransientServerOverload = errMessage.includes('503') || errMessage.includes('high demand') || errMessage.includes('UNAVAILABLE') || errMessage.includes('Overloaded');
+
+      if (isTransientServerOverload || isQuotaError) {
+        console.info(`[Gemini API] Modèle '${model}' temporairement surchargé (503/429). Basculement automatique vers le modèle de secours...`);
+        // Immediately try the next model in fallback list without blocking delay
+        continue;
+      }
+
+      // For other transient errors, log and try next model
+      console.info(`[Gemini API] Modèle '${model}' a retourné une erreur. Tentative avec le modèle suivant...`);
     }
   }
 
@@ -448,7 +436,7 @@ Génère la réponse optimisée en JSON.`;
 
     try {
       const response = await generateContentWithRetry(ai, {
-        model: 'gemini-3.7-flash',
+        model: 'gemini-flash-latest',
         contents: userPrompt,
         config: {
           systemInstruction: systemPrompt,
@@ -1046,150 +1034,543 @@ Rédige le Chapitre ${chapterNumber} complet.`;
 });
 
 // ==========================================
-// SENEPAY CHECKOUT INTEGRATION (api.sene-pay.com)
+// SYSTEME DE VALIDATION DE PAIEMENT INSTANTANE PAR ANALYSE D'IMAGE DE REÇU (OCR IA)
+// Reçus Wave & Orange Money avec Gemini Vision & Protection Anti-Replay
 // ==========================================
-app.post(['/api/checkout', '/api/checkout/sessions', '/api/v1/checkout/sessions', '/api/senepay/checkout'], async (req, res) => {
+
+// Enregistrement persistant des identifiants de transactions pour bloquer toute réutilisation
+const verifiedReceiptIds = new Set<string>([
+  'WW24080198765432', // Seed test data
+  'CI24080112345678',
+  'TX9876543210'
+]);
+
+app.post('/api/payment/verify-receipt', async (req, res) => {
   try {
-    const rawApiKey = (process.env.VITE_SENEPAY_PUBLIC_KEY || 'pk_test_TchA2OXyRAIjh7JJQEJyLnqd').trim().replace(/^["']|["']$/g, '');
-    const rawSecretKey = (process.env.VITE_SENEPAY_SECRET_KEY || 'sk_test_8i1wREvXJ6hanfzTKkwC4Ead3BBrMnXl').trim().replace(/^["']|["']$/g, '');
-    const isKeyConfigured = rawApiKey.length > 5 && !rawApiKey.includes('MY_SENEPAY') && rawApiKey !== 'sk_test_placeholder';
-
-    // Base URL sécurisée pointant vers le domaine marchand déclaré (VITE_APP_URL)
-    const rawBaseUrl = (
-      process.env.VITE_APP_URL ||
-      'https://dokya-seven.vercel.app'
-    ).trim();
-
-    // Nettoyage automatique des éventuels crochets markdown [url](url) ou [url
-    const cleanedBaseUrl = rawBaseUrl
-      .replace(/^\[+/, '')
-      .replace(/\]\(.*?\)$/, '')
-      .replace(/[\]\)\(\s]+$/, '')
-      .trim()
-      .replace(/\/+$/, '');
-
-    const BASE_URL = cleanedBaseUrl.startsWith('http') ? cleanedBaseUrl : 'https://cv-ia-self.vercel.app';
-
     const {
-      amount = 1000,
-      currency = 'XOF',
-      reference,
-      orderReference,
-      description = 'Déblocage de document',
-      country = 'SN',
-      returnUrl,
-      return_url,
-      cancelUrl,
-      cancel_url,
-      redirect_url,
-      customerEmail,
-      customerPhone,
-      customerName
+      imageBase64,
+      mimeType = 'image/jpeg',
+      expectedAmount = 1000,
+      documentTitle = 'Déblocage de document',
+      userId = 'guest',
+      userEmail = 'candidat@senegalcv.sn',
+      purpose = 'document_unlock'
     } = req.body || {};
 
-    const cleanRef = String(reference || orderReference || `DOKYA-${Date.now()}`);
-    const numericAmount = Math.max(100, Math.round(Number(amount) || 1000));
-    const effectiveReturnUrl = String(returnUrl || return_url || `${BASE_URL}/?status=success`);
-    const effectiveCancelUrl = String(cancelUrl || cancel_url || `${BASE_URL}/?status=cancel`);
-
-    // Si les clés API réelles SenePay ne sont pas encore configurées dans les variables d'environnement Vercel
-    if (!isKeyConfigured) {
-      console.warn('[SenePay Warning] Clés VITE_SENEPAY_PUBLIC_KEY / VITE_SENEPAY_SECRET_KEY non configurées ou fictives.');
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
       return res.status(400).json({
         success: false,
-        error: "Configuration SenePay manquante : Veuillez ajouter la clé 'VITE_SENEPAY_PUBLIC_KEY' (et 'VITE_SENEPAY_SECRET_KEY') dans les variables d'environnement de votre projet Vercel.",
-        missingCredentials: true
+        status: 'INVALID',
+        errorCode: 'INVALID_RECEIPT',
+        error: "Reçu non valide ou déjà utilisé. Aucune image fournie."
       });
     }
 
-    // Formatage des en-têtes officiels SenePay REST API (Documentation v1)
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'X-Api-Key': rawApiKey
-    };
-    if (rawSecretKey) {
-      headers['X-Api-Secret'] = rawSecretKey;
+    // Nettoyer la chaîne base64 (enlever le préfixe data:image/... s'il existe)
+    let cleanBase64 = imageBase64;
+    let effectiveMimeType = mimeType;
+    if (imageBase64.includes('base64,')) {
+      const parts = imageBase64.split('base64,');
+      cleanBase64 = parts[1];
+      const match = parts[0].match(/data:([^;]+);/);
+      if (match) effectiveMimeType = match[1];
     }
+    cleanBase64 = cleanBase64.trim();
 
-    const payload = {
-      amount: numericAmount,
-      currency: currency || 'XOF',
-      reference: cleanRef,
-      orderReference: cleanRef,
-      description: String(description || 'Paiement de document sur Dokya'),
-      returnUrl: effectiveReturnUrl,
-      cancelUrl: effectiveCancelUrl,
-      country: country || 'SN',
-      expiresInMinutes: 60
+    // Obtenir la date et l'heure actuelles (UTC / Heure Sénégal GMT)
+    const serverNow = new Date();
+    const serverNowYear = serverNow.getUTCFullYear();
+    const serverNowMonth = serverNow.getUTCMonth() + 1;
+    const serverNowDay = serverNow.getUTCDate();
+    const serverNowHour = serverNow.getUTCHours();
+    const serverNowMinute = serverNow.getUTCMinutes();
+    const serverDateStr = `${String(serverNowDay).padStart(2, '0')}/${String(serverNowMonth).padStart(2, '0')}/${serverNowYear}`;
+    const serverTimeStr = `${String(serverNowHour).padStart(2, '0')}:${String(serverNowMinute).padStart(2, '0')}`;
+
+    console.log(`[Receipt OCR IA] Début de l'analyse d'image reçu pour ${userEmail} (Montant attendu: ${expectedAmount} FCFA, Heure référence: ${serverDateStr} ${serverTimeStr} GMT)...`);
+
+    // 1. Initialiser le client Gemini AI
+    const ai = getGenAIClient();
+
+    const imagePart = {
+      inlineData: {
+        data: cleanBase64,
+        mimeType: effectiveMimeType || 'image/jpeg'
+      }
     };
 
-    console.log(`[SenePay Checkout] Initialisation session pour la commande ${payload.reference} (${payload.amount} ${payload.currency})...`);
+    const promptText = `Tu es un système expert ultra-rapide et ultra-rigoureux de contrôle financier, de conformité temporelle et d'OCR de reçus de paiement mobile au Sénégal (Wave Sénégal, Orange Money Sénégal).
+Analyse minutieusement cette image de reçu ou capture d'écran de transfert.
 
-    // Endpoint officiel SenePay Checkout Hébergé (v1)
-    const endpoint = 'https://api.sene-pay.com/api/v1/checkout/sessions';
-    let lastResponseText = '';
-    let lastStatus = 500;
-    let lastData: any = null;
+Destinataire officiel de la plateforme Dokya :
+- Numéro : +221 78 961 90 88 (ou 789619088, 78 961 90 88)
+- Nom : NGOUALA LAVOISIER FORTUNE PETER (ou NGOUALA, LAVOISIER, PETER)
 
-    try {
-      const senePayResponse = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload)
+Date et heure de référence du serveur :
+- Aujourd'hui : ${serverDateStr} (JJ/MM/AAAA)
+- Heure actuelle : ${serverTimeStr} (Heure GMT Sénégal)
+
+Instructions strictes d'extraction et de sécurité :
+1. "is_valid_receipt": boolean -> VRAI uniquement si l'image est un reçu officiel ou un SMS/écran de transaction confirmée Wave, Orange Money ou équivalent. FAUX si c'est une image sans rapport, floue, non lisible, ou un écran d'erreur/brouillon.
+2. "payment_method": "wave" | "orange_money" | "unknown" -> Indique l'opérateur détecté.
+3. "transaction_id": string -> L'ID unique de transaction officiel imprimé sur le reçu (ex: "TxID", "ID de transaction", "Réf", "N° Transaction", "ID Transfert", ex: WW240825ABCD, CI240825..., OM-...). Mets "" si non trouvé.
+4. "amount": number -> Le montant total transféré / payé en FCFA (nombre entier, sans devise ni séparateur, ex: 1000, 2000, 3000, 5000). Si absent, 0.
+5. "currency": "XOF"
+6. "date_time": string -> La date et heure complète telle qu'écrite sur le reçu (ex: "25/08/2026 à 14:32", "25 août 2026 14:32").
+7. "timestamp_day": number | null -> Jour du mois (1-31). Si le reçu indique "Aujourd'hui", utiliser ${serverNowDay}.
+8. "timestamp_month": number | null -> Numéro du mois (1-12, ex: août = 8). Si "Aujourd'hui", utiliser ${serverNowMonth}.
+9. "timestamp_year": number | null -> Année sur 4 chiffres (ex: ${serverNowYear}). Si absent mais "Aujourd'hui", utiliser ${serverNowYear}.
+10. "timestamp_hour": number | null -> Heure de la transaction (0-23).
+11. "timestamp_minute": number | null -> Minute de la transaction (0-59).
+12. "is_timestamp_readable": boolean -> VRAI si la date, l'heure ET la minute sont clairement visibles et lisibles sur le reçu. FAUX si l'heure ou la date est absente, coupée ou floue.
+13. "sender_phone": string -> Numéro de téléphone de l'expéditeur si mentionné, sinon "".
+14. "recipient_phone": string -> Numéro de téléphone du destinataire si mentionné, sinon "".
+15. "recipient_name": string -> Nom du destinataire/bénéficiaire si mentionné, sinon "".
+16. "recipient_valid": boolean -> VRAI si le destinataire mentionné correspond au numéro (+221789619088) ou au nom (NGOUALA / PETER) ou s'il s'agit d'un transfert vers ce compte.
+17. "validation_reason": string -> Explication succincte de la lecture effectuée.
+
+Retourne UNIQUEMENT un objet JSON valide avec cette structure exacte :
+{
+  "is_valid_receipt": true,
+  "payment_method": "wave",
+  "transaction_id": "WW1234567890",
+  "amount": 1000,
+  "currency": "XOF",
+  "date_time": "${serverDateStr} à ${serverTimeStr}",
+  "timestamp_day": ${serverNowDay},
+  "timestamp_month": ${serverNowMonth},
+  "timestamp_year": ${serverNowYear},
+  "timestamp_hour": ${serverNowHour},
+  "timestamp_minute": ${serverNowMinute},
+  "is_timestamp_readable": true,
+  "sender_phone": "+221 77 123 45 67",
+  "recipient_phone": "+221 78 961 90 88",
+  "recipient_name": "NGOUALA LAVOISIER FORTUNE PETER",
+  "recipient_valid": true,
+  "validation_reason": "Reçu Wave authentique et récent vers le destinataire officiel"
+}`;
+
+    const geminiResponse = await generateContentWithRetry(ai, {
+      model: 'gemini-flash-latest',
+      contents: {
+        parts: [imagePart, { text: promptText }]
+      },
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.1
+      }
+    });
+
+    const responseText = geminiResponse.text || '';
+    const extractedData = repairTruncatedJSON(responseText);
+
+    console.log('[Receipt OCR IA Result]:', extractedData);
+
+    if (!extractedData || typeof extractedData !== 'object') {
+      return res.status(400).json({
+        success: false,
+        status: 'INVALID',
+        errorCode: 'INVALID_RECEIPT',
+        error: "Reçu non valide ou déjà utilisé. Impossible de lire les informations du reçu."
       });
-
-      lastStatus = senePayResponse.status;
-      lastResponseText = await senePayResponse.text();
-
-      try {
-        lastData = JSON.parse(lastResponseText);
-      } catch {
-        lastData = null;
-      }
-
-      const checkoutUrl = 
-        lastData?.checkoutUrl || 
-        lastData?.checkout_url ||
-        lastData?.data?.checkoutUrl || 
-        lastData?.data?.checkout_url ||
-        lastData?.redirectUrl || 
-        lastData?.redirect_url ||
-        lastData?.url ||
-        lastData?.data?.url;
-
-      if (senePayResponse.ok && checkoutUrl) {
-        console.log(`[SenePay Success] Session créée : ${checkoutUrl}`);
-        return res.json({
-          success: true,
-          redirectUrl: checkoutUrl,
-          checkoutUrl: checkoutUrl,
-          data: lastData
-        });
-      }
-    } catch (err: any) {
-      console.warn(`[SenePay Attempt Failed]:`, err.message);
     }
 
-    // Si SenePay a refusé la requête (ex: 401 Unauthorized, 403, etc.)
-    const errorMsg = lastData?.message || lastData?.error || (lastStatus === 401 ? "Authentification SenePay échouée (401) : Clés API invalides ou compte SenePay en attente d'activation KYC." : `Erreur SenePay ${lastStatus || 400}`);
-    console.warn(`[SenePay Response ${lastStatus}]:`, lastData || lastResponseText);
+    const isValidReceipt = Boolean(extractedData.is_valid_receipt);
+    const rawTxId = String(extractedData.transaction_id || '').trim().toUpperCase();
+    const detectedAmount = Number(extractedData.amount) || 0;
+    const detectedMethod = extractedData.payment_method === 'wave' ? 'wave' : extractedData.payment_method === 'orange_money' ? 'orange_money' : 'wave';
+    const targetAmount = Math.max(100, Number(expectedAmount) || 1000);
 
-    return res.status(lastStatus >= 400 && lastStatus < 600 ? lastStatus : 400).json({
-      success: false,
-      error: errorMsg,
-      errorCode: lastData?.code || lastData?.errorCode || (lastStatus === 401 ? '401_UNAUTHORIZED' : 'GATEWAY_ERROR'),
-      details: lastData || lastResponseText
+    // Helper to log rejected transaction in adminStore
+    const recordRejectedTx = (reasonText: string, errCode: string, extraDetails?: string, parsedTs?: string) => {
+      const rejId = `TX-REJ-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const rejTx = {
+        id: rejId,
+        transactionId: rawTxId || `INCONNU-${Date.now().toString().slice(-4)}`,
+        userId: userId || 'guest',
+        userEmail: userEmail || 'candidat@senegalcv.sn',
+        userName: userEmail ? userEmail.split('@')[0] : 'Candidat',
+        type: purpose === 'wallet_recharge' ? 'recharge' : 'document_purchase',
+        amount: targetAmount,
+        expectedAmount: targetAmount,
+        extractedAmount: detectedAmount,
+        currency: 'XOF',
+        description: purpose === 'wallet_recharge'
+          ? `Tentative Recharge Solde (${detectedMethod === 'wave' ? 'Wave' : 'Orange Money'})`
+          : `Tentative Déblocage Document (${documentTitle || 'CV/Lettre'})`,
+        status: 'REJECTED_BY_AI',
+        aiStatus: 'REJECTED_BY_AI',
+        paymentMethod: detectedMethod,
+        rejectionReason: reasonText,
+        rejectionCode: errCode,
+        receiptTimestamp: parsedTs || `${serverNowDay}/${serverNowMonth}/${serverNowYear} à ${serverNowHour}:${serverNowMinute}`,
+        createdAt: new Date().toISOString(),
+        documentTitle,
+        purpose,
+        extractedData: {
+          recipient_phone: extractedData.recipient_phone || 'Non conforme / Absent',
+          recipient_name: extractedData.recipient_name || 'Non détecté',
+          amount: detectedAmount,
+          expectedAmount: targetAmount,
+          transaction_id: rawTxId || 'Non détecté',
+          date_time: extractedData.date_time || parsedTs || `${serverNowDay}/${serverNowMonth}/${serverNowYear}`,
+          validation_reason: reasonText,
+          details: extraDetails,
+          rawAiText: responseText
+        },
+        receiptImage: imageBase64 && imageBase64.length < 350000 ? imageBase64 : undefined
+      };
+      adminStore.transactions.unshift(rejTx);
+      return rejTx;
+    };
+
+    // 2. CONTRÔLE DE VALIDITÉ DU REÇU
+    if (!isValidReceipt || !rawTxId || rawTxId.length < 3) {
+      const reason = extractedData.validation_reason || "Image non reconnue ou ID transaction introuvable sur le reçu.";
+      recordRejectedTx(reason, 'INVALID_RECEIPT', "L'image fournie n'est pas un reçu officiel Wave ou Orange Money lisible.");
+      return res.status(400).json({
+        success: false,
+        status: 'REJECTED',
+        errorCode: 'INVALID_RECEIPT',
+        error: "Reçu non valide ou déjà utilisé. L'image fournie n'est pas un reçu officiel Wave ou Orange Money lisible.",
+        details: reason
+      });
+    }
+
+    // 3. CONTRÔLE TEMPOREL ULTRA-STRICT (DATE, HEURE & MINUTES < 30 MIN)
+    // Extraire jour, mois, année, heure, minute
+    let receiptDay: number | null = extractedData.timestamp_day != null ? Number(extractedData.timestamp_day) : null;
+    let receiptMonth: number | null = extractedData.timestamp_month != null ? Number(extractedData.timestamp_month) : null;
+    let receiptYear: number | null = extractedData.timestamp_year != null ? Number(extractedData.timestamp_year) : null;
+    let receiptHour: number | null = extractedData.timestamp_hour != null ? Number(extractedData.timestamp_hour) : null;
+    let receiptMinute: number | null = extractedData.timestamp_minute != null ? Number(extractedData.timestamp_minute) : null;
+
+    // Fallback regex parsing sur le champ textuel date_time si un élément manque
+    const rawDateTimeText = String(extractedData.date_time || '');
+    if ((receiptDay == null || receiptMonth == null || receiptHour == null || receiptMinute == null) && rawDateTimeText) {
+      // Ex: "25/08/2026 14:32" ou "25-08-2026 à 14:32"
+      const slashMatch = rawDateTimeText.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4}).*?(\d{1,2})[:hH](\d{2})/);
+      if (slashMatch) {
+        if (receiptDay == null) receiptDay = parseInt(slashMatch[1], 10);
+        if (receiptMonth == null) receiptMonth = parseInt(slashMatch[2], 10);
+        if (receiptYear == null) {
+          const y = parseInt(slashMatch[3], 10);
+          receiptYear = y < 100 ? 2000 + y : y;
+        }
+        if (receiptHour == null) receiptHour = parseInt(slashMatch[4], 10);
+        if (receiptMinute == null) receiptMinute = parseInt(slashMatch[5], 10);
+      } else {
+        // Ex: "25 août 2026 à 14:32"
+        const frenchMonths: Record<string, number> = {
+          janv: 1, janvier: 1, fevr: 2, fevrier: 2, 'févr': 2, 'février': 2, mars: 3, avr: 4, avril: 4,
+          mai: 5, juin: 6, juil: 7, juillet: 7, aout: 8, 'août': 8, sept: 9, septembre: 9,
+          oct: 10, octobre: 10, nov: 11, novembre: 11, dec: 12, decembre: 12, 'déc': 12, 'décembre': 12
+        };
+        const textDateMatch = rawDateTimeText.match(/(\d{1,2})\s+([a-zA-ZéûÉÛ]+)\s*(\d{2,4})?.*?(\d{1,2})[:hH](\d{2})/i);
+        if (textDateMatch) {
+          if (receiptDay == null) receiptDay = parseInt(textDateMatch[1], 10);
+          const mName = textDateMatch[2].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          if (receiptMonth == null) {
+            for (const [k, v] of Object.entries(frenchMonths)) {
+              if (mName.startsWith(k.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) {
+                receiptMonth = v;
+                break;
+              }
+            }
+          }
+          if (receiptYear == null) {
+            receiptYear = textDateMatch[3] ? parseInt(textDateMatch[3], 10) : serverNowYear;
+            if (receiptYear < 100) receiptYear += 2000;
+          }
+          if (receiptHour == null) receiptHour = parseInt(textDateMatch[4], 10);
+          if (receiptMinute == null) receiptMinute = parseInt(textDateMatch[5], 10);
+        } else if (/aujourd'hui/i.test(rawDateTimeText)) {
+          // Ex: "Aujourd'hui à 14:32"
+          const todayMatch = rawDateTimeText.match(/(\d{1,2})[:hH](\d{2})/);
+          if (todayMatch) {
+            receiptDay = serverNowDay;
+            receiptMonth = serverNowMonth;
+            receiptYear = serverNowYear;
+            receiptHour = parseInt(todayMatch[1], 10);
+            receiptMinute = parseInt(todayMatch[2], 10);
+          }
+        }
+      }
+    }
+
+    if (receiptYear != null && receiptYear < 100) {
+      receiptYear += 2000;
+    }
+
+    console.log(`[Receipt Time Check] Date reçue: ${receiptDay}/${receiptMonth}/${receiptYear} ${receiptHour}:${receiptMinute} vs Serveur: ${serverNowDay}/${serverNowMonth}/${serverNowYear} ${serverNowHour}:${serverNowMinute}`);
+
+    const currentFormattedTs = `${receiptDay ? String(receiptDay).padStart(2, '0') : '--'}/${receiptMonth ? String(receiptMonth).padStart(2, '0') : '--'}/${receiptYear || '----'} à ${receiptHour != null ? String(receiptHour).padStart(2, '0') : '--'}:${receiptMinute != null ? String(receiptMinute).padStart(2, '0') : '--'}`;
+
+    // Si les informations temporelles sont manquantes ou illisibles
+    const isTimestampMissing = receiptDay == null || receiptMonth == null || receiptHour == null || receiptMinute == null || extractedData.is_timestamp_readable === false;
+
+    if (isTimestampMissing) {
+      console.warn(`[Receipt Time Check] Échec : Horodatage incomplet ou illisible sur le reçu (${rawDateTimeText || 'aucun'}).`);
+      const rejReason = "Horodatage illisible sur le reçu. La date et l'heure précises doivent être visibles.";
+      recordRejectedTx(rejReason, 'EXPIRED_RECEIPT', `Date brute lue: ${rawDateTimeText || 'Aucune'}`, currentFormattedTs);
+
+      return res.status(400).json({
+        success: false,
+        status: 'REJECTED',
+        errorCode: 'EXPIRED_RECEIPT',
+        error: "Transaction expirée ou invalide. Le reçu doit être récent (moins de 30 minutes).",
+        details: "L'horodatage complet (date, heure et minute) est illisible ou introuvable sur le reçu."
+      });
+    }
+
+    // A. VÉRIFICATION STRICTE DE LA DATE (DOIT ÊTRE AUJOURD'HUI)
+    const isSameDate = (
+      receiptDay === serverNowDay &&
+      receiptMonth === serverNowMonth &&
+      (receiptYear === serverNowYear || receiptYear == null)
+    );
+
+    if (!isSameDate) {
+      console.warn(`[Receipt Time Check] Échec Date : Reçu du ${receiptDay}/${receiptMonth}/${receiptYear} au lieu du ${serverNowDay}/${serverNowMonth}/${serverNowYear}.`);
+      
+      recordAuditLog(
+        'payment',
+        'RECEIPT_EXPIRED_DATE',
+        userEmail,
+        `Reçu rejeté car la date n'est pas celle d'aujourd'hui (${receiptDay}/${receiptMonth}/${receiptYear})`,
+        { transactionId: rawTxId, receiptDate: `${receiptDay}/${receiptMonth}/${receiptYear}`, serverDate: serverDateStr },
+        userEmail,
+        userId,
+        'error'
+      );
+
+      const rejReason = `Date du reçu périmée (${receiptDay}/${receiptMonth}/${receiptYear} au lieu du ${serverDateStr})`;
+      recordRejectedTx(rejReason, 'EXPIRED_RECEIPT', `Date détectée: ${receiptDay}/${receiptMonth}/${receiptYear}`, currentFormattedTs);
+
+      return res.status(400).json({
+        success: false,
+        status: 'REJECTED',
+        errorCode: 'EXPIRED_RECEIPT',
+        error: "Transaction expirée ou invalide. Le reçu doit être récent (moins de 30 minutes).",
+        details: `La date du reçu (${receiptDay}/${receiptMonth}/${receiptYear}) n'est pas celle d'aujourd'hui (${serverDateStr}).`
+      });
+    }
+
+    // B. VÉRIFICATION STRICTE DE L'HEURE & DES MINUTES (< 30 MINUTES)
+    // Construction de l'objet Date du reçu en heure UTC/GMT (fuseau horaire Sénégal)
+    const effectiveYear = receiptYear || serverNowYear;
+    const receiptDateObj = new Date(Date.UTC(effectiveYear, receiptMonth! - 1, receiptDay!, receiptHour!, receiptMinute!, 0));
+    
+    // Calcul de l'écart en minutes
+    const diffMs = serverNow.getTime() - receiptDateObj.getTime();
+    const diffMinutes = diffMs / (1000 * 60);
+
+    console.log(`[Receipt Time Check] Écart temporel calculé : ${diffMinutes.toFixed(1)} minutes (Tolérance max : 30 minutes).`);
+
+    // Tolérance : entre -5 min (dérive horloge client) et +30 min
+    if (diffMinutes > 30 || diffMinutes < -15) {
+      console.warn(`[Receipt Time Check] Échec Heure : Reçu expiré (${diffMinutes.toFixed(1)} minutes écoulées > 30 min max).`);
+
+      recordAuditLog(
+        'payment',
+        'RECEIPT_EXPIRED_TIME',
+        userEmail,
+        `Reçu rejeté car la transaction date de plus de 30 minutes (${Math.round(diffMinutes)} min écoulées)`,
+        { transactionId: rawTxId, diffMinutes, receiptTime: `${receiptHour}:${receiptMinute}`, serverTime: serverTimeStr },
+        userEmail,
+        userId,
+        'error'
+      );
+
+      const rejReason = `Reçu expiré : émis il y a ${Math.round(diffMinutes)} minutes (limite max: 30 minutes)`;
+      recordRejectedTx(rejReason, 'EXPIRED_RECEIPT', `Heure reçue: ${receiptHour}:${receiptMinute} (${Math.round(diffMinutes)} min écoulées)`, currentFormattedTs);
+
+      return res.status(400).json({
+        success: false,
+        status: 'REJECTED',
+        errorCode: 'EXPIRED_RECEIPT',
+        error: "Transaction expirée ou invalide. Le reçu doit être récent (moins de 30 minutes).",
+        details: `La transaction a été effectuée à ${String(receiptHour).padStart(2, '0')}:${String(receiptMinute).padStart(2, '0')} (il y a ${Math.round(diffMinutes)} minutes). Le délai maximum autorisé est de 30 minutes.`
+      });
+    }
+
+    // 3. CONTRÔLE ANTI-REPLAY / ANTI-DOUBLON
+    // Vérifier si cet ID de transaction a déjà été enregistré et validé
+    if (verifiedReceiptIds.has(rawTxId) || adminStore.transactions.some(t => (t.transactionId === rawTxId || t.id === rawTxId) && (t.status === 'VALIDATED_BY_AI' || t.status === 'COMPLETED' || t.status === 'MANUALLY_VALIDATED'))) {
+      console.warn(`[Receipt Anti-Fraud] Tentative de réutilisation du reçu ID: ${rawTxId} par ${userEmail}`);
+      
+      recordAuditLog(
+        'payment',
+        'RECEIPT_REUSE_BLOCKED',
+        userEmail,
+        `Tentative de réutilisation d'un reçu déjà utilisé (ID: ${rawTxId})`,
+        { transactionId: rawTxId, amount: detectedAmount, userEmail },
+        userEmail,
+        userId,
+        'error'
+      );
+
+      const rejReason = `Tentative de réutilisation de reçu (ID ${rawTxId} déjà validé)`;
+      recordRejectedTx(rejReason, 'ALREADY_USED', "Cet identifiant de transaction a déjà été validé sur la plateforme.", currentFormattedTs);
+
+      return res.status(400).json({
+        success: false,
+        status: 'REJECTED',
+        errorCode: 'ALREADY_USED',
+        error: "Reçu non valide ou déjà utilisé. Cet identifiant de transaction a déjà été validé sur la plateforme."
+      });
+    }
+
+    // 4. CONTRÔLE DU DESTINATAIRE
+    const recipientPhoneClean = String(extractedData.recipient_phone || '').replace(/[^0-9]/g, '');
+    const recipientNameClean = String(extractedData.recipient_name || '').toUpperCase();
+    const isRecipientExplicitlyInvalid = extractedData.recipient_valid === false;
+    
+    // Si un numéro de destinataire est lisible sur le reçu, s'assurer qu'il s'agit bien du 789619088
+    if (recipientPhoneClean && !recipientPhoneClean.includes('789619088') && !recipientPhoneClean.includes('7896190') && recipientPhoneClean.length >= 9) {
+      const rejReason = `Destinataire non conforme (${recipientPhoneClean} au lieu de +221 78 961 90 88)`;
+      recordRejectedTx(rejReason, 'INVALID_RECIPIENT', "Le transfert a été envoyé vers un numéro non autorisé.", currentFormattedTs);
+      return res.status(400).json({
+        success: false,
+        status: 'REJECTED',
+        errorCode: 'INVALID_RECIPIENT',
+        error: "Le reçu ne correspond pas au numéro destinataire officiel (+221 78 961 90 88 - NGOUALA LAVOISIER FORTUNE PETER)."
+      });
+    }
+
+    if (isRecipientExplicitlyInvalid) {
+      const rejReason = "Destinataire incorrect ou non reconnu par l'IA";
+      recordRejectedTx(rejReason, 'INVALID_RECIPIENT', "Le compte destinataire ne correspond pas à Dokya.", currentFormattedTs);
+      return res.status(400).json({
+        success: false,
+        status: 'REJECTED',
+        errorCode: 'INVALID_RECIPIENT',
+        error: "Le destinataire du transfert sur le reçu ne correspond pas au compte officiel Dokya (+221 78 961 90 88)."
+      });
+    }
+
+    // 5. CONTRÔLE DU MONTANT
+    // On tolère jusqu'à 0 FCFA d'écart (ou égalité)
+    if (detectedAmount > 0 && detectedAmount < targetAmount) {
+      const rejReason = `Montant insuffisant (${detectedAmount.toLocaleString('fr-FR')} FCFA au lieu de ${targetAmount.toLocaleString('fr-FR')} FCFA attendus)`;
+      recordRejectedTx(rejReason, 'INSUFFICIENT_AMOUNT', `Différence constatée: -${(targetAmount - detectedAmount).toLocaleString('fr-FR')} FCFA`, currentFormattedTs);
+      return res.status(400).json({
+        success: false,
+        status: 'REJECTED',
+        errorCode: 'INSUFFICIENT_AMOUNT',
+        error: `Montant insuffisant sur le reçu : ${detectedAmount.toLocaleString('fr-FR')} FCFA détectés au lieu des ${targetAmount.toLocaleString('fr-FR')} FCFA requis.`,
+        detectedAmount,
+        expectedAmount: targetAmount
+      });
+    }
+
+    // 6. VALIDATION DU PAIEMENT (COMPLETED) & ENREGISTREMENT
+    // Ajouter l'ID dans le registre anti-doublon
+    verifiedReceiptIds.add(rawTxId);
+
+    const txRecordId = `TX-OCR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const effectiveAmount = detectedAmount > 0 ? detectedAmount : targetAmount;
+    const formattedReceiptTimestamp = `${receiptDay ? String(receiptDay).padStart(2, '0') : serverNowDay}/${receiptMonth ? String(receiptMonth).padStart(2, '0') : serverNowMonth}/${receiptYear || serverNowYear} à ${receiptHour != null ? String(receiptHour).padStart(2, '0') : serverNowHour}:${receiptMinute != null ? String(receiptMinute).padStart(2, '0') : serverNowMinute}`;
+
+    // Enregistrer la transaction dans adminStore
+    const newTransaction = {
+      id: txRecordId,
+      transactionId: rawTxId,
+      userId: userId || 'guest',
+      userEmail: userEmail || 'candidat@senegalcv.sn',
+      userName: userEmail ? userEmail.split('@')[0] : 'Candidat',
+      type: purpose === 'wallet_recharge' ? 'recharge' : 'document_purchase',
+      amount: purpose === 'wallet_recharge' ? effectiveAmount : -effectiveAmount,
+      expectedAmount: targetAmount,
+      extractedAmount: detectedAmount || effectiveAmount,
+      currency: 'XOF',
+      description: purpose === 'wallet_recharge'
+        ? `Recharge Solde (${detectedMethod === 'wave' ? 'Wave' : 'Orange Money'}) - Ref: ${rawTxId}`
+        : `Achat & Déblocage Immédiat : ${documentTitle} (Validé par IA - Ref: ${rawTxId})`,
+      status: 'VALIDATED_BY_AI',
+      aiStatus: 'VALIDATED_BY_AI',
+      paymentMethod: detectedMethod,
+      receiptTimestamp: formattedReceiptTimestamp,
+      createdAt: new Date().toISOString(),
+      documentTitle,
+      purpose,
+      extractedData: {
+        recipient_phone: extractedData.recipient_phone || '+221 78 961 90 88',
+        recipient_name: extractedData.recipient_name || 'NGOUALA LAVOISIER FORTUNE PETER',
+        amount: detectedAmount || effectiveAmount,
+        expectedAmount: targetAmount,
+        transaction_id: rawTxId,
+        date_time: extractedData.date_time || formattedReceiptTimestamp,
+        validation_reason: extractedData.validation_reason || 'Reçu authentique et conforme validé par Gemini Vision OCR',
+        rawAiText: responseText
+      },
+      receiptImage: imageBase64 && imageBase64.length < 350000 ? imageBase64 : undefined,
+      metadata: {
+        receiptDate: extractedData.date_time || new Date().toISOString(),
+        senderPhone: extractedData.sender_phone || '',
+        recipientPhone: extractedData.recipient_phone || '+221 78 961 90 88',
+        recipientName: extractedData.recipient_name || 'NGOUALA LAVOISIER FORTUNE PETER',
+        validationReason: extractedData.validation_reason || 'Vérifié par Gemini Vision'
+      }
+    };
+
+    adminStore.transactions.unshift(newTransaction);
+
+    // Si c'est une recharge de solde, créditer le compte utilisateur
+    let userNewBalance = undefined;
+    const userIndex = adminStore.users.findIndex(u => u.uid === userId || (userEmail && u.email.toLowerCase() === userEmail.toLowerCase()));
+    if (userIndex !== -1) {
+      if (purpose === 'wallet_recharge') {
+        adminStore.users[userIndex].balance = (adminStore.users[userIndex].balance || 0) + effectiveAmount;
+        adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
+        userNewBalance = adminStore.users[userIndex].balance;
+      } else {
+        adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
+        adminStore.users[userIndex].unlockedDocsCount = (adminStore.users[userIndex].unlockedDocsCount || 0) + 1;
+      }
+      adminStore.users[userIndex].updatedAt = new Date().toISOString();
+    }
+
+    // Journal d'audit
+    recordAuditLog(
+      'payment',
+      'RECEIPT_AI_VERIFIED_SUCCESS',
+      userEmail,
+      `Paiement validé par OCR IA : ${effectiveAmount.toLocaleString('fr-FR')} FCFA via ${detectedMethod.toUpperCase()} (ID: ${rawTxId})`,
+      { transactionId: rawTxId, amount: effectiveAmount, method: detectedMethod, purpose },
+      userEmail,
+      userId,
+      'success'
+    );
+
+    console.log(`[Receipt OCR IA Success] Transaction validée avec succès pour ${userEmail} (ID: ${rawTxId}, Montant: ${effectiveAmount} FCFA).`);
+
+    return res.json({
+      success: true,
+      status: 'COMPLETED',
+      method: detectedMethod,
+      transactionId: rawTxId,
+      amount: effectiveAmount,
+      currency: 'XOF',
+      date: extractedData.date_time || new Date().toLocaleDateString('fr-FR'),
+      senderPhone: extractedData.sender_phone,
+      recipientNameOrPhone: extractedData.recipient_info,
+      newBalance: userNewBalance,
+      message: `Paiement ${detectedMethod === 'wave' ? 'Wave' : 'Orange Money'} de ${effectiveAmount.toLocaleString('fr-FR')} FCFA validé avec succès par l'IA ! Votre accès est activé.`
     });
 
   } catch (err: any) {
-    console.error('[SenePay Exception] Erreur backend checkout:', err);
+    console.error('[Receipt OCR Exception]:', err);
     return res.status(500).json({
       success: false,
-      error: err?.message || 'Erreur interne du serveur lors de la création de la session SenePay.'
+      status: 'INVALID',
+      errorCode: 'AI_ERROR',
+      error: "Reçu non valide ou déjà utilisé. Une erreur est survenue lors de l'analyse de l'image.",
+      details: err?.message || 'Erreur interne'
     });
   }
 });
+
 
 // ==========================================
 // USER WALLET / SOLDE DEBIT API ENDPOINT
@@ -1639,72 +2020,152 @@ const adminStore: {
   ],
   transactions: [
     {
-      id: 'TX-SP-98214',
+      id: 'TX-OCR-88201',
+      transactionId: 'WV-98214-SN',
       userId: 'USR-001',
       userEmail: 'moussa.diop@gmail.com',
+      userName: 'Moussa Diop',
       type: 'recharge',
       amount: 5000,
+      expectedAmount: 5000,
+      extractedAmount: 5000,
       currency: 'XOF',
-      description: 'Recharge Portefeuille via SenePay Wave',
-      status: 'success',
-      paymentMethod: 'senepay',
+      description: 'Recharge Portefeuille via Wave (Reçu validé par IA)',
+      status: 'VALIDATED_BY_AI',
+      aiStatus: 'VALIDATED_BY_AI',
+      paymentMethod: 'wave',
+      receiptTimestamp: '25/08/2026 à 14:15',
       newBalance: 4500,
-      createdAt: new Date(Date.now() - 2 * 86400000).toISOString()
+      createdAt: new Date(Date.now() - 15 * 60000).toISOString(),
+      extractedData: {
+        recipient_phone: '+221 78 961 90 88',
+        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
+        amount: 5000,
+        expectedAmount: 5000,
+        transaction_id: 'WV-98214-SN',
+        date_time: '25/08/2026 à 14:15',
+        validation_reason: 'Reçu officiel Wave authentique. Montant 5 000 FCFA et destinataire conformes.'
+      }
     },
     {
-      id: 'TX-WL-44120',
-      userId: 'USR-001',
-      userEmail: 'moussa.diop@gmail.com',
-      type: 'document_purchase',
-      amount: -500,
-      currency: 'XOF',
-      description: 'Achat & Téléchargement CV ATS Moderne',
-      status: 'success',
-      paymentMethod: 'wallet',
-      newBalance: 4500,
-      documentTitle: 'CV DevOps Senior',
-      createdAt: new Date(Date.now() - 2 * 86400000 + 3600000).toISOString()
-    },
-    {
-      id: 'TX-SP-77301',
+      id: 'TX-OCR-77301',
+      transactionId: 'OM-77301-SN',
       userId: 'USR-002',
       userEmail: 'fatou.sow@orange.sn',
-      type: 'recharge',
-      amount: 1500,
+      userName: 'Fatou Sow',
+      type: 'document_purchase',
+      amount: -1399,
+      expectedAmount: 1399,
+      extractedAmount: 1399,
       currency: 'XOF',
-      description: 'Paiement Pack Duo CV + Lettre (Orange Money)',
-      status: 'success',
-      paymentMethod: 'senepay',
+      description: 'Achat Pack Duo CV + Lettre (Orange Money - Validé par IA)',
+      documentTitle: 'Pack Duo CV & Lettre Marketing',
+      status: 'VALIDATED_BY_AI',
+      aiStatus: 'VALIDATED_BY_AI',
+      paymentMethod: 'orange_money',
+      receiptTimestamp: '25/08/2026 à 14:22',
       newBalance: 1000,
-      createdAt: new Date(Date.now() - 1 * 86400000).toISOString()
+      createdAt: new Date(Date.now() - 8 * 60000).toISOString(),
+      extractedData: {
+        recipient_phone: '+221 78 961 90 88',
+        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
+        amount: 1399,
+        expectedAmount: 1399,
+        transaction_id: 'OM-77301-SN',
+        date_time: '25/08/2026 à 14:22',
+        validation_reason: 'Reçu Orange Money validé avec succès. Destinataire +221 78 961 90 88 vérifié.'
+      }
     },
     {
-      id: 'TX-SP-55902',
+      id: 'TX-REJ-99412',
+      transactionId: 'WV-EXP-4401',
+      userId: 'USR-003',
+      userEmail: 'amadou.ba@outlook.com',
+      userName: 'Amadou Ba',
+      type: 'recharge',
+      amount: 1000,
+      expectedAmount: 1000,
+      extractedAmount: 1000,
+      currency: 'XOF',
+      description: 'Tentative Recharge Solde (Wave)',
+      status: 'REJECTED_BY_AI',
+      aiStatus: 'REJECTED_BY_AI',
+      paymentMethod: 'wave',
+      rejectionReason: 'Reçu expiré : émis il y a 52 minutes (limite max: 30 minutes)',
+      rejectionCode: 'EXPIRED_RECEIPT',
+      receiptTimestamp: '25/08/2026 à 13:30',
+      createdAt: new Date(Date.now() - 25 * 60000).toISOString(),
+      extractedData: {
+        recipient_phone: '+221 78 961 90 88',
+        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
+        amount: 1000,
+        expectedAmount: 1000,
+        transaction_id: 'WV-EXP-4401',
+        date_time: '25/08/2026 à 13:30',
+        validation_reason: 'Date conforme mais heure supérieure au délai limite autorisé de 30 minutes.',
+        details: 'Heure reçue: 13:30 (52 min écoulées)'
+      }
+    },
+    {
+      id: 'TX-REJ-99413',
+      transactionId: 'OM-BAD-1092',
       userId: 'USR-004',
       userEmail: 'awa.ndiaye@gmail.com',
-      type: 'recharge',
-      amount: 10000,
+      userName: 'Awa Ndiaye',
+      type: 'document_purchase',
+      amount: 1000,
+      expectedAmount: 1000,
+      extractedAmount: 500,
       currency: 'XOF',
-      description: 'Recharge Pack Recruteur / Business 10 000 FCFA',
-      status: 'success',
-      paymentMethod: 'senepay',
-      newBalance: 6000,
-      createdAt: new Date(Date.now() - 3 * 86400000).toISOString()
+      description: 'Tentative Déblocage Document (CV Juriste)',
+      documentTitle: 'CV Juriste d\'Affaires',
+      status: 'REJECTED_BY_AI',
+      aiStatus: 'REJECTED_BY_AI',
+      paymentMethod: 'orange_money',
+      rejectionReason: 'Montant insuffisant (500 FCFA au lieu de 1 000 FCFA attendus)',
+      rejectionCode: 'INSUFFICIENT_AMOUNT',
+      receiptTimestamp: '25/08/2026 à 14:10',
+      createdAt: new Date(Date.now() - 18 * 60000).toISOString(),
+      extractedData: {
+        recipient_phone: '+221 78 961 90 88',
+        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
+        amount: 500,
+        expectedAmount: 1000,
+        transaction_id: 'OM-BAD-1092',
+        date_time: '25/08/2026 à 14:10',
+        validation_reason: 'Le montant extrait sur le reçu (500 FCFA) est inférieur au montant requis (1 000 FCFA).'
+      }
     },
     {
       id: 'TX-ADM-1002',
+      transactionId: 'MAN-WV-3391',
       userId: 'USR-003',
       userEmail: 'amadou.ba@outlook.com',
-      type: 'admin_adjustment',
+      userName: 'Amadou Ba',
+      type: 'recharge',
       amount: 1000,
+      expectedAmount: 1000,
+      extractedAmount: 1000,
       currency: 'XOF',
-      description: 'Ajustement Administrateur : Geste commercial support technique',
-      reason: 'Geste commercial support technique suite à interruption',
-      adminEmail: 'admin1@gamil.com',
-      status: 'success',
-      paymentMethod: 'admin_manual',
+      description: 'Recharge Solde via Wave (Validé Manuellement par Admin)',
+      status: 'MANUALLY_VALIDATED',
+      aiStatus: 'MANUALLY_VALIDATED',
+      paymentMethod: 'wave',
+      receiptTimestamp: '25/08/2026 à 12:45',
+      manuallyValidatedBy: 'admin1@gmail.com',
+      manuallyValidatedAt: new Date(Date.now() - 3600000).toISOString(),
+      adminValidationNote: 'Validation manuelle après vérification du reçu sur l\'application Wave Business.',
       newBalance: 1000,
-      createdAt: new Date(Date.now() - 12 * 3600000).toISOString()
+      createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
+      extractedData: {
+        recipient_phone: '+221 78 961 90 88',
+        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
+        amount: 1000,
+        expectedAmount: 1000,
+        transaction_id: 'MAN-WV-3391',
+        date_time: '25/08/2026 à 12:45',
+        validation_reason: 'Reçu rejeté initialement par IA pour dépassement de 35 min, mais validé après confirmation bancaire.'
+      }
     }
   ]
 };
@@ -2590,11 +3051,20 @@ app.get('/api/admin/transactions', requireAdmin, (req, res) => {
         const matchesId = t.id.toLowerCase().includes(search);
         const matchesDesc = (t.description || '').toLowerCase().includes(search);
         const matchesEmail = ((t as any).userEmail || '').toLowerCase().includes(search);
+        const matchesTxId = ((t as any).transactionId || '').toLowerCase().includes(search);
         const matchesUser = t.userId.toLowerCase().includes(search);
-        if (!matchesId && !matchesDesc && !matchesEmail && !matchesUser) return false;
+        if (!matchesId && !matchesDesc && !matchesEmail && !matchesTxId && !matchesUser) return false;
       }
       if (statusFilter && statusFilter !== 'all') {
-        if (t.status !== statusFilter) return false;
+        if (statusFilter === 'validated') {
+          if (t.status !== 'VALIDATED_BY_AI' && t.status !== 'MANUALLY_VALIDATED' && t.status !== 'success' && t.status !== 'COMPLETED') return false;
+        } else if (statusFilter === 'rejected') {
+          if (t.status !== 'REJECTED_BY_AI' && t.status !== 'REJECTED_BY_ADMIN' && t.status !== 'failed') return false;
+        } else if (statusFilter === 'manual') {
+          if (t.status !== 'MANUALLY_VALIDATED') return false;
+        } else {
+          if (t.status !== statusFilter) return false;
+        }
       }
       if (methodFilter && methodFilter !== 'all') {
         if (t.paymentMethod !== methodFilter) return false;
@@ -2610,6 +3080,105 @@ app.get('/api/admin/transactions', requireAdmin, (req, res) => {
   } catch (err: any) {
     console.error('[Admin Transactions Error]:', err);
     return res.status(500).json({ success: false, error: err.message || 'Erreur lors de la récupération des transactions.' });
+  }
+});
+
+// 13. POST /api/admin/transactions/:id/validate - Manual Override / Validation by Admin
+app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const { note = 'Validation manuelle effectuée par l\'administrateur' } = req.body || {};
+
+    const txIndex = adminStore.transactions.findIndex(t => t.id === id || (t as any).transactionId === id);
+    if (txIndex === -1) {
+      return res.status(404).json({ success: false, error: 'Transaction introuvable.' });
+    }
+
+    const tx = adminStore.transactions[txIndex];
+    tx.status = 'MANUALLY_VALIDATED';
+    (tx as any).aiStatus = 'MANUALLY_VALIDATED';
+    (tx as any).manuallyValidatedBy = adminEmail;
+    (tx as any).manuallyValidatedAt = new Date().toISOString();
+    (tx as any).adminValidationNote = note;
+
+    if ((tx as any).transactionId) {
+      verifiedReceiptIds.add((tx as any).transactionId);
+    }
+
+    // Si c'était une recharge rejetée et que l'admin valide manuellement, créditer le compte
+    const targetAmount = (tx as any).expectedAmount || Math.abs(tx.amount);
+    let credited = false;
+    if (tx.type === 'recharge' || (tx as any).purpose === 'wallet_recharge') {
+      const userIndex = adminStore.users.findIndex(u => u.uid === tx.userId || ((tx as any).userEmail && u.email.toLowerCase() === (tx as any).userEmail.toLowerCase()));
+      if (userIndex !== -1) {
+        adminStore.users[userIndex].balance = (adminStore.users[userIndex].balance || 0) + targetAmount;
+        adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
+        credited = true;
+      }
+    }
+
+    recordAuditLog(
+      'payment',
+      'TRANSACTION_MANUALLY_VALIDATED',
+      adminEmail,
+      `Validation manuelle de la transaction ${tx.id} (${(tx as any).transactionId || 'Sans Ref'}) pour ${(tx as any).userEmail || tx.userId} - Montant: ${targetAmount.toLocaleString('fr-FR')} FCFA. Note: ${note}`,
+      { transactionId: tx.id, rawTxId: (tx as any).transactionId, amount: targetAmount, credited },
+      (tx as any).userEmail,
+      tx.userId,
+      'success'
+    );
+
+    return res.json({
+      success: true,
+      transaction: tx,
+      credited,
+      message: `Transaction ${tx.id} validée manuellement avec succès.${credited ? ' Le solde utilisateur a été crédité.' : ''}`
+    });
+  } catch (err: any) {
+    console.error('[Admin Validate Transaction Error]:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Erreur lors de la validation manuelle.' });
+  }
+});
+
+// 14. POST /api/admin/transactions/:id/reject - Confirm Rejection by Admin
+app.post('/api/admin/transactions/:id/reject', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const { reason = 'Rejet confirmé par l\'administrateur' } = req.body || {};
+
+    const txIndex = adminStore.transactions.findIndex(t => t.id === id || (t as any).transactionId === id);
+    if (txIndex === -1) {
+      return res.status(404).json({ success: false, error: 'Transaction introuvable.' });
+    }
+
+    const tx = adminStore.transactions[txIndex];
+    tx.status = 'REJECTED_BY_ADMIN';
+    (tx as any).aiStatus = 'REJECTED_BY_ADMIN';
+    (tx as any).rejectionReason = reason;
+    (tx as any).rejectedBy = adminEmail;
+    (tx as any).rejectedAt = new Date().toISOString();
+
+    recordAuditLog(
+      'payment',
+      'TRANSACTION_REJECTED_BY_ADMIN',
+      adminEmail,
+      `Rejet définitif de la transaction ${tx.id} par l'administrateur. Motif: ${reason}`,
+      { transactionId: tx.id, reason },
+      (tx as any).userEmail,
+      tx.userId,
+      'warning'
+    );
+
+    return res.json({
+      success: true,
+      transaction: tx,
+      message: `Rejet de la transaction ${tx.id} confirmé.`
+    });
+  } catch (err: any) {
+    console.error('[Admin Reject Transaction Error]:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Erreur lors du rejet de la transaction.' });
   }
 });
 
