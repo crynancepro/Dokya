@@ -6,6 +6,7 @@ import { CVTemplate } from './CVTemplate';
 import { CoverLetterTemplate } from './CoverLetterTemplate';
 import { DevisFactureTemplate } from './DevisFactureTemplate';
 import { EbookTemplate } from './EbookTemplate';
+import { usePricing } from '../contexts/PricingContext';
 import { 
   ArrowLeft, Download, FileText, Printer, 
   Sparkles, CheckCircle2, Eye, Palette, ZoomIn, ZoomOut, 
@@ -64,6 +65,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   packBusinessSubTab = 'devis',
   setPackBusinessSubTab
 }) => {
+  const { pricing } = usePricing();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isBusinessTemplateModalOpen, setIsBusinessTemplateModalOpen] = useState<boolean>(false);
 
@@ -87,7 +89,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         return {
           title: "Livre Numérique (Ebook Pro)",
           subTitle: `${ebookData?.title || 'Mon Livre'} • Format Auto-Édition 6×9 (${ebookData?.language || 'Français'})`,
-          price: 1500,
+          price: pricing.ebookPrice ?? 1500,
           badgeColor: "bg-indigo-50 text-indigo-900 border-indigo-200",
           icon: BookOpen
         };
@@ -95,7 +97,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         return {
           title: "CV Pro ATS",
           subTitle: `${formData?.personalInfo?.firstName || 'Candidat'} ${formData?.personalInfo?.lastName || ''} - Modèle ${formData.templateStyle || 'Moderne'}`,
-          price: 1000,
+          price: pricing.cvOnlyPrice,
           badgeColor: "bg-indigo-50 text-indigo-800 border-indigo-200",
           icon: FileText
         };
@@ -103,7 +105,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         return {
           title: "Lettre de Motivation",
           subTitle: `${formData?.personalInfo?.firstName || 'Candidat'} ${formData?.personalInfo?.lastName || ''} • Lettre Haute Définition`,
-          price: 1000,
+          price: pricing.letterOnlyPrice,
           badgeColor: "bg-blue-50 text-blue-800 border-blue-200",
           icon: Mail
         };
@@ -111,7 +113,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         return {
           title: "Devis Professionnel",
           subTitle: `Devis N° ${businessDocData.docNumber || 'DEV-2026-001'} • ${businessDocData.issuer?.companyName || 'Mon Entreprise'}`,
-          price: 1000,
+          price: pricing.devisPrice,
           badgeColor: "bg-amber-50 text-amber-800 border-amber-300",
           icon: FileCheck
         };
@@ -119,7 +121,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         return {
           title: "Facture Client",
           subTitle: `Facture N° ${businessDocData.docNumber || 'FAC-2026-001'} • ${businessDocData.issuer?.companyName || 'Mon Entreprise'}`,
-          price: 1000,
+          price: pricing.facturePrice,
           badgeColor: "bg-emerald-50 text-emerald-800 border-emerald-200",
           icon: Receipt
         };
@@ -127,7 +129,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         return {
           title: `Pack Business • ${activePreviewKind === 'devis' ? 'Document 1: Devis Pro' : 'Document 2: Facture Client'}`,
           subTitle: "Devis & Facture conformes normes OHADA / UEMOA",
-          price: 1499,
+          price: pricing.businessPackPrice,
           badgeColor: "bg-amber-50 text-amber-900 border-amber-300",
           icon: Package
         };
@@ -135,7 +137,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         return {
           title: "Document Premium",
           subTitle: "Document prêt pour téléchargement",
-          price: 1000,
+          price: pricing.cvOnlyPrice,
           badgeColor: "bg-slate-100 text-slate-800 border-slate-200",
           icon: FileText
         };

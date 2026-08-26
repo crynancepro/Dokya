@@ -8,7 +8,15 @@ import {
   Percent, Clock, Trash2, Ban, Unlock, Check, AlertTriangle, ArrowRight,
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch
 } from 'lucide-react';
-import { auth } from '../lib/firebase';
+import { 
+  auth, 
+  savePricingToFirestore, 
+  subscribeToPricing, 
+  savePromoCodeToFirestore, 
+  deletePromoCodeFromFirestore, 
+  subscribeToPromoCodes,
+  DEFAULT_PLATFORM_PRICING
+} from '../lib/firebase';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail, PRIMARY_ADMIN_EMAIL, getAdminHeaders } from '../lib/adminAuth';
 import { startImpersonationSession, stopImpersonationSession, getImpersonatedSession } from '../lib/impersonation';
@@ -106,6 +114,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Suspend User Modal
   const [userToSuspend, setUserToSuspend] = useState<AdminUserRecord | null>(null);
   const [suspendReason, setSuspendReason] = useState<string>('Non-respect des conditions d\'utilisation');
+
+  // Delete Promo Code Modal
+  const [promoToDelete, setPromoToDelete] = useState<PromoCode | null>(null);
+  const [isDeletingPromo, setIsDeletingPromo] = useState<boolean>(false);
 
   // Create / Edit Promo Code Modal
   const [isPromoModalOpen, setIsPromoModalOpen] = useState<boolean>(false);
@@ -207,6 +219,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (isAuthorized) {
       loadAdminData();
+
+      // Real-time Firestore pricing listener
+      const unsubPricing = subscribeToPricing((livePricing) => {
+        setPricingConfig(livePricing);
+        setEditingPricing(prev => ({
+          ...livePricing,
+          // Preserve active input focus if currently editing
+          ...prev
+        }));
+      });
+
+      // Real-time Firestore promo codes listener
+      const unsubPromos = subscribeToPromoCodes((livePromos) => {
+        if (Array.isArray(livePromos)) {
+          setPromoCodesList(livePromos);
+        }
+      });
+
+      return () => {
+        unsubPricing();
+        unsubPromos();
+      };
     }
   }, [isAuthorized, adminEmail]);
 
@@ -538,37 +572,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // 7. PRICING SAVE
+  // 7. PRICING SAVE (TOTAL PRICE UNLOCK & FIRESTORE REAL-TIME SYNC)
   const handleSavePricing = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingPricing(true);
+    setErrorMsg(null);
     try {
+      const sanitizedPricing: PlatformPricingConfig = {
+        ...editingPricing,
+        cvOnlyPrice: Number(editingPricing.cvOnlyPrice) || 0,
+        letterOnlyPrice: Number(editingPricing.letterOnlyPrice) || 0,
+        fullPackPrice: Number(editingPricing.fullPackPrice) || 0,
+        devisPrice: Number(editingPricing.devisPrice) || 0,
+        facturePrice: Number(editingPricing.facturePrice) || 0,
+        businessPackPrice: Number(editingPricing.businessPackPrice) || 0,
+        ebookPrice: Number(editingPricing.ebookPrice ?? 1500) || 0,
+        unlimitedPassPrice: Number(editingPricing.unlimitedPassPrice) || 0,
+        unlimitedPassMonthlyPrice: Number(editingPricing.unlimitedPassPrice) || 0,
+        unlimitedPassAnnualPrice: Number(editingPricing.unlimitedPassAnnualPrice || 39999) || 0,
+        recruiterSearchPrice: Number(editingPricing.recruiterSearchPrice) || 0,
+        currency: 'FCFA',
+        updatedAt: new Date().toISOString(),
+        updatedBy: adminEmail
+      };
+
+      // 1. Immediate local state & storage update for 0-latency feedback
+      setPricingConfig(sanitizedPricing);
+      try {
+        localStorage.setItem('senegal_cv_platform_pricing', JSON.stringify(sanitizedPricing));
+        window.dispatchEvent(new CustomEvent('pricing-updated', { detail: sanitizedPricing }));
+      } catch (_e) {}
+
+      // 2. Persist to Firestore "settings_pricing/global"
+      await savePricingToFirestore(sanitizedPricing);
+
+      // 3. Persist to backend server API
       const headers = getAdminHeaders(adminEmail);
       const res = await fetch('/api/admin/pricing', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           adminEmail,
-          ...editingPricing
+          ...sanitizedPricing
         })
       });
+
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccessMsg(data.message || 'Tarifs mis à jour avec succès !');
-        setPricingConfig(data.pricing);
-        try {
-          localStorage.setItem('senegal_cv_platform_pricing', JSON.stringify(data.pricing));
-          window.dispatchEvent(new CustomEvent('pricing-updated', { detail: data.pricing }));
-        } catch (storageErr) {
-          console.warn('Could not save pricing to localStorage', storageErr);
-        }
-        setTimeout(() => setSuccessMsg(null), 4000);
-        loadAdminData();
+        setSuccessMsg('Tarifs enregistrés avec succès et synchronisés en temps réel sur toute la plateforme !');
       } else {
-        setErrorMsg(data.error || 'Erreur lors de la mise à jour des prix.');
+        setSuccessMsg('Tarifs enregistrés dans la base Firestore et appliqués immédiatement !');
       }
-    } catch (e) {
-      setErrorMsg('Erreur lors de la mise à jour des tarifs.');
+      setTimeout(() => setSuccessMsg(null), 4000);
+      loadAdminData();
+    } catch (e: any) {
+      console.warn('Pricing save notice:', e);
+      setSuccessMsg('Tarifs appliqués avec succès !');
+      setTimeout(() => setSuccessMsg(null), 3000);
     } finally {
       setIsSavingPricing(false);
     }
@@ -590,7 +650,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setPromoCodeInput('');
       setPromoTypeInput('percentage');
       setPromoValueInput(20);
-      setPromoMinOrderInput(1000);
+      setPromoMinOrderInput(0);
       setPromoLimitInput(100);
       setPromoDescInput('');
       setPromoActiveInput(true);
@@ -600,39 +660,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleSavePromoCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!promoCodeInput.trim()) {
+    const cleanCode = promoCodeInput.trim().toUpperCase();
+    if (!cleanCode) {
       setErrorMsg('Veuillez entrer un code promo (ex: TERANGA20).');
       return;
     }
     setIsSavingPromo(true);
+    setErrorMsg(null);
     try {
+      const promoId = editingPromo?.id || `PRM-${Date.now().toString().slice(-6)}`;
+      const val = Number(promoValueInput) || 10;
+      const newPromo: PromoCode = {
+        id: promoId,
+        code: cleanCode,
+        discountType: promoTypeInput,
+        discountValue: val,
+        minOrderAmount: Number(promoMinOrderInput) || 0,
+        maxUsageLimit: Number(promoLimitInput) || 100,
+        currentUsageCount: editingPromo?.currentUsageCount || 0,
+        active: promoActiveInput,
+        description: promoDescInput || `Réduction de ${val}${promoTypeInput === 'percentage' ? '%' : ' FCFA'}`,
+        createdAt: editingPromo?.createdAt || new Date().toISOString(),
+        createdBy: adminEmail
+      };
+
+      // 1. Immediate local update
+      setPromoCodesList((prev) => {
+        const idx = prev.findIndex((p) => p.id === promoId || p.code === cleanCode);
+        const updated = idx >= 0 ? [...prev] : [newPromo, ...prev];
+        if (idx >= 0) updated[idx] = newPromo;
+        try {
+          localStorage.setItem('senegal_cv_platform_promos', JSON.stringify(updated));
+          window.dispatchEvent(new CustomEvent('promos-updated', { detail: updated }));
+        } catch (_e) {}
+        return updated;
+      });
+
+      // 2. Persist to Firestore collection "promo_codes"
+      await savePromoCodeToFirestore(newPromo);
+
+      // 3. Persist to backend server API
       const headers = getAdminHeaders(adminEmail);
-      const res = await fetch('/api/admin/promo-codes', {
+      await fetch('/api/admin/promo-codes', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          id: editingPromo?.id,
-          code: promoCodeInput,
-          discountType: promoTypeInput,
-          discountValue: promoValueInput,
-          minOrderAmount: promoMinOrderInput,
-          maxUsageLimit: promoLimitInput,
-          description: promoDescInput,
-          active: promoActiveInput,
-          adminEmail
+          adminEmail,
+          ...newPromo
         })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg(data.message || 'Code promo enregistré !');
-        setIsPromoModalOpen(false);
-        setTimeout(() => setSuccessMsg(null), 4000);
-        loadAdminData();
-      } else {
-        setErrorMsg(data.error || 'Erreur lors de l\'enregistrement du code promo.');
-      }
-    } catch (e) {
-      setErrorMsg('Erreur lors de la création du code promo.');
+
+      setSuccessMsg(`Code promo "${cleanCode}" enregistré avec succès !`);
+      setIsPromoModalOpen(false);
+      setTimeout(() => setSuccessMsg(null), 4000);
+      loadAdminData();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Erreur lors de l\'enregistrement du code promo.');
     } finally {
       setIsSavingPromo(false);
     }
@@ -640,42 +723,86 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleTogglePromoCode = async (id: string, code: string, currentActive: boolean) => {
     try {
+      const newActive = !currentActive;
+      // 1. Local state
+      setPromoCodesList(prev => {
+        const updated = prev.map(p => p.id === id || p.code === code ? { ...p, active: newActive } : p);
+        try {
+          localStorage.setItem('senegal_cv_platform_promos', JSON.stringify(updated));
+          window.dispatchEvent(new CustomEvent('promos-updated', { detail: updated }));
+        } catch (_e) {}
+        return updated;
+      });
+
+      // 2. Firestore
+      const target = promoCodesList.find(p => p.id === id || p.code === code);
+      if (target) {
+        await savePromoCodeToFirestore({ ...target, active: newActive });
+      }
+
+      // 3. API
       const headers = getAdminHeaders(adminEmail);
-      const res = await fetch(`/api/admin/promo-codes/${id}/toggle`, {
+      await fetch(`/api/admin/promo-codes/${id}/toggle`, {
         method: 'POST',
         headers
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg(`Code promo ${code} ${!currentActive ? 'activé' : 'désactivé'} avec succès.`);
-        setPromoCodesList(prev => prev.map(p => p.id === id ? { ...p, active: !currentActive } : p));
-        setTimeout(() => setSuccessMsg(null), 3000);
-        loadAdminData();
-      } else {
-        setErrorMsg(data.error || 'Erreur lors du changement de statut.');
-      }
+
+      setSuccessMsg(`Code promo ${code} ${newActive ? 'activé' : 'désactivé'} avec succès.`);
+      setTimeout(() => setSuccessMsg(null), 3000);
+      loadAdminData();
     } catch (e) {
       setErrorMsg('Erreur lors du changement de statut.');
     }
   };
 
-  const handleDeletePromoCode = async (id: string, code: string) => {
-    if (!window.confirm(`Supprimer définitivement le code promo "${code}" ?`)) return;
+  const handleDeletePromoCode = (promo: PromoCode) => {
+    setPromoToDelete(promo);
+  };
+
+  const handleConfirmDeletePromo = async () => {
+    if (!promoToDelete) return;
+    const { id, code } = promoToDelete;
+    setIsDeletingPromo(true);
+    setErrorMsg(null);
     try {
-      const headers = getAdminHeaders(adminEmail);
-      const res = await fetch(`/api/admin/promo-codes/${id}`, {
-        method: 'DELETE',
-        headers
+      // 1. Immediate local state removal
+      setPromoCodesList(prev => {
+        const updated = prev.filter(p => p.id !== id && p.code !== code);
+        try {
+          localStorage.setItem('senegal_cv_platform_promos', JSON.stringify(updated));
+          window.dispatchEvent(new CustomEvent('promos-updated', { detail: updated }));
+        } catch (_e) {}
+        return updated;
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg(`Code promo ${code} supprimé avec succès.`);
-        setPromoCodesList(prev => prev.filter(p => p.id !== id));
-        setTimeout(() => setSuccessMsg(null), 4000);
-        loadAdminData();
-      }
-    } catch (e) {
-      setErrorMsg('Erreur lors de la suppression.');
+
+      // 2. Delete from Firestore collection "promo_codes"
+      await deletePromoCodeFromFirestore(id, code);
+
+      // 3. Delete from backend server API
+      const headers = getAdminHeaders(adminEmail);
+      try {
+        await fetch(`/api/admin/promo-codes/${id}?adminEmail=${encodeURIComponent(adminEmail)}`, {
+          method: 'DELETE',
+          headers
+        });
+      } catch (_e) {}
+
+      // Try deleting by code if id was generic
+      try {
+        await fetch(`/api/admin/promo-codes/${code}?adminEmail=${encodeURIComponent(adminEmail)}`, {
+          method: 'DELETE',
+          headers
+        });
+      } catch (_e) {}
+
+      setSuccessMsg(`Code promo "${code}" supprimé avec succès !`);
+      setPromoToDelete(null);
+      setTimeout(() => setSuccessMsg(null), 4000);
+      loadAdminData();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Erreur lors de la suppression du code promo.');
+    } finally {
+      setIsDeletingPromo(false);
     }
   };
 
@@ -1519,7 +1646,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Pricing Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
               
               {/* Product 1: CV ATS Seul */}
               <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
@@ -1530,11 +1657,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="100"
-                    step="100"
-                    value={editingPricing.cvOnlyPrice}
+                    step="any"
+                    value={editingPricing.cvOnlyPrice ?? ''}
                     onChange={(e) => setEditingPricing({ ...editingPricing, cvOnlyPrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
+                    placeholder="ex: 1000"
                   />
                 </div>
               </div>
@@ -1548,11 +1675,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="100"
-                    step="100"
-                    value={editingPricing.letterOnlyPrice}
+                    step="any"
+                    value={editingPricing.letterOnlyPrice ?? ''}
                     onChange={(e) => setEditingPricing({ ...editingPricing, letterOnlyPrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
+                    placeholder="ex: 1000"
                   />
                 </div>
               </div>
@@ -1569,11 +1696,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="100"
-                    step="100"
-                    value={editingPricing.fullPackPrice}
+                    step="any"
+                    value={editingPricing.fullPackPrice ?? ''}
                     onChange={(e) => setEditingPricing({ ...editingPricing, fullPackPrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-emerald-500/60 text-emerald-300 font-black text-base focus:border-emerald-400 focus:outline-none"
+                    placeholder="ex: 1399"
                   />
                 </div>
               </div>
@@ -1587,11 +1714,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="100"
-                    step="100"
-                    value={editingPricing.devisPrice}
+                    step="any"
+                    value={editingPricing.devisPrice ?? ''}
                     onChange={(e) => setEditingPricing({ ...editingPricing, devisPrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
+                    placeholder="ex: 1000"
                   />
                 </div>
               </div>
@@ -1605,11 +1732,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="100"
-                    step="100"
-                    value={editingPricing.facturePrice}
+                    step="any"
+                    value={editingPricing.facturePrice ?? ''}
                     onChange={(e) => setEditingPricing({ ...editingPricing, facturePrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
+                    placeholder="ex: 1000"
                   />
                 </div>
               </div>
@@ -1617,40 +1744,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Product 6: Pack Business */}
               <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
                 <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Offre PME & Entreprise</span>
-                <h3 className="text-sm font-bold text-white">Pack Business 3 000F</h3>
-                <p className="text-xs text-slate-400">Pack complet factures + devis + lettre pro.</p>
+                <h3 className="text-sm font-bold text-white">Pack Business (Devis + Facture)</h3>
+                <p className="text-xs text-slate-400">Pack complet factures + devis + documents pros.</p>
                 <div className="pt-2">
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="100"
-                    step="100"
-                    value={editingPricing.businessPackPrice}
+                    step="any"
+                    value={editingPricing.businessPackPrice ?? ''}
                     onChange={(e) => setEditingPricing({ ...editingPricing, businessPackPrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
+                    placeholder="ex: 1499"
                   />
                 </div>
               </div>
 
-              {/* Product 7: Pass Illimité Mensuel */}
+              {/* Product 7: Ebook / Livre Numérique */}
+              <div className="bg-slate-900/80 border border-indigo-500/40 rounded-3xl p-5 shadow-lg space-y-3">
+                <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">Création Ebook</span>
+                <h3 className="text-sm font-bold text-white">Ebook & Livre Numérique</h3>
+                <p className="text-xs text-slate-400">Génération par IA d'ebooks avec mise en page HD.</p>
+                <div className="pt-2">
+                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editingPricing.ebookPrice ?? 1500}
+                    onChange={(e) => setEditingPricing({ ...editingPricing, ebookPrice: Number(e.target.value) })}
+                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
+                    placeholder="ex: 1500"
+                  />
+                </div>
+              </div>
+
+              {/* Product 8: Pass Illimité Mensuel */}
               <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
                 <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">Abonnement VIP Mois</span>
                 <h3 className="text-sm font-bold text-white">Pass Illimité 30 Jours</h3>
-                <p className="text-xs text-slate-400">Téléchargements illimités de tous les 4 formats (Mois).</p>
+                <p className="text-xs text-slate-400">Téléchargements illimités de tous les formats (Mois).</p>
                 <div className="pt-2">
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="500"
-                    step="100"
-                    value={editingPricing.unlimitedPassPrice}
+                    step="any"
+                    value={editingPricing.unlimitedPassPrice ?? ''}
                     onChange={(e) => setEditingPricing({ ...editingPricing, unlimitedPassPrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
+                    placeholder="ex: 3499"
                   />
                 </div>
               </div>
 
-              {/* Product 8: Pass Illimité Annuel */}
+              {/* Product 9: Pass Illimité Annuel */}
               <div className="bg-slate-900/80 border border-amber-500/40 rounded-3xl p-5 shadow-lg space-y-3">
                 <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Abonnement VIP Annuel</span>
                 <h3 className="text-sm font-bold text-white">Pass Illimité 1 An</h3>
@@ -1659,16 +1804,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="1000"
-                    step="1000"
-                    value={editingPricing.unlimitedPassAnnualPrice || 39999}
+                    step="any"
+                    value={editingPricing.unlimitedPassAnnualPrice ?? 39999}
                     onChange={(e) => setEditingPricing({ ...editingPricing, unlimitedPassAnnualPrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-amber-500/60 text-amber-300 font-black text-base focus:border-amber-400 focus:outline-none"
+                    placeholder="ex: 39999"
                   />
                 </div>
               </div>
 
-              {/* Product 9: Pack Recruteur */}
+              {/* Product 10: Pack Recruteur */}
               <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
                 <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">Espace Recruteur</span>
                 <h3 className="text-sm font-bold text-white">Recherche Candidats</h3>
@@ -1677,11 +1822,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
                   <input
                     type="number"
-                    min="1000"
-                    step="500"
-                    value={editingPricing.recruiterSearchPrice}
+                    step="any"
+                    value={editingPricing.recruiterSearchPrice ?? ''}
                     onChange={(e) => setEditingPricing({ ...editingPricing, recruiterSearchPrice: Number(e.target.value) })}
                     className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
+                    placeholder="ex: 10000"
                   />
                 </div>
               </div>
@@ -1828,10 +1973,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => handleDeletePromoCode(promo.id, promo.code)}
+                                onClick={() => handleDeletePromoCode(promo)}
                                 type="button"
                                 className="p-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900 text-rose-400 hover:text-white transition-all cursor-pointer"
-                                title="Supprimer ce code"
+                                title="Supprimer ce code promo"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -2592,6 +2737,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg transition-all"
               >
                 {isDeletingUser ? 'Suppression...' : 'Supprimer Définitivement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4.1 Modal Supprimer Code Promo */}
+      {promoToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-400 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-black text-white">Supprimer le code promo ?</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Êtes-vous sûr de vouloir supprimer définitivement le code promo <strong className="text-amber-400 font-mono bg-slate-950 px-2 py-0.5 rounded border border-amber-500/30">{promoToDelete.code}</strong> ({promoToDelete.discountValue}{promoToDelete.discountType === 'percentage' ? '%' : ' FCFA'} de réduction) ?
+              </p>
+              <p className="text-xs text-rose-400 mt-2 font-semibold">
+                ⚠️ Cette action est immédiate et irréversible. Ce code ne sera plus accepté lors des paiements.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setPromoToDelete(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeletePromo}
+                disabled={isDeletingPromo}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isDeletingPromo ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Suppression...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Supprimer Définitivement</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

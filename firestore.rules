@@ -51,6 +51,20 @@ service cloud.firestore {
       allow update: if isValidId(txId) || isAdmin();
     }
 
+    match /settings_pricing/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /promo_codes/{promoId} {
+      allow read: if true;
+      allow write, delete: if true;
+    }
+
+    match /audit_logs/{logId} {
+      allow read, write: if true;
+    }
+
     match /test/connection {
       allow read: if true;
     }

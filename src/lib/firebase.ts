@@ -2,10 +2,10 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { 
   getFirestore, doc, getDoc, getDocFromServer, setDoc, deleteDoc, 
-  collection, query, where, getDocs 
+  collection, query, where, getDocs, onSnapshot, Unsubscribe 
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, CVFormData, AIOptimizedData } from '../types';
+import { CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode } from '../types';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -172,6 +172,8 @@ export interface SaveDocumentMetadataParams {
   generationMode?: GenerationMode;
   formData?: CVFormData;
   aiData?: AIOptimizedData | null;
+  businessDocData?: any;
+  ebookData?: any;
   createdAt?: string;
   isPaid?: boolean;
 }
@@ -195,6 +197,8 @@ export async function saveGeneratedDocumentMetadata(params: SaveDocumentMetadata
     isPaid: params.isPaid ?? true,
     formData: params.formData || ({ personalInfo: {} } as CVFormData),
     aiData: params.aiData || null,
+    businessDocData: params.businessDocData,
+    ebookData: params.ebookData,
     selectedFormat: params.selectedFormat,
   };
 
@@ -235,6 +239,148 @@ export async function deleteUserDocument(docId: string): Promise<boolean> {
     return false;
   }
 }
+
+// =========================================================================
+// PRICING & PROMO CODES FIRESTORE REAL-TIME SYNCHRONIZATION
+// =========================================================================
+
+export const DEFAULT_PLATFORM_PRICING: PlatformPricingConfig = {
+  cvOnlyPrice: 1000,
+  letterOnlyPrice: 1000,
+  fullPackPrice: 1399,
+  devisPrice: 1000,
+  facturePrice: 1000,
+  businessPackPrice: 1499,
+  ebookPrice: 1500,
+  unlimitedPassPrice: 3499,
+  unlimitedPassMonthlyPrice: 3499,
+  unlimitedPassAnnualPrice: 39999,
+  recruiterSearchPrice: 10000,
+  currency: 'FCFA',
+  updatedAt: new Date().toISOString(),
+  updatedBy: 'system'
+};
+
+/**
+ * Real-time listener for platform pricing configuration from Firestore collection "settings_pricing".
+ */
+export function subscribeToPricing(
+  onUpdate: (pricing: PlatformPricingConfig) => void,
+  onError?: (error: any) => void
+): Unsubscribe {
+  const docRef = doc(db, 'settings_pricing', 'global');
+  return onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as Partial<PlatformPricingConfig>;
+        const merged: PlatformPricingConfig = {
+          ...DEFAULT_PLATFORM_PRICING,
+          ...data,
+          cvOnlyPrice: Number(data.cvOnlyPrice ?? DEFAULT_PLATFORM_PRICING.cvOnlyPrice),
+          letterOnlyPrice: Number(data.letterOnlyPrice ?? DEFAULT_PLATFORM_PRICING.letterOnlyPrice),
+          fullPackPrice: Number(data.fullPackPrice ?? DEFAULT_PLATFORM_PRICING.fullPackPrice),
+          devisPrice: Number(data.devisPrice ?? DEFAULT_PLATFORM_PRICING.devisPrice),
+          facturePrice: Number(data.facturePrice ?? DEFAULT_PLATFORM_PRICING.facturePrice),
+          businessPackPrice: Number(data.businessPackPrice ?? DEFAULT_PLATFORM_PRICING.businessPackPrice),
+          ebookPrice: Number(data.ebookPrice ?? DEFAULT_PLATFORM_PRICING.ebookPrice),
+          unlimitedPassPrice: Number(data.unlimitedPassPrice ?? DEFAULT_PLATFORM_PRICING.unlimitedPassPrice),
+          unlimitedPassMonthlyPrice: Number(data.unlimitedPassMonthlyPrice ?? DEFAULT_PLATFORM_PRICING.unlimitedPassMonthlyPrice),
+          unlimitedPassAnnualPrice: Number(data.unlimitedPassAnnualPrice ?? DEFAULT_PLATFORM_PRICING.unlimitedPassAnnualPrice),
+          recruiterSearchPrice: Number(data.recruiterSearchPrice ?? DEFAULT_PLATFORM_PRICING.recruiterSearchPrice),
+          currency: data.currency || 'FCFA',
+          updatedAt: data.updatedAt || new Date().toISOString()
+        };
+        onUpdate(merged);
+      }
+    },
+    (err) => {
+      console.warn('Firestore pricing snapshot error:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Save pricing configuration to Firestore "settings_pricing/global"
+ */
+export async function savePricingToFirestore(pricing: PlatformPricingConfig): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'settings_pricing', 'global');
+    await setDoc(docRef, {
+      ...pricing,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    return true;
+  } catch (error) {
+    console.warn('Could not save pricing to Firestore:', error);
+    return false;
+  }
+}
+
+/**
+ * Real-time listener for promo codes from Firestore collection "promo_codes"
+ */
+export function subscribeToPromoCodes(
+  onUpdate: (promos: PromoCode[]) => void,
+  onError?: (error: any) => void
+): Unsubscribe {
+  const colRef = collection(db, 'promo_codes');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const list: PromoCode[] = [];
+      snapshot.forEach((d) => {
+        list.push({ id: d.id, ...(d.data() as any) } as PromoCode);
+      });
+      onUpdate(list);
+    },
+    (err) => {
+      console.warn('Firestore promo codes snapshot error:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Save / Update a promo code in Firestore "promo_codes/{id}"
+ */
+export async function savePromoCodeToFirestore(promo: PromoCode): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'promo_codes', promo.id);
+    await setDoc(docRef, {
+      ...promo,
+      code: promo.code.trim().toUpperCase()
+    }, { merge: true });
+    return true;
+  } catch (error) {
+    console.warn('Could not save promo code to Firestore:', error);
+    return false;
+  }
+}
+
+/**
+ * Delete a promo code from Firestore "promo_codes/{id}"
+ */
+export async function deletePromoCodeFromFirestore(promoId: string, promoCode?: string): Promise<boolean> {
+  try {
+    if (promoId) {
+      const docRef = doc(db, 'promo_codes', promoId);
+      await deleteDoc(docRef);
+    }
+    if (promoCode && promoCode !== promoId) {
+      try {
+        const codeDocRef = doc(db, 'promo_codes', promoCode.toUpperCase());
+        await deleteDoc(codeDocRef);
+      } catch (_e) {}
+    }
+    return true;
+  } catch (error) {
+    console.warn('Could not delete promo code from Firestore:', error);
+    return false;
+  }
+}
+
 
 
 export interface FirestoreErrorInfo {

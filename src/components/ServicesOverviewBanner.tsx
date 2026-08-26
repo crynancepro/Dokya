@@ -4,6 +4,7 @@ import {
   CheckCircle2, ArrowRight, ShieldCheck, Zap, 
   Layers, Package, Star, Clock, CreditCard, User, Download, FileCode, BookOpen
 } from 'lucide-react';
+import { usePricing } from '../contexts/PricingContext';
 
 interface ServicesOverviewBannerProps {
   currentTab: string;
@@ -18,6 +19,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
   onOpenRecharge,
   onLoadSample
 }) => {
+  const { pricing, formatPrice } = usePricing();
   return (
     <div className="w-full space-y-8 animate-in fade-in duration-300">
       
@@ -110,7 +112,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
                   <FileText className="w-6 h-6" />
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-black text-indigo-700">1 000 FCFA</div>
+                  <div className="text-lg font-black text-indigo-700">{formatPrice(pricing.cvOnlyPrice)}</div>
                   <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Tarif unique</span>
                 </div>
               </div>
@@ -151,7 +153,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
               type="button"
               className="w-full py-3 px-4 rounded-2xl bg-indigo-600 group-hover:bg-indigo-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-indigo-200 transition-all cursor-pointer"
             >
-              <span>Créer mon CV Pro (1 000 F)</span>
+              <span>Créer mon CV Pro ({formatPrice(pricing.cvOnlyPrice)})</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -168,7 +170,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
                   <Mail className="w-6 h-6" />
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-black text-blue-700">1 000 FCFA</div>
+                  <div className="text-lg font-black text-blue-700">{formatPrice(pricing.letterOnlyPrice)}</div>
                   <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Tarif unique</span>
                 </div>
               </div>
@@ -209,7 +211,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
               type="button"
               className="w-full py-3 px-4 rounded-2xl bg-blue-600 group-hover:bg-blue-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-blue-200 transition-all cursor-pointer"
             >
-              <span>Rédiger ma Lettre (1 000 F)</span>
+              <span>Rédiger ma Lettre ({formatPrice(pricing.letterOnlyPrice)})</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -226,7 +228,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
                   <FileCheck className="w-6 h-6" />
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-black text-amber-700">1 000 FCFA</div>
+                  <div className="text-lg font-black text-amber-700">{formatPrice(pricing.devisPrice)}</div>
                   <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Tarif unique</span>
                 </div>
               </div>
@@ -267,7 +269,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
               type="button"
               className="w-full py-3 px-4 rounded-2xl bg-amber-500 group-hover:bg-amber-600 text-black text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-amber-200 transition-all cursor-pointer"
             >
-              <span>Établir un Devis (1 000 F)</span>
+              <span>Établir un Devis ({formatPrice(pricing.devisPrice)})</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -284,7 +286,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
                   <Receipt className="w-6 h-6" />
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-black text-emerald-700">1 000 FCFA</div>
+                  <div className="text-lg font-black text-emerald-700">{formatPrice(pricing.facturePrice)}</div>
                   <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Tarif unique</span>
                 </div>
               </div>
@@ -325,7 +327,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
               type="button"
               className="w-full py-3 px-4 rounded-2xl bg-emerald-600 group-hover:bg-emerald-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-emerald-200 transition-all cursor-pointer"
             >
-              <span>Émettre une Facture (1 000 F)</span>
+              <span>Émettre une Facture ({formatPrice(pricing.facturePrice)})</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -342,7 +344,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
                   <BookOpen className="w-6 h-6" />
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-black text-purple-700">1 500 FCFA</div>
+                  <div className="text-lg font-black text-purple-700">{formatPrice(pricing.ebookPrice ?? 1500)}</div>
                   <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Tarif unique</span>
                 </div>
               </div>
@@ -383,7 +385,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
               type="button"
               className="w-full py-3 px-4 rounded-2xl bg-purple-600 group-hover:bg-purple-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-purple-200 transition-all cursor-pointer"
             >
-              <span>Créer mon Ebook (1 500 F)</span>
+              <span>Créer mon Ebook ({formatPrice(pricing.ebookPrice ?? 1500)})</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -411,8 +413,10 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
                   Pack Emploi (CV + Lettre)
                 </span>
                 <div className="text-right">
-                  <span className="text-base font-black text-indigo-700">1 399 FCFA</span>
-                  <span className="text-[10px] text-slate-400 line-through ml-1.5">2 000 F</span>
+                  <span className="text-base font-black text-indigo-700">{formatPrice(pricing.fullPackPrice)}</span>
+                  <span className="text-[10px] text-slate-400 line-through ml-1.5">
+                    {formatPrice(pricing.cvOnlyPrice + pricing.letterOnlyPrice)}
+                  </span>
                 </div>
               </div>
               <h4 className="text-sm font-extrabold text-slate-900 mb-1">CV Pro ATS + Lettre de Motivation</h4>
@@ -421,7 +425,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
               </p>
             </div>
             <div className="text-xs font-black text-indigo-600 flex items-center gap-1 mt-2">
-              <span>Sélectionner ce Pack (1 399 F)</span>
+              <span>Sélectionner ce Pack ({formatPrice(pricing.fullPackPrice)})</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
@@ -437,8 +441,10 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
                   Pack Business (Devis + Facture)
                 </span>
                 <div className="text-right">
-                  <span className="text-base font-black text-amber-800">1 499 FCFA</span>
-                  <span className="text-[10px] text-slate-400 line-through ml-1.5">2 000 F</span>
+                  <span className="text-base font-black text-amber-800">{formatPrice(pricing.businessPackPrice)}</span>
+                  <span className="text-[10px] text-slate-400 line-through ml-1.5">
+                    {formatPrice(pricing.devisPrice + pricing.facturePrice)}
+                  </span>
                 </div>
               </div>
               <h4 className="text-sm font-extrabold text-slate-900 mb-1">Devis Professionnel + Facture Client</h4>
@@ -447,7 +453,7 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
               </p>
             </div>
             <div className="text-xs font-black text-amber-700 flex items-center gap-1 mt-2">
-              <span>Sélectionner ce Pack (1 499 F)</span>
+              <span>Sélectionner ce Pack ({formatPrice(pricing.businessPackPrice)})</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
@@ -467,8 +473,12 @@ export const ServicesOverviewBanner: React.FC<ServicesOverviewBannerProps> = ({
                   Pass Illimité
                 </span>
                 <div className="text-right">
-                  <span className="text-base font-black text-amber-300">3 499 FCFA <span className="text-[10px] font-normal text-slate-300">/mois</span></span>
-                  <span className="text-[10px] text-amber-200/80 block">ou 39 999 F / an</span>
+                  <span className="text-base font-black text-amber-300">
+                    {formatPrice(pricing.unlimitedPassPrice)} <span className="text-[10px] font-normal text-slate-300">/mois</span>
+                  </span>
+                  <span className="text-[10px] text-amber-200/80 block">
+                    ou {formatPrice(pricing.unlimitedPassAnnualPrice || 39999)} / an
+                  </span>
                 </div>
               </div>
               <h4 className="text-sm font-extrabold text-white mb-1">Accès Illimité aux 4 Services</h4>

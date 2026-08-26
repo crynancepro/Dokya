@@ -7,7 +7,7 @@ import {
   Settings, Globe, FileText, Mail, Building2, 
   UserCheck, RotateCcw, Target, Send,
   Upload, Camera, X, MapPin, Phone, Linkedin, 
-  Wand2, Info, ArrowRight, Star
+  Wand2, Info, ArrowRight, ArrowLeft, Star
 } from 'lucide-react';
 
 interface StepFormProps {
@@ -18,6 +18,7 @@ interface StepFormProps {
   hideModeSelector?: boolean;
   forceMode?: GenerationMode;
   onPreview?: () => void;
+  onChangeTemplateRequest?: () => void;
 }
 
 const JOB_SUGGESTIONS = [
@@ -37,12 +38,16 @@ export const StepForm: React.FC<StepFormProps> = ({
   isLoading,
   hideModeSelector = false,
   forceMode,
-  onPreview
+  onPreview,
+  onChangeTemplateRequest
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [templateFilter, setTemplateFilter] = useState<'all' | 'no_photo' | 'photo'>('all');
   const activeMode: GenerationMode = forceMode || formData.generationMode || 'cv_only';
   const activeLetterType: CoverLetterType = formData.letterType || 'spontanee';
+
+  // Find active template metadata
+  const selectedTemplateMeta = ALL_CV_TEMPLATES.find(t => t.id === formData.templateStyle) || ALL_CV_TEMPLATES[0];
   const personalInfo = formData?.personalInfo || { 
     firstName: '', 
     lastName: '', 
@@ -715,6 +720,51 @@ export const StepForm: React.FC<StepFormProps> = ({
         /* ========================================================= */
         <div>
           
+          {/* ========================================================= */}
+          {/* SELECTED TEMPLATE BADGE & GALLERY RETURN BAR             */}
+          {/* ========================================================= */}
+          <div className="bg-slate-950 text-white px-4 sm:px-6 py-3 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-inner">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span 
+                  className="w-3 h-3 rounded-full shrink-0 ring-2 ring-white/30" 
+                  style={{ backgroundColor: selectedTemplateMeta?.accentColor || formData.themeColor || '#4f46e5' }}
+                />
+                <span className="text-xs font-bold text-slate-400">
+                  Modèle sélectionné :
+                </span>
+                <span className="text-xs font-black text-white px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 flex items-center gap-1.5 shadow-xs">
+                  <span>{selectedTemplateMeta?.label || formData.templateStyle}</span>
+                  <span className="text-[10px] text-indigo-400 font-bold hidden sm:inline">({selectedTemplateMeta?.category})</span>
+                </span>
+              </div>
+
+              {selectedTemplateMeta?.hasPhoto ? (
+                <span className="text-[10px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Camera className="w-3 h-3" />
+                  <span>Avec Photo</span>
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  <span>100% Parsing ATS</span>
+                </span>
+              )}
+            </div>
+
+            {onChangeTemplateRequest && (
+              <button
+                type="button"
+                onClick={onChangeTemplateRequest}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all cursor-pointer active:scale-95 shadow-sm shrink-0 self-end sm:self-auto"
+                title="Revenir à la galerie pour choisir un autre modèle"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>← Changer de modèle</span>
+              </button>
+            )}
+          </div>
+
           {/* ========================================================= */}
           {/* STEPPER BAR NAVIGATION & QUICK ACTIONS                     */}
           {/* ========================================================= */}

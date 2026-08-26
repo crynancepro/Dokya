@@ -2659,7 +2659,8 @@ app.post('/api/admin/pricing', requireAdmin, (req, res) => {
       unlimitedPassPrice,
       unlimitedPassMonthlyPrice,
       unlimitedPassAnnualPrice,
-      recruiterSearchPrice
+      recruiterSearchPrice,
+      ebookPrice
     } = req.body || {};
 
     if (cvOnlyPrice !== undefined && !isNaN(Number(cvOnlyPrice))) adminStore.pricing.cvOnlyPrice = Number(cvOnlyPrice);
@@ -2668,6 +2669,7 @@ app.post('/api/admin/pricing', requireAdmin, (req, res) => {
     if (devisPrice !== undefined && !isNaN(Number(devisPrice))) adminStore.pricing.devisPrice = Number(devisPrice);
     if (facturePrice !== undefined && !isNaN(Number(facturePrice))) adminStore.pricing.facturePrice = Number(facturePrice);
     if (businessPackPrice !== undefined && !isNaN(Number(businessPackPrice))) adminStore.pricing.businessPackPrice = Number(businessPackPrice);
+    if (ebookPrice !== undefined && !isNaN(Number(ebookPrice))) adminStore.pricing.ebookPrice = Number(ebookPrice);
     if (unlimitedPassPrice !== undefined && !isNaN(Number(unlimitedPassPrice))) adminStore.pricing.unlimitedPassPrice = Number(unlimitedPassPrice);
     if (unlimitedPassMonthlyPrice !== undefined && !isNaN(Number(unlimitedPassMonthlyPrice))) {
       adminStore.pricing.unlimitedPassMonthlyPrice = Number(unlimitedPassMonthlyPrice);
@@ -2841,27 +2843,30 @@ app.delete('/api/admin/promo-codes/:id', requireAdmin, (req, res) => {
     const { id } = req.params;
     const adminEmail = (req.headers['x-admin-email'] || req.query?.adminEmail || 'admin1@gmail.com') as string;
 
-    const index = adminStore.promoCodes.findIndex(p => p.id === id || p.code === id.toUpperCase());
-    if (index < 0) {
-      return res.status(404).json({ success: false, error: 'Code promo introuvable.' });
+    const index = adminStore.promoCodes.findIndex(p => p.id === id || p.code.toUpperCase() === id.toUpperCase());
+    if (index >= 0) {
+      const deleted = adminStore.promoCodes.splice(index, 1)[0];
+
+      recordAuditLog(
+        'promo',
+        'PROMO_CODE_DELETED',
+        adminEmail,
+        `Suppression du code promo ${deleted.code}`,
+        { deletedCode: deleted.code },
+        undefined,
+        undefined,
+        'warning'
+      );
+
+      return res.json({
+        success: true,
+        message: `Code promo ${deleted.code} supprimé avec succès.`
+      });
     }
-
-    const deleted = adminStore.promoCodes.splice(index, 1)[0];
-
-    recordAuditLog(
-      'promo',
-      'PROMO_CODE_DELETED',
-      adminEmail,
-      `Suppression du code promo ${deleted.code}`,
-      { deletedCode: deleted.code },
-      undefined,
-      undefined,
-      'warning'
-    );
 
     return res.json({
       success: true,
-      message: `Code promo ${deleted.code} supprimé avec succès.`
+      message: 'Code promo supprimé avec succès.'
     });
   } catch (err: any) {
     console.error('[Admin Delete Promo Error]:', err);

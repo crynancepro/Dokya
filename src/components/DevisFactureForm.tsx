@@ -18,6 +18,7 @@ interface DevisFactureFormProps {
   onPreviewToggle?: () => void;
   onPreview?: () => void;
   hideTypeSwitch?: boolean;
+  onChangeTemplateRequest?: () => void;
 }
 
 export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
@@ -26,7 +27,8 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
   onOpenWizard,
   onPreviewToggle,
   onPreview,
-  hideTypeSwitch = false
+  hideTypeSwitch = false,
+  onChangeTemplateRequest
 }) => {
   const isQuote = data.type === 'devis';
   const currency = data.currency || 'FCFA';
@@ -152,6 +154,54 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
     }
   };
 
+  // Quick fill sample data while strictly preserving templateStyle & themeColor
+  const handleFillSample = () => {
+    onChange({
+      ...data,
+      companyName: 'TERANGA TECH SOLUTIONS SARL',
+      companyAddress: 'Immeuble FAHD, 5ème étage, Boulevard Djily Mbaye, Dakar, Sénégal',
+      companyPhone: '+221 33 820 40 50',
+      companyEmail: 'contact@terangatech.sn',
+      companyNinea: 'NINEA : 006894321 2V2 - RCCM : SN-DKR-2022-B-1452',
+      clientName: 'WAVE DIGITAL FINANCE SENEGAL',
+      clientAddress: 'Route des Almadies, Zone 7, Dakar, Sénégal',
+      clientPhone: '+221 77 900 88 00',
+      clientEmail: 'procurement@wave.com',
+      clientNinea: 'NINEA : 008123456 2K1',
+      items: [
+        {
+          id: 'item-sample-1',
+          description: 'Développement API Passerelle de Paiement Mobile Money (Orange Money & Wave)',
+          quantity: 1,
+          unitPrice: 450000,
+          total: 450000
+        },
+        {
+          id: 'item-sample-2',
+          description: 'Intégration Dashboard d\'Administration & Sécurisation JWT',
+          quantity: 1,
+          unitPrice: 250000,
+          total: 250000
+        },
+        {
+          id: 'item-sample-3',
+          description: 'Recette technique, Déploiement Cloud & Formation des équipes (3 jours)',
+          quantity: 1,
+          unitPrice: 150000,
+          total: 150000
+        }
+      ],
+      paymentMethod: 'Virement Bancaire (UBA Sénégal) ou Wave Business',
+      paymentDetails: 'RIB : SN08 01001 02345678901 45 | Code Banque : SN08 | Guichet : 01001',
+      notes: isQuote 
+        ? 'Devis valable 30 jours à compter de la date d\'émission. Acompte de 40% exigible à la commande.'
+        : 'Facture payable sous 15 jours par virement ou Wave Business. Tout retard entraînera des pénalités légales.',
+      applyVat: false
+    });
+    setAiSuccessMsg("Exemple professionnel chargé ! (Style de modèle conservé)");
+    setTimeout(() => setAiSuccessMsg(null), 3000);
+  };
+
   // Auto Calculations
   const subtotalHT = (data.items || []).reduce((acc, item) => {
     return acc + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0));
@@ -207,8 +257,36 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4 text-slate-800 text-xs">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800 text-xs">
       
+      {/* Selected Template Badge Banner */}
+      <div className="bg-slate-950 text-white px-4 sm:px-6 py-3 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span 
+            className="w-3 h-3 rounded-full shrink-0 ring-2 ring-white/30"
+            style={{ backgroundColor: data.themeColor || '#4f46e5' }}
+          />
+          <span className="text-xs font-bold text-slate-400">Modèle sélectionné :</span>
+          <span className="text-xs font-black text-white px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700">
+            {data.templateStyle ? `Style ${data.templateStyle}` : 'Standard Commercial'}
+          </span>
+          <span className="text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded-full">
+            {isQuote ? 'Devis Pro OHADA' : 'Facture Conforme'}
+          </span>
+        </div>
+
+        {onChangeTemplateRequest && (
+          <button
+            type="button"
+            onClick={onChangeTemplateRequest}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all cursor-pointer active:scale-95 shadow-sm shrink-0 self-end sm:self-auto"
+          >
+            <span>← Changer de modèle</span>
+          </button>
+        )}
+      </div>
+
+      <div className="p-4 sm:p-5 space-y-4">
       {/* 1. COMPACT HEADER BAR: MODE SWITCHER, CURRENCY SELECTOR & QUICK CONVERT */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
         {/* Toggle Devis / Facture & Devise Selector */}
@@ -267,7 +345,17 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={handleFillSample}
+            className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+            title="Pré-remplir avec un exemple professionnel complet (garde le modèle choisi)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            <span>Exemple rapide</span>
+          </button>
+
           {handlePreviewClick && (
             <button
               type="button"
@@ -781,6 +869,7 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
           <Download className="w-3.5 h-3.5" />
           <span>Télécharger en PDF HD (1 000 F)</span>
         </button>
+      </div>
       </div>
 
     </div>

@@ -46,45 +46,50 @@ export const Header: React.FC<HeaderProps> = ({
   const getServiceBadge = () => {
     switch (currentView) {
       case 'cv':
+      case 'cv_gallery':
       case 'cv_preview':
         return {
-          title: currentView === 'cv_preview' ? "Aperçu : CV Pro ATS" : "Générateur de CV ATS",
+          title: currentView === 'cv_gallery' ? "Galerie : Choix du Modèle CV" : currentView === 'cv_preview' ? "Aperçu : CV Pro ATS" : "Générateur de CV ATS",
           price: "1 000 FCFA",
           icon: FileText,
           bg: "bg-indigo-50 border-indigo-200/80 text-indigo-900",
           iconColor: "text-indigo-600"
         };
       case 'letter':
+      case 'letter_gallery':
       case 'letter_preview':
         return {
-          title: currentView === 'letter_preview' ? "Aperçu : Lettre de Motivation" : "Lettre de Motivation",
+          title: currentView === 'letter_gallery' ? "Galerie : Choix du Modèle Lettre" : currentView === 'letter_preview' ? "Aperçu : Lettre de Motivation" : "Lettre de Motivation",
           price: "1 000 FCFA",
           icon: Mail,
           bg: "bg-blue-50 border-blue-200/80 text-blue-900",
           iconColor: "text-blue-600"
         };
       case 'devis':
+      case 'devis_gallery':
       case 'devis_preview':
         return {
-          title: currentView === 'devis_preview' ? "Aperçu : Devis Professionnel" : "Devis Professionnel",
+          title: currentView === 'devis_gallery' ? "Galerie : Modèle de Devis" : currentView === 'devis_preview' ? "Aperçu : Devis Professionnel" : "Devis Professionnel",
           price: "1 000 FCFA",
           icon: FileCheck,
           bg: "bg-amber-50 border-amber-300 text-amber-950",
           iconColor: "text-amber-600"
         };
       case 'facture':
+      case 'facture_gallery':
       case 'facture_preview':
         return {
-          title: currentView === 'facture_preview' ? "Aperçu : Facture Client" : "Facture Client",
+          title: currentView === 'facture_gallery' ? "Galerie : Modèle de Facture" : currentView === 'facture_preview' ? "Aperçu : Facture Client" : "Facture Client",
           price: "1 000 FCFA",
           icon: Receipt,
           bg: "bg-emerald-50 border-emerald-200/80 text-emerald-950",
           iconColor: "text-emerald-600"
         };
       case 'pack_business':
+      case 'pack_business_gallery':
       case 'pack_business_preview':
         return {
-          title: currentView === 'pack_business_preview' ? "Aperçu : Pack Business" : "Pack Business (Devis + Facture)",
+          title: currentView === 'pack_business_gallery' ? "Galerie : Modèles Pack Business" : currentView === 'pack_business_preview' ? "Aperçu : Pack Business" : "Pack Business (Devis + Facture)",
           price: "1 499 FCFA",
           icon: Package,
           bg: "bg-amber-50 border-amber-300 text-amber-950",

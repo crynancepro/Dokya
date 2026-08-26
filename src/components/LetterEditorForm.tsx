@@ -13,6 +13,7 @@ interface LetterEditorFormProps {
   isLoading: boolean;
   onOpenWizard?: () => void;
   onPreview?: () => void;
+  onChangeTemplateRequest?: () => void;
 }
 
 const LETTER_TYPES = [
@@ -71,7 +72,8 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
   onGenerate,
   isLoading,
   onOpenWizard,
-  onPreview
+  onPreview,
+  onChangeTemplateRequest
 }) => {
   const personalInfo = formData?.personalInfo || {
     firstName: '',
@@ -119,8 +121,33 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-6 text-slate-800 text-xs">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800 text-xs">
       
+      {/* Selected Template Badge Banner */}
+      <div className="bg-slate-950 text-white px-4 sm:px-6 py-3 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className="w-3 h-3 rounded-full bg-blue-500 shrink-0 ring-2 ring-white/30" />
+          <span className="text-xs font-bold text-slate-400">Modèle sélectionné :</span>
+          <span className="text-xs font-black text-white px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700">
+            {formData.letterType ? `Format ${formData.letterType.toUpperCase()}` : 'Moderne & Épurée'}
+          </span>
+          <span className="text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded-full">
+            Standard UEMOA & International
+          </span>
+        </div>
+
+        {onChangeTemplateRequest && (
+          <button
+            type="button"
+            onClick={onChangeTemplateRequest}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black transition-all cursor-pointer active:scale-95 shadow-sm shrink-0 self-end sm:self-auto"
+          >
+            <span>← Changer de modèle</span>
+          </button>
+        )}
+      </div>
+
+      <div className="p-5 sm:p-6 space-y-6">
       {/* Header & Quick Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
         <div>
@@ -406,6 +433,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
             <span>Télécharger (1 000 F)</span>
           </button>
         )}
+      </div>
       </div>
 
     </div>

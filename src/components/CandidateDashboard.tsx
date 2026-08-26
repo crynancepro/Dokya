@@ -19,9 +19,11 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { RechargeWalletModal } from './RechargeWalletModal';
 import { PaymentModal } from './PaymentModal';
 import { downloadElementAsPDF } from '../lib/pdfUtils';
-import { exportCVToDocx, exportLetterToDocx } from '../lib/exportUtils';
+import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from '../lib/exportUtils';
 import { CVTemplate } from './CVTemplate';
 import { CoverLetterTemplate } from './CoverLetterTemplate';
+import { DevisFactureTemplate } from './DevisFactureTemplate';
+import { EbookTemplate } from './EbookTemplate';
 import { isAdminEmail } from '../lib/adminAuth';
 
 interface CandidateDashboardProps {
@@ -479,10 +481,20 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     if (!previewDoc) return;
     setIsExportingPDF(true);
     try {
-      const elementId = previewTab === 'cv' ? 'modal-cv-preview' : 'modal-letter-preview';
-      const fullName = `${previewDoc?.formData?.personalInfo?.firstName || ''}_${previewDoc?.formData?.personalInfo?.lastName || ''}`.trim() || 'Document';
-      const fileName = `${previewTab === 'cv' ? 'CV' : 'Lettre'}_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
-      await downloadElementAsPDF(elementId, fileName);
+      if (previewDoc.generationMode === 'devis' || previewDoc.generationMode === 'facture' || previewDoc.generationMode === 'pack_business') {
+        const elementId = 'modal-business-preview';
+        const docNum = previewDoc.businessDocData?.docNumber || 'Document_Pro';
+        await downloadElementAsPDF(elementId, `${docNum}.pdf`);
+      } else if (previewDoc.generationMode === 'ebook') {
+        const elementId = 'modal-ebook-preview';
+        const title = previewDoc.ebookData?.title || 'Ebook_Pro';
+        await downloadElementAsPDF(elementId, `${title.replace(/[\s\/\\]+/g, '_')}.pdf`);
+      } else {
+        const elementId = previewTab === 'cv' ? 'modal-cv-preview' : 'modal-letter-preview';
+        const fullName = `${previewDoc?.formData?.personalInfo?.firstName || ''}_${previewDoc?.formData?.personalInfo?.lastName || ''}`.trim() || 'Document';
+        const fileName = `${previewTab === 'cv' ? 'CV' : 'Lettre'}_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
+        await downloadElementAsPDF(elementId, fileName);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -495,10 +507,40 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     if (!previewDoc) return;
     setIsExportingDocx(true);
     try {
-      if (previewTab === 'cv') {
-        await exportCVToDocx(previewDoc.formData, previewDoc.aiData);
+      if (previewDoc.generationMode === 'devis' || previewDoc.generationMode === 'facture' || previewDoc.generationMode === 'pack_business') {
+        if (previewDoc.businessDocData) {
+          await exportBusinessDocToDocx(previewDoc.businessDocData);
+        }
+      } else if (previewDoc.generationMode === 'ebook' && previewDoc.ebookData) {
+        await exportEbookToDocx(previewDoc.ebookData);
       } else {
-        await exportLetterToDocx(previewDoc.formData, previewDoc.aiData);
+        if (previewTab === 'cv') {
+          await exportCVToDocx(previewDoc.formData, previewDoc.aiData);
+        } else {
+          await exportLetterToDocx(previewDoc.formData, previewDoc.aiData);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsExportingDocx(false);
+    }
+  };
+
+  // Direct Download DOCX from document card
+  const handleDirectCardDocx = async (docItem: SavedUserDocument) => {
+    setIsExportingDocx(true);
+    try {
+      if (docItem.generationMode === 'letter_only') {
+        await exportLetterToDocx(docItem.formData, docItem.aiData);
+      } else if (docItem.generationMode === 'devis' || docItem.generationMode === 'facture' || docItem.generationMode === 'pack_business') {
+        if (docItem.businessDocData) {
+          await exportBusinessDocToDocx(docItem.businessDocData);
+        }
+      } else if (docItem.generationMode === 'ebook' && docItem.ebookData) {
+        await exportEbookToDocx(docItem.ebookData);
+      } else {
+        await exportCVToDocx(docItem.formData, docItem.aiData);
       }
     } catch (e) {
       console.error(e);
@@ -1138,10 +1180,22 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 {documents.map((docItem) => (
                   <div key={docItem.id} className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-5 space-y-4 hover:border-indigo-500/50 transition-all shadow-lg flex flex-col justify-between">
                     <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="px-3 py-1 rounded-full bg-indigo-950 text-indigo-300 font-extrabold text-[10px] uppercase tracking-wider border border-indigo-800/50">
-                          {docItem.generationMode === 'full_pack' ? 'Pack Complet CV + Lettre' : docItem.generationMode === 'letter_only' ? 'Lettre de Motivation' : 'CV Pro ATS'}
-                        </span>
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-3 py-1 rounded-full bg-indigo-950 text-indigo-300 font-extrabold text-[10px] uppercase tracking-wider border border-indigo-800/50">
+                            {docItem.generationMode === 'full_pack' ? 'Pack Complet CV + Lettre' : docItem.generationMode === 'letter_only' ? 'Lettre de Motivation' : docItem.generationMode === 'devis' ? 'Devis Pro' : docItem.generationMode === 'facture' ? 'Facture Client' : docItem.generationMode === 'pack_business' ? 'Pack Business' : docItem.generationMode === 'ebook' ? 'Livre Numérique' : 'CV Pro ATS'}
+                          </span>
+                          {docItem.isPaid ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              Payé & Débloqué
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              Non payé
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] text-slate-400 font-medium">
                           {new Date(docItem.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </span>
@@ -1153,37 +1207,70 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
                       <p className="text-xs text-slate-400 flex items-center gap-2">
                         <Briefcase className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                        <span>Poste : {docItem.formData?.personalInfo?.targetJob || 'Non spécifié'}</span>
+                        <span>Poste / Titre : {docItem.formData?.personalInfo?.targetJob || docItem.businessDocData?.issuer?.companyName || docItem.ebookData?.title || 'Non spécifié'}</span>
                       </p>
                     </div>
 
                     <div className="pt-3 border-t border-slate-700/60 flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <button
-                          onClick={() => {
-                            setPreviewDoc(docItem);
-                            setPreviewTab('cv');
-                          }}
-                          type="button"
-                          className="px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-indigo-300" />
-                          <span>Aperçu</span>
-                        </button>
+                        {docItem.isPaid ? (
+                          <>
+                            {/* Direct PDF download from card */}
+                            <button
+                              onClick={() => {
+                                setPreviewDoc(docItem);
+                                setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
+                                setTimeout(handleModalDownloadPDF, 150);
+                              }}
+                              type="button"
+                              className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                              title="Télécharger directement en PDF"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </button>
 
-                        <button
-                          onClick={() => setDownloadPaymentDoc(docItem)}
-                          type="button"
-                          className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Télécharger (1 000 FCFA)</span>
-                        </button>
+                            {/* Direct Word download from card */}
+                            <button
+                              onClick={() => handleDirectCardDocx(docItem)}
+                              type="button"
+                              className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                              title="Télécharger directement en Word (.docx)"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Word (.docx)</span>
+                            </button>
+
+                            {/* Preview */}
+                            <button
+                              onClick={() => {
+                                setPreviewDoc(docItem);
+                                setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
+                              }}
+                              type="button"
+                              className="px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                              title="Voir l'aperçu du document"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-indigo-300" />
+                              <span>Aperçu</span>
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => setDownloadPaymentDoc(docItem)}
+                            type="button"
+                            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Débloquer (1 000 FCFA)</span>
+                          </button>
+                        )}
 
                         <button
                           onClick={() => onLoadDocumentToEditor(docItem.formData, docItem.aiData)}
                           type="button"
                           className="px-3 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 border border-indigo-500/30 cursor-pointer"
+                          title="Modifier dans l'éditeur (créera un nouveau document)"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                           <span>Modifier</span>
@@ -1383,9 +1470,17 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             {/* Modal Body Preview */}
             <div className="p-4 overflow-y-auto flex-1 bg-slate-950 flex justify-center">
               <div className="bg-white text-slate-900 rounded-xl shadow-2xl p-4 sm:p-8 w-full max-w-3xl overflow-x-auto">
-                {previewTab === 'cv' ? (
+                {previewDoc.generationMode === 'devis' || previewDoc.generationMode === 'facture' || previewDoc.generationMode === 'pack_business' ? (
+                  <div id="modal-business-preview" className="w-full">
+                    <DevisFactureTemplate data={previewDoc.businessDocData || (previewDoc.formData as any)} />
+                  </div>
+                ) : previewDoc.generationMode === 'ebook' && previewDoc.ebookData ? (
+                  <div id="modal-ebook-preview" className="w-full">
+                    <EbookTemplate data={previewDoc.ebookData} unlocked={true} />
+                  </div>
+                ) : previewTab === 'cv' ? (
                   <div id="modal-cv-preview">
-                    <CVTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} />
+                    <CVTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} unlocked={true} />
                   </div>
                 ) : (
                   <div id="modal-letter-preview">

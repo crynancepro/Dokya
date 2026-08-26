@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, Check, Sparkles, FileText, FileCode, Wallet, 
   ArrowRight, ArrowLeft, ShieldCheck, CheckCircle2, Download, 
-  Loader2, AlertCircle, RefreshCw, Zap, Smartphone
+  Loader2, AlertCircle, RefreshCw, Zap, Smartphone, Tag, Percent, Gift
 } from 'lucide-react';
-import { CVFormData, AIOptimizedData, TransactionRecord } from '../types';
+import { CVFormData, AIOptimizedData, TransactionRecord, PromoCode } from '../types';
 import { ReceiptDropzone } from './ReceiptDropzone';
 import { saveGeneratedDocumentMetadata, auth } from '../lib/firebase';
 import { safeParseJsonResponse } from '../utils/apiHelpers';
-
+import { usePricing } from '../contexts/PricingContext';
 
 interface DocumentCheckoutWizardModalProps {
   isOpen: boolean;
@@ -17,7 +17,7 @@ interface DocumentCheckoutWizardModalProps {
   documentTypeLabel: string; // e.g. "CV Pro ATS", "Lettre de Motivation", "Pack CV + Lettre"
   formData: CVFormData;
   aiData?: AIOptimizedData | null;
-  price?: number; // Default 1000 FCFA
+  price?: number; // Optional override
   userBalance: number;
   userId?: string;
   onDownloadPDF?: () => Promise<void> | void;
@@ -33,7 +33,7 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
   documentTypeLabel,
   formData,
   aiData,
-  price = 1000,
+  price,
   userBalance = 0,
   userId,
   onDownloadPDF,
@@ -41,6 +41,36 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
   onSuccessTransaction,
   onOpenRechargeModal
 }) => {
+  const { pricing, promoCodes, validatePromoCode, formatPrice } = usePricing();
+
+  // Determine initial real-time price based on document type
+  const getInitialRealtimePrice = () => {
+    if (price && price > 0) return price;
+    const labelLower = (documentTypeLabel || '').toLowerCase();
+    if (labelLower.includes('full') || labelLower.includes('pack duo') || labelLower.includes('pack emploi') || labelLower.includes('cv + lettre')) {
+      return pricing.fullPackPrice;
+    }
+    if (labelLower.includes('business') || labelLower.includes('devis + facture')) {
+      return pricing.businessPackPrice;
+    }
+    if (labelLower.includes('lettre')) {
+      return pricing.letterOnlyPrice;
+    }
+    if (labelLower.includes('devis')) {
+      return pricing.devisPrice;
+    }
+    if (labelLower.includes('facture')) {
+      return pricing.facturePrice;
+    }
+    if (labelLower.includes('ebook') || labelLower.includes('livre')) {
+      return pricing.ebookPrice ?? 1500;
+    }
+    if (labelLower.includes('pass') || labelLower.includes('illimit')) {
+      return pricing.unlimitedPassPrice;
+    }
+    return pricing.cvOnlyPrice;
+  };
+
   // Funnel steps: 1 = Aperçu & Création, 2 = Sélection Format, 3 = Paiement, 4 = Confirmation / Téléchargement
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
 
@@ -49,9 +79,16 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
   const [selectDocx, setSelectDocx] = useState<boolean>(false);
 
   // Dynamic / Manual amount state
-  const [effectiveAmount, setEffectiveAmount] = useState<number>(price || 1000);
-  const [manualAmountInput, setManualAmountInput] = useState<string>(String(price || 1000));
+  const initialPrice = getInitialRealtimePrice();
+  const [effectiveAmount, setEffectiveAmount] = useState<number>(initialPrice);
+  const [manualAmountInput, setManualAmountInput] = useState<string>(String(initialPrice));
   const [isManualEdit, setIsManualEdit] = useState<boolean>(false);
+
+  // Promo code states
+  const [promoInput, setPromoInput] = useState<string>('');
+  const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
 
   // Processing payment state (Step 3)
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -60,27 +97,85 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
   // Post-payment completed status (Step 4)
   const [completedTx, setCompletedTx] = useState<TransactionRecord | null>(null);
 
-  // Update amount when price prop changes
-  React.useEffect(() => {
-    const p = price || 1000;
-    setEffectiveAmount(p);
-    setManualAmountInput(String(p));
-  }, [price]);
+  // Update amount when pricing context or price prop changes
+  useEffect(() => {
+    const p = price && price > 0 ? price : getInitialRealtimePrice();
+    if (!isManualEdit) {
+      setEffectiveAmount(p);
+      setManualAmountInput(String(p));
+    }
+  }, [price, pricing, documentTypeLabel]);
 
   if (!isOpen) return null;
 
   const candidateName = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat';
   const targetJob = formData?.personalInfo?.targetJob || 'Poste Visé';
   const hasSelectedAtLeastOneFormat = selectPdf || selectDocx;
-  const currentPrice = Math.max(100, effectiveAmount || price || 1000);
+
+  // Base raw price before promo code
+  const rawBasePrice = Math.max(0, effectiveAmount);
+
+  // Calculate discount from promo code
+  let discountAmount = 0;
+  if (appliedPromo) {
+    if (appliedPromo.discountType === 'percentage') {
+      discountAmount = Math.round((rawBasePrice * appliedPromo.discountValue) / 100);
+    } else {
+      discountAmount = Math.min(rawBasePrice, appliedPromo.discountValue);
+    }
+  }
+  const currentPrice = Math.max(0, rawBasePrice - discountAmount);
+
   const safeUserBalance = Number(userBalance) || 0;
   const hasEnoughBalance = safeUserBalance >= currentPrice;
+
+  // Handle promo code application
+  const handleApplyPromoCode = async () => {
+    setPromoError(null);
+    setPromoSuccess(null);
+    const code = promoInput.trim().toUpperCase();
+    if (!code) {
+      setPromoError('Veuillez renseigner un code promo.');
+      return;
+    }
+    try {
+      const result = await validatePromoCode(code, rawBasePrice);
+      if (!result.valid) {
+        setPromoError(result.message || 'Code promotionnel invalide.');
+        setAppliedPromo(null);
+      } else {
+        setAppliedPromo(result.promo || {
+          id: `PRM-${code}`,
+          code,
+          discountType: result.discountType,
+          discountValue: result.discountValue,
+          minOrderAmount: 0,
+          maxUsageLimit: 100,
+          currentUsageCount: 0,
+          active: true,
+          description: result.description || `Réduction de ${result.discountLabel}`,
+          createdAt: new Date().toISOString()
+        });
+        setPromoSuccess(`Code ${code} appliqué avec succès ! Réduction de ${result.discountAmount.toLocaleString('fr-FR')} FCFA`);
+      }
+    } catch (err: any) {
+      setPromoError(err?.message || 'Code promo invalide.');
+      setAppliedPromo(null);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoInput('');
+    setPromoSuccess(null);
+    setPromoError(null);
+  };
 
   // Handle manual amount change
   const handleManualAmountChange = (val: string) => {
     setManualAmountInput(val);
     const parsed = parseInt(val, 10);
-    if (!isNaN(parsed) && parsed > 0) {
+    if (!isNaN(parsed) && parsed >= 0) {
       setEffectiveAmount(parsed);
     }
   };
@@ -501,9 +596,93 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
                   </p>
                 </div>
                 <div className="text-left sm:text-right">
-                  <span className="text-[10px] text-slate-400">Montant à régler</span>
-                  <p className="text-2xl font-black text-emerald-400">{(currentPrice || 0).toLocaleString('fr-FR')} <span className="text-xs font-bold text-white">FCFA</span></p>
+                  <span className="text-[10px] text-slate-400">Montant net à régler</span>
+                  <div className="flex items-baseline gap-2 sm:justify-end">
+                    {appliedPromo && (
+                      <span className="text-sm text-slate-400 line-through font-bold">
+                        {rawBasePrice.toLocaleString('fr-FR')} F
+                      </span>
+                    )}
+                    <p className="text-2xl font-black text-emerald-400">
+                      {(currentPrice || 0).toLocaleString('fr-FR')} <span className="text-xs font-bold text-white">FCFA</span>
+                    </p>
+                  </div>
                 </div>
+              </div>
+
+              {/* PROMO CODE BOX */}
+              <div className="bg-gradient-to-br from-indigo-50/70 to-slate-50 border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Avez-vous un Code Promo ou une Réduction ?</span>
+                  </span>
+                  {appliedPromo && (
+                    <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Code actif
+                    </span>
+                  )}
+                </div>
+
+                {!appliedPromo ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={promoInput}
+                      onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleApplyPromoCode();
+                        }
+                      }}
+                      placeholder="Ex: BIENVENUE20, TERANGA10"
+                      className="flex-1 px-3 py-2 bg-white border-2 border-slate-200 focus:border-indigo-600 rounded-xl text-xs font-black text-slate-900 uppercase placeholder:normal-case placeholder:text-slate-400 outline-none transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyPromoCode}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                    >
+                      Appliquer
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold">
+                        <Percent className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <span className="font-black text-emerald-950 uppercase">{appliedPromo.code}</span>
+                        <p className="text-[10px] text-emerald-700 font-bold">
+                          Réduction : -{discountAmount.toLocaleString('fr-FR')} FCFA ({appliedPromo.discountValue}{appliedPromo.discountType === 'percentage' ? '%' : ' F'})
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemovePromo}
+                      className="px-2.5 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                )}
+
+                {promoError && (
+                  <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    <span>{promoError}</span>
+                  </p>
+                )}
+                {promoSuccess && !promoError && (
+                  <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                    <Check className="w-3 h-3 shrink-0" />
+                    <span>{promoSuccess}</span>
+                  </p>
+                )}
               </div>
 
               {/* SÉLECTEUR DE FORFAIT / PACK OU MONTANT MANUEL */}
@@ -518,17 +697,20 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
                   </span>
                 </div>
 
-                {/* Grille des tarifs pré-définis réactualisés */}
+                {/* Grille des tarifs pré-définis réactualisés dynamiquement */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
-                    { label: 'Document Unitaire (CV / Lettre / Devis / Facture)', amount: 1000, badge: 'Unitaire' },
-                    { label: 'Pack Emploi (CV + Lettre)', amount: 1399, badge: 'Pack Emploi' },
-                    { label: 'Pack Business (Devis + Facture)', amount: 1499, badge: 'Pack Business' },
-                    { label: 'Pass Illimité Mois', amount: 3499, badge: 'Pass 1 Mois' },
-                    { label: 'Pass Illimité Annuel', amount: 39999, badge: 'Pass 1 An' },
+                    { label: 'CV ATS Seul', amount: pricing.cvOnlyPrice, badge: 'CV Pro' },
+                    { label: 'Lettre Seule', amount: pricing.letterOnlyPrice, badge: 'Lettre' },
+                    { label: 'Pack Emploi (CV + Lettre)', amount: pricing.fullPackPrice, badge: 'Pack Duo' },
+                    { label: 'Devis Pro', amount: pricing.devisPrice, badge: 'Devis' },
+                    { label: 'Facture Client', amount: pricing.facturePrice, badge: 'Facture' },
+                    { label: 'Pack Business (Devis + Facture)', amount: pricing.businessPackPrice, badge: 'Business' },
+                    { label: 'Ebook & Livre Numérique', amount: pricing.ebookPrice ?? 1500, badge: 'Ebook' },
+                    { label: 'Pass Illimité Mois', amount: pricing.unlimitedPassPrice, badge: 'Pass 1 Mois' },
                   ].map((preset) => (
                     <button
-                      key={preset.amount}
+                      key={`${preset.badge}-${preset.amount}`}
                       type="button"
                       onClick={() => handleSelectPreset(preset.amount)}
                       className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
@@ -558,8 +740,7 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
                   <div className="relative flex items-center">
                     <input
                       type="number"
-                      min="100"
-                      step="100"
+                      step="any"
                       value={manualAmountInput}
                       onChange={(e) => {
                         setIsManualEdit(true);

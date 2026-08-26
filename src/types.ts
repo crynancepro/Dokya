@@ -406,6 +406,8 @@ export interface SavedUserDocument {
   isPaid: boolean;
   formData: CVFormData;
   aiData: AIOptimizedData | null;
+  businessDocData?: BusinessDocData;
+  ebookData?: EbookData;
   selectedFormat?: string;
 }
 

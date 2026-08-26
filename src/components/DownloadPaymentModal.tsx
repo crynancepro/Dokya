@@ -6,6 +6,7 @@ import {
 import { ReceiptDropzone } from './ReceiptDropzone';
 import { TransactionRecord } from '../types';
 import { safeParseJsonResponse } from '../utils/apiHelpers';
+import { usePricing } from '../contexts/PricingContext';
 
 interface DownloadPaymentModalProps {
   isOpen: boolean;
@@ -24,18 +25,31 @@ export const DownloadPaymentModal: React.FC<DownloadPaymentModalProps> = ({
   onClose,
   documentTitle,
   documentTypeLabel = "Document Premium Dokya",
-  price = 1000,
+  price,
   userBalance = 0,
   isAlreadyPaid = false,
   onConfirmDownload,
   onOpenRechargeModal
 }) => {
+  const { pricing } = usePricing();
   const [isProcessingDebit, setIsProcessingDebit] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const safePrice = Number(price) || 1000;
+  const getDynamicPrice = () => {
+    if (price && price > 0) return price;
+    const labelLower = (documentTypeLabel || '').toLowerCase();
+    if (labelLower.includes('full') || labelLower.includes('pack duo') || labelLower.includes('pack emploi')) return pricing.fullPackPrice;
+    if (labelLower.includes('business')) return pricing.businessPackPrice;
+    if (labelLower.includes('lettre')) return pricing.letterOnlyPrice;
+    if (labelLower.includes('devis')) return pricing.devisPrice;
+    if (labelLower.includes('facture')) return pricing.facturePrice;
+    if (labelLower.includes('ebook') || labelLower.includes('livre')) return pricing.ebookPrice ?? 1500;
+    return pricing.cvOnlyPrice;
+  };
+
+  const safePrice = getDynamicPrice();
   const safeBalance = Number(userBalance) || 0;
   const hasEnoughBalance = safeBalance >= safePrice;
 

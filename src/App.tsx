@@ -5,125 +5,173 @@ import { SAMPLE_EBOOK_DATA } from './data/sampleEbookData';
 import { Header } from './components/Header';
 import { StepForm } from './components/StepForm';
 import { LetterEditorForm } from './components/LetterEditorForm';
-import { CVTemplate } from './components/CVTemplate';
-import { CoverLetterTemplate } from './components/CoverLetterTemplate';
 import { CandidateDashboard } from './components/CandidateDashboard';
 import { PaymentModal } from './components/PaymentModal';
 import { RechargeWalletModal } from './components/RechargeWalletModal';
 import { DevisFactureForm } from './components/DevisFactureForm';
-import { DevisFactureTemplate } from './components/DevisFactureTemplate';
 import { EbookWizardForm } from './components/EbookWizardForm';
-import { EbookTemplate } from './components/EbookTemplate';
 import { DocumentDedicatedPreview } from './components/DocumentDedicatedPreview';
 import { ServicesOverviewBanner } from './components/ServicesOverviewBanner';
+import { CVTemplateGallery } from './components/CVTemplateGallery';
+import { BusinessDocTemplateGallery } from './components/BusinessDocTemplateGallery';
+import { LetterTemplateGallery } from './components/LetterTemplateGallery';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
-import { fetchWithRetry, safeParseJsonResponse } from './utils/apiHelpers';
 import { auth, saveUserDocument, saveTransactionRecord } from './lib/firebase';
 import { generateCVWithGemini } from './lib/geminiService';
 
 import { 
-  FileText, Sparkles, Download, CheckCircle2, 
-  MessageSquare, Loader2, User, ArrowRight, ArrowLeft,
-  Receipt, FileCheck, Package, Check, Zap, Eye, Mail, BookOpen
+  CheckCircle2, User, ArrowRight,
+  FileCheck, Receipt, Eye, FolderHeart, Sparkles, PlusCircle, X, ShieldCheck
 } from 'lucide-react';
 
-const INITIAL_BUSINESS_DOC: BusinessDocData = {
-  type: 'devis',
-  docNumber: `DEV-${new Date().getFullYear()}-001`,
+export const createEmptyCVFormData = (): CVFormData => ({
+  generationMode: 'cv_only',
+  personalInfo: {
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: 'Dakar',
+    country: 'Sénégal',
+    targetJob: ''
+  },
+  experiences: [],
+  education: [],
+  skills: [{ category: 'Compétences Principales', skills: [] }],
+  languages: [{ name: 'Français', level: 'Bilingue / Maternelle' }],
+  templateStyle: 'moderne',
+  themeColor: '#4f46e5'
+});
+
+export const createEmptyBusinessDocData = (type: 'devis' | 'facture' = 'devis'): BusinessDocData => ({
+  type,
+  docNumber: `${type === 'devis' ? 'DEV' : 'FAC'}-${new Date().getFullYear()}-001`,
   issueDate: new Date().toISOString().split('T')[0],
   dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   validityDays: 30,
   issuer: {
-    name: 'Mamadou Ndiaye',
-    companyName: 'Teranga Digital Agency',
-    ninea: '008945231 2V3',
-    rc: 'SN.DKR.2023.B.1450',
-    phone: '+221 77 123 45 67',
-    email: 'contact@terangadigital.sn',
-    address: 'Point E, Boulevard de l\'Est',
+    name: '',
+    companyName: '',
+    ninea: '',
+    rc: '',
+    phone: '',
+    email: '',
+    address: '',
     city: 'Dakar',
     country: 'Sénégal'
   },
   client: {
-    name: 'Moussa Diagne',
-    companyName: 'Sahel Distribution SARL',
-    phone: '+221 78 987 65 43',
-    email: 'moussa.diagne@sahel-distrib.sn',
-    address: 'Almadies Zone 4, Lot 12',
+    name: '',
+    companyName: '',
+    phone: '',
+    email: '',
+    address: '',
     city: 'Dakar',
     country: 'Sénégal'
   },
   items: [
-    { id: '1', description: 'Conception et développement d\'un site web vitrine responsive (Next.js & Tailwind CSS)', quantity: 1, unitPrice: 350000, total: 350000 },
-    { id: '2', description: 'Intégration du module de paiement Mobile Money (Wave & Orange Money)', quantity: 1, unitPrice: 150000, total: 150000 },
-    { id: '3', description: 'Configuration hébergement Cloud sécurisé et adresses emails pros (1 an)', quantity: 1, unitPrice: 80000, total: 80000 }
+    { id: '1', description: '', quantity: 1, unitPrice: 0, total: 0 }
   ],
   applyVat: true,
   vatRate: 18,
   discountPercent: 0,
   paymentInfo: {
-    waveNumber: '+221 77 123 45 67',
-    orangeMoneyNumber: '+221 77 123 45 67',
-    bankName: 'CBAO Groupe Attijariwafa Bank Sénégal',
-    ibanOrRib: 'SN08 SN01 2012 3456 7890 1234 56'
+    waveNumber: '',
+    orangeMoneyNumber: '',
+    bankName: '',
+    ibanOrRib: ''
   },
-  notes: 'Validité du devis : 30 jours à compter de la date d\'émission.\nAcompte de 50% à la commande, solde à la livraison.',
   currency: 'FCFA'
-};
+});
+
+export const createEmptyEbookData = (): EbookData => ({
+  id: `EBOOK-${Date.now()}`,
+  title: '',
+  subtitle: '',
+  author: '',
+  language: 'Français',
+  genre: 'Développement Personnel & Professionnel',
+  targetAudience: 'Tous publics',
+  tone: 'Inspirant & Pratique',
+  summaryOrPrompt: '',
+  chapterCount: 5,
+  targetPageCount: 10,
+  pageFormat: '6x9',
+  fontFamily: 'sans',
+  fontSize: 'normal',
+  frontCover: {
+    selectedIndex: 0,
+    proposals: [],
+    customPrompt: '',
+    customImageUrl: '',
+    mode: 'proposal'
+  },
+  backCover: {
+    selectedIndex: 0,
+    proposals: [],
+    customPrompt: '',
+    customImageUrl: '',
+    mode: 'proposal'
+  },
+  tableOfContents: [],
+  chapters: [],
+  currentStep: 1,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+});
 
 interface AppProps {
   onOpenAdmin?: () => void;
 }
 
 export default function App({ onOpenAdmin }: AppProps = {}) {
-  const [formData, setFormData] = useState<CVFormData>(() => {
-    const saved = localStorage.getItem('cv_form_data');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
-    }
-    return SAMPLE_CV_DATA;
-  });
+  // CLEAN FORM STATE - NO LOCALSTORAGE PERSISTENCE FOR INPUT FIELDS
+  const [formData, setFormData] = useState<CVFormData>(createEmptyCVFormData);
+  const [businessDocData, setBusinessDocData] = useState<BusinessDocData>(() => createEmptyBusinessDocData('devis'));
+  const [ebookData, setEbookData] = useState<EbookData>(createEmptyEbookData);
+  const [aiData, setAiData] = useState<AIOptimizedData | null>(null);
 
-  const [businessDocData, setBusinessDocData] = useState<BusinessDocData>(() => {
-    const saved = localStorage.getItem('business_doc_data');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
-    }
-    return INITIAL_BUSINESS_DOC;
-  });
+  // Pay-per-document state strictly attached to the current document being crafted
+  const [isCurrentDocPaid, setIsCurrentDocPaid] = useState<boolean>(false);
+  const [currentDocId, setCurrentDocId] = useState<string>(() => `DOC-${Date.now()}`);
 
-  const [ebookData, setEbookData] = useState<EbookData>(() => {
-    const saved = localStorage.getItem('ebook_data');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
-    }
-    return SAMPLE_EBOOK_DATA;
-  });
-
-  const [aiData, setAiData] = useState<AIOptimizedData | null>(() => {
-    const saved = localStorage.getItem('cv_ai_data');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
-    }
-    return null;
-  });
+  // Post-download modal state
+  const [isPostDownloadModalOpen, setIsPostDownloadModalOpen] = useState<boolean>(false);
+  const [downloadedDocTitle, setDownloadedDocTitle] = useState<string>('');
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Main Active View: 'services' (Home), dedicated form views, or dedicated preview views
+  // Clean any old stale form cache from browser on first mount
+  useEffect(() => {
+    try {
+      localStorage.removeItem('cv_form_data');
+      localStorage.removeItem('business_doc_data');
+      localStorage.removeItem('ebook_data');
+      localStorage.removeItem('cv_ai_data');
+      localStorage.removeItem('senegal_cv_paid_docs');
+    } catch (_e) {}
+  }, []);
+
+  // Main Active View: 'services' (Home), dedicated gallery views, form views, or preview views
   const [activeTab, setActiveTab] = useState<
     | 'services'
+    | 'cv_gallery'
     | 'cv'
     | 'cv_preview'
+    | 'letter_gallery'
     | 'letter'
     | 'letter_preview'
+    | 'devis_gallery'
     | 'devis'
     | 'devis_preview'
+    | 'facture_gallery'
     | 'facture'
     | 'facture_preview'
+    | 'pack_business_gallery'
     | 'pack_business'
     | 'pack_business_preview'
     | 'ebook'
@@ -150,21 +198,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     return 3000;
   });
 
-  // Track Unlocked / Paid Documents
-  const [paidDocTypes, setPaidDocTypes] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem('senegal_cv_paid_docs');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
-    }
-    return {};
-  });
-
-  // Save paid docs changes
-  useEffect(() => {
-    localStorage.setItem('senegal_cv_paid_docs', JSON.stringify(paidDocTypes));
-  }, [paidDocTypes]);
-
-  // Handle return from SenePay Hosted Checkout return URL (supports search & hash format)
+  // Handle return from SenePay Hosted Checkout return URL
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -174,7 +208,6 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       let reference = searchParams.get('reference') || searchParams.get('orderReference');
       let amountParam = Number(searchParams.get('amount') || 0);
 
-      // Check hash params (e.g., /#editor?status=success&reference=DOKYA-...)
       if (!status && window.location.hash.includes('?')) {
         const hashQuery = window.location.hash.substring(window.location.hash.indexOf('?') + 1);
         const hashParams = new URLSearchParams(hashQuery);
@@ -184,15 +217,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       }
 
       if (status === 'success' || (reference && status !== 'cancel')) {
-        // Unlock all document types or specific document
-        setPaidDocTypes(prev => ({
-          ...prev,
-          cv: true,
-          letter: true,
-          devis: true,
-          facture: true,
-          pack_business: true
-        }));
+        setIsCurrentDocPaid(true);
 
         if (reference?.startsWith('RECHARGE-') && amountParam > 0) {
           setUserBalance(prev => {
@@ -206,12 +231,11 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           });
           setSuccessMessage(`Recharge de ${(amountParam).toLocaleString('fr-FR')} FCFA validée avec succès ! Votre solde est à jour.`);
         } else {
-          setSuccessMessage('Paiement sécurisé validé avec succès ! Vos documents sont débloqués.');
+          setSuccessMessage('Paiement sécurisé validé avec succès ! Votre document est débloqué.');
         }
 
         setTimeout(() => setSuccessMessage(null), 6000);
 
-        // Clean up URL query parameters without reloading
         const cleanUrl = window.location.pathname + (window.location.hash.split('?')[0] || '');
         window.history.replaceState({}, document.title, cleanUrl);
       } else if (status === 'cancel') {
@@ -221,7 +245,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     } catch (_e) {}
   }, []);
 
-  // Payment Modal State (Replaced old 4-step wizard with clean 2-option modal)
+  // Payment Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [paymentDocType, setPaymentDocType] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook'>('cv');
   const [paymentDocTitle, setPaymentDocTitle] = useState<string>('');
@@ -266,15 +290,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
   // Handle successful payment
   const handlePaymentSuccess = (method: 'wallet' | 'mobile_money' | 'free', tx?: any) => {
-    // 1. Mark current document as paid & unlocked
-    setPaidDocTypes(prev => {
-      const updated = { ...prev, [paymentDocType]: true };
-      if (paymentDocType === 'pack_business') {
-        updated['devis'] = true;
-        updated['facture'] = true;
-      }
-      return updated;
-    });
+    // 1. Mark strictly current document as paid
+    setIsCurrentDocPaid(true);
 
     // 2. If paid by wallet debit, update local balance & transaction logs
     if (method === 'wallet' && tx) {
@@ -302,52 +319,111 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       saveTransactionRecord(tx);
     }
 
-    // 3. Save generated doc metadata
-    const savedDoc: SavedUserDocument = {
-      id: `DOC-${Date.now()}`,
-      userId: auth.currentUser?.uid || 'guest',
-      title: paymentDocTitle || 'Document Dokya',
-      formData,
-      aiData,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      generationMode: formData.generationMode || 'cv_only',
-      isPaid: true
-    };
-
-    const savedDocsList = localStorage.getItem('senegal_cv_saved_documents');
-    let docs: any[] = [];
-    if (savedDocsList) {
-      try { docs = JSON.parse(savedDocsList); } catch (e) {}
-    }
-    docs.unshift(savedDoc);
-    localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(docs));
-    saveUserDocument(savedDoc);
-
-    setSuccessMessage(`Document débloqué avec succès ! Vous pouvez maintenant le télécharger au format Word (.docx) et PDF (.pdf) en haut de l'écran.`);
+    setSuccessMessage(`Document débloqué avec succès ! Vous pouvez maintenant le télécharger au format Word (.docx) et PDF (.pdf).`);
     setTimeout(() => setSuccessMessage(null), 6000);
   };
 
+  // Reset entire form states and payment status to create a brand new document
+  const handleCreateNewDocument = () => {
+    setFormData(createEmptyCVFormData());
+    setBusinessDocData(createEmptyBusinessDocData('devis'));
+    setEbookData(createEmptyEbookData());
+    setAiData(null);
+    setIsCurrentDocPaid(false);
+    setCurrentDocId(`DOC-${Date.now()}`);
+    setIsEditingDirectly(false);
+  };
+
   // -------------------------------------------------------------
-  // Service Selection Dispatcher from Home / Catalog
+  // Post Download Archival and Reset Handler
+  // -------------------------------------------------------------
+  const handlePostDownloadArchival = (formatDownloaded: string) => {
+    const docTitle = paymentDocTitle || (
+      activeTab.startsWith('letter') ? `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - Lettre de Motivation`.trim() || 'Lettre de Motivation'
+      : activeTab.startsWith('devis') ? `Devis Professionnel - ${businessDocData.docNumber}`
+      : activeTab.startsWith('facture') ? `Facture Client - ${businessDocData.docNumber}`
+      : activeTab.startsWith('pack_business') ? `Pack Business - ${businessDocData.docNumber}`
+      : activeTab.startsWith('ebook') ? (ebookData.title || 'Livre Numérique (Ebook)')
+      : `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - CV Pro ATS`.trim() || 'CV Pro ATS'
+    );
+
+    setDownloadedDocTitle(docTitle);
+
+    // Save finalized document into "Mes Documents" history
+    const savedDoc: SavedUserDocument = {
+      id: currentDocId || `DOC-${Date.now()}`,
+      userId: auth.currentUser?.uid || 'guest',
+      title: docTitle,
+      formData: { ...formData },
+      aiData: aiData ? { ...aiData } : null,
+      businessDocData: { ...businessDocData },
+      ebookData: { ...ebookData },
+      generationMode: (
+        activeTab.startsWith('letter') ? 'letter_only'
+        : activeTab.startsWith('devis') ? 'devis'
+        : activeTab.startsWith('facture') ? 'facture'
+        : activeTab.startsWith('pack_business') ? 'pack_business'
+        : activeTab.startsWith('ebook') ? 'ebook'
+        : 'cv_only'
+      ),
+      isPaid: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      selectedFormat: formatDownloaded
+    };
+
+    try {
+      const savedDocsList = localStorage.getItem('senegal_cv_saved_documents');
+      let docs: SavedUserDocument[] = [];
+      if (savedDocsList) {
+        try { docs = JSON.parse(savedDocsList); } catch (e) {}
+      }
+      const existingIdx = docs.findIndex(d => d.id === savedDoc.id);
+      if (existingIdx >= 0) {
+        docs[existingIdx] = savedDoc;
+      } else {
+        docs.unshift(savedDoc);
+      }
+      localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(docs));
+    } catch (e) {
+      console.warn('LocalStorage error saving document:', e);
+    }
+
+    saveUserDocument(savedDoc);
+
+    // 1. Immediately hide download button from payment / preview interface
+    // 2. Reset payment status for next documents
+    setIsCurrentDocPaid(false);
+
+    // 3. Reset form fields to clean state
+    handleCreateNewDocument();
+
+    // 4. Open post-download confirmation dialog
+    setIsPostDownloadModalOpen(true);
+  };
+
+  // -------------------------------------------------------------
+  // Service Selection Dispatcher from Home / Catalog (Gallery First Flow)
   // -------------------------------------------------------------
   const handleSelectService = (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'dashboard') => {
+    handleCreateNewDocument();
+
     if (service === 'cv' || service === 'full_pack') {
       setFormData(prev => ({ ...prev, generationMode: 'cv_only' }));
-      setActiveTab('cv');
+      setActiveTab('cv_gallery');
     } else if (service === 'letter') {
       setFormData(prev => ({ ...prev, generationMode: 'letter_only' }));
-      setActiveTab('letter');
+      setActiveTab('letter_gallery');
     } else if (service === 'devis') {
-      setBusinessDocData(prev => ({ ...prev, type: 'devis' }));
-      setActiveTab('devis');
+      setBusinessDocData(createEmptyBusinessDocData('devis'));
+      setActiveTab('devis_gallery');
     } else if (service === 'facture') {
-      setBusinessDocData(prev => ({ ...prev, type: 'facture' }));
-      setActiveTab('facture');
+      setBusinessDocData(createEmptyBusinessDocData('facture'));
+      setActiveTab('facture_gallery');
     } else if (service === 'pack_business') {
-      setBusinessDocData(prev => ({ ...prev, type: 'devis' }));
+      setBusinessDocData(createEmptyBusinessDocData('devis'));
       setPackBusinessSubTab('devis');
-      setActiveTab('pack_business');
+      setActiveTab('pack_business_gallery');
     } else if (service === 'ebook') {
       setActiveTab('ebook');
     } else if (service === 'dashboard') {
@@ -356,61 +432,23 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Auto-save form data
-  useEffect(() => {
-    localStorage.setItem('cv_form_data', JSON.stringify(formData));
-  }, [formData]);
-
-  useEffect(() => {
-    localStorage.setItem('business_doc_data', JSON.stringify(businessDocData));
-  }, [businessDocData]);
-
-  useEffect(() => {
-    localStorage.setItem('ebook_data', JSON.stringify(ebookData));
-  }, [ebookData]);
-
-  useEffect(() => {
-    if (aiData) {
-      localStorage.setItem('cv_ai_data', JSON.stringify(aiData));
-    }
-  }, [aiData]);
-
-  // Load Sample Data
+  // Load Sample Data (For demonstration, preserves user-selected template style & color)
   const handleLoadSample = () => {
-    setFormData(SAMPLE_CV_DATA);
+    setFormData(prev => ({
+      ...SAMPLE_CV_DATA,
+      templateStyle: prev.templateStyle || SAMPLE_CV_DATA.templateStyle,
+      themeColor: prev.themeColor || SAMPLE_CV_DATA.themeColor,
+      generationMode: prev.generationMode || 'cv_only'
+    }));
     setErrorMessage(null);
-    setSuccessMessage("Exemple professionnel chargé avec succès !");
+    setSuccessMessage("Exemple professionnel chargé avec succès ! (Style de modèle conservé)");
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
   // Handle Form Reset
   const handleReset = () => {
     if (window.confirm('Voulez-vous vraiment effacer les informations du formulaire actif ?')) {
-      if (activeTab === 'devis' || activeTab === 'facture' || activeTab === 'pack_business') {
-        setBusinessDocData(INITIAL_BUSINESS_DOC);
-      } else {
-        const emptyForm: CVFormData = {
-          personalInfo: {
-            firstName: '',
-            lastName: '',
-            email: '',
-            phone: '',
-            address: '',
-            city: 'Dakar',
-            country: 'Sénégal',
-            targetJob: ''
-          },
-          experiences: [],
-          education: [],
-          skills: [{ category: 'Compétences Principales', skills: [] }],
-          languages: [{ name: 'Français', level: 'Bilingue / Maternelle' }],
-          templateStyle: 'moderne',
-          themeColor: '#4f46e5'
-        };
-        setFormData(emptyForm);
-        setAiData(null);
-        localStorage.removeItem('cv_ai_data');
-      }
+      handleCreateNewDocument();
       setSuccessMessage("Formulaire réinitialisé.");
       setTimeout(() => setSuccessMessage(null), 2500);
     }
@@ -445,18 +483,20 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     setTimeout(() => setSuccessMessage(null), 3500);
   };
 
-  // Load Saved Document to Editor
+  // Load Saved Document to Editor (Creates a fresh new draft requiring its own payment)
   const handleLoadDocumentToEditor = (loadedFormData: CVFormData, loadedAiData: any) => {
     setFormData(loadedFormData);
     if (loadedAiData) {
       setAiData(loadedAiData);
     }
+    setIsCurrentDocPaid(false);
+    setCurrentDocId(`DOC-${Date.now()}`);
     setActiveTab('cv');
     setSuccessMessage("Document chargé dans l'Éditeur !");
     setTimeout(() => setSuccessMessage(null), 3500);
   };
 
-  // Main Submit Call using Gemini SDK directly (works seamlessly on Vercel SPA and Fullstack)
+  // Main Submit Call using Gemini SDK directly
   const handleGenerate = async () => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -510,9 +550,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       const fileName = `CV_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
       const success = await downloadElementAsPDF('cv-preview', fileName);
       if (success) {
-        setSuccessMessage("CV téléchargé au format PDF avec succès !");
+        handlePostDownloadArchival('PDF');
       }
-      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
       console.error('Erreur lors du téléchargement du CV:', err);
       window.print();
@@ -529,9 +568,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       const fileName = `Lettre_Motivation_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
       const success = await downloadElementAsPDF('letter-preview', fileName);
       if (success) {
-        setSuccessMessage("Lettre de motivation téléchargée au format PDF avec succès !");
+        handlePostDownloadArchival('PDF');
       }
-      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
       console.error('Erreur lors du téléchargement de la Lettre:', err);
       window.print();
@@ -545,8 +583,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     try {
       const fileName = `${businessDocData.type === 'devis' ? 'Devis' : 'Facture'}_${businessDocData.docNumber || 'Pro'}.pdf`;
       await downloadElementAsPDF('business-doc-preview', fileName);
-      setSuccessMessage(`${businessDocData.type === 'devis' ? 'Devis' : 'Facture'} téléchargé(e) avec succès en PDF HD !`);
-      setTimeout(() => setSuccessMessage(null), 4000);
+      handlePostDownloadArchival('PDF');
     } catch (err) {
       console.error('Error generating Business Doc PDF:', err);
       setErrorMessage('Erreur lors de la création du fichier PDF.');
@@ -560,31 +597,9 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     try {
       const fileName = `Ebook_${(ebookData.title || 'Livre_Numerique').replace(/[\s\/\\]+/g, '_')}.pdf`;
       await downloadElementAsPDF('ebook-printable-area', fileName);
-      setSuccessMessage("Livre Numérique (Ebook) téléchargé avec succès en PDF !");
-      setTimeout(() => setSuccessMessage(null), 4000);
+      handlePostDownloadArchival('PDF');
     } catch (err) {
       console.error('Error generating Ebook PDF:', err);
-      window.print();
-    } finally {
-      setIsGeneratingPDF(false);
-    }
-  };
-
-  const downloadFullPackPDF = async () => {
-    setIsGeneratingPDF(true);
-    setErrorMessage(null);
-    try {
-      const fullName = `${formData?.personalInfo?.firstName || ''}_${formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat';
-      const cvFileName = `CV_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
-      await downloadElementAsPDF('cv-preview', cvFileName);
-
-      const letterFileName = `Lettre_Motivation_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
-      await downloadElementAsPDF('letter-preview', letterFileName);
-
-      setSuccessMessage("Pack Emploi (CV + Lettre) téléchargé au format PDF avec succès !");
-      setTimeout(() => setSuccessMessage(null), 4000);
-    } catch (err: any) {
-      console.error('Erreur lors du téléchargement du Pack Complet:', err);
       window.print();
     } finally {
       setIsGeneratingPDF(false);
@@ -598,22 +613,18 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     try {
       if (activeTab === 'letter' || activeTab === 'letter_preview') {
         await exportLetterToDocx(formData, aiData);
-        setSuccessMessage("Lettre de motivation exportée au format Word (.docx) avec succès !");
       } else if (
         activeTab === 'devis' || activeTab === 'devis_preview' ||
         activeTab === 'facture' || activeTab === 'facture_preview' ||
         activeTab === 'pack_business' || activeTab === 'pack_business_preview'
       ) {
         await exportBusinessDocToDocx(businessDocData);
-        setSuccessMessage(`${businessDocData.type === 'devis' ? 'Devis' : 'Facture'} exporté(e) au format Word (.docx) avec succès !`);
       } else if (activeTab === 'ebook' || activeTab === 'ebook_preview') {
         await exportEbookToDocx(ebookData);
-        setSuccessMessage("Livre Numérique (Ebook) exporté au format Word (.docx) avec succès !");
       } else {
         await exportCVToDocx(formData, aiData);
-        setSuccessMessage("CV exporté au format Word (.docx) avec succès !");
       }
-      setTimeout(() => setSuccessMessage(null), 4000);
+      handlePostDownloadArchival('DOCX');
     } catch (err: any) {
       console.error("Erreur lors de l'export DOCX:", err);
       setErrorMessage("Impossible de générer le fichier Word (.docx).");
@@ -622,7 +633,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     }
   };
 
-  const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name;
+  const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name || !!ebookData?.title;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
@@ -635,7 +646,10 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         onReset={handleReset}
         hasData={hasActiveData}
         onOpenDashboard={() => setActiveTab('dashboard')}
-        onGoServices={() => setActiveTab('services')}
+        onGoServices={() => {
+          handleCreateNewDocument();
+          setActiveTab('services');
+        }}
         onOpenAdmin={onOpenAdmin}
         onOpenRecharge={() => setIsRechargeModalOpen(true)}
       />
@@ -690,7 +704,30 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 2A : ÉTAPE 1 - SAISIE CV PRO ATS (1 000 FCFA)                        */}
+        {/* VIEW 2A-GAL : ÉTAPE 1 - GALERIE OBLIGATOIRE DES MODÈLES CV (50+ MODÈLES)  */}
+        {/* ========================================================================= */}
+        {activeTab === 'cv_gallery' && (
+          <CVTemplateGallery
+            selectedTemplateId={formData.templateStyle}
+            selectedColor={formData.themeColor}
+            onSelectTemplate={(templateId, color) => {
+              setFormData(prev => ({
+                ...prev,
+                templateStyle: templateId as any,
+                themeColor: color || prev.themeColor
+              }));
+              setActiveTab('cv');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onGoServices={() => {
+              handleCreateNewDocument();
+              setActiveTab('services');
+            }}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 2A : ÉTAPE 2 - FORMULAIRE DE SAISIE CV PRO ATS (1 000 FCFA)          */}
         {/* ========================================================================= */}
         {activeTab === 'cv' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -702,12 +739,16 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isLoading={isLoading}
               hideModeSelector={true}
               forceMode="cv_only"
+              onChangeTemplateRequest={() => {
+                setActiveTab('cv_gallery');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 2B : ÉTAPE 2 - APERÇU PLEIN ÉCRAN DÉDIÉ DU CV PRO ATS               */}
+        {/* VIEW 2B : ÉTAPE 3 - APERÇU PLEIN ÉCRAN DÉDIÉ DU CV PRO ATS               */}
         {/* ========================================================================= */}
         {activeTab === 'cv_preview' && (
           <div className="animate-in fade-in">
@@ -718,7 +759,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               aiData={aiData}
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
-              isPaid={!!paidDocTypes['cv']}
+              isPaid={isCurrentDocPaid}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -731,13 +772,39 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadCVPDF}
-              onGoServices={() => setActiveTab('services')}
+              onGoServices={() => {
+                handleCreateNewDocument();
+                setActiveTab('services');
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 3A : ÉTAPE 1 - SAISIE LETTRE DE MOTIVATION (1 000 FCFA)              */}
+        {/* VIEW 3A-GAL : ÉTAPE 1 - GALERIE MODÈLES DE LETTRE DE MOTIVATION           */}
+        {/* ========================================================================= */}
+        {activeTab === 'letter_gallery' && (
+          <LetterTemplateGallery
+            selectedStyleId={formData.templateStyle}
+            selectedLetterType={formData.letterType}
+            onSelectTemplate={(styleId, letterType) => {
+              setFormData(prev => ({
+                ...prev,
+                templateStyle: styleId as any,
+                letterType
+              }));
+              setActiveTab('letter');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onGoServices={() => {
+              handleCreateNewDocument();
+              setActiveTab('services');
+            }}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 3A : ÉTAPE 2 - SAISIE LETTRE DE MOTIVATION (1 000 FCFA)              */}
         {/* ========================================================================= */}
         {activeTab === 'letter' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -748,12 +815,16 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               onPreview={() => setActiveTab('letter_preview')}
               isLoading={isLoading}
               onOpenWizard={() => handleOpenPaymentModal('letter')}
+              onChangeTemplateRequest={() => {
+                setActiveTab('letter_gallery');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 3B : ÉTAPE 2 - APERÇU PLEIN ÉCRAN DÉDIÉ DE LA LETTRE                */}
+        {/* VIEW 3B : ÉTAPE 3 - APERÇU PLEIN ÉCRAN DÉDIÉ DE LA LETTRE                */}
         {/* ========================================================================= */}
         {activeTab === 'letter_preview' && (
           <div className="animate-in fade-in">
@@ -764,7 +835,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               aiData={aiData}
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
-              isPaid={!!paidDocTypes['letter']}
+              isPaid={isCurrentDocPaid}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -777,13 +848,41 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadLetterPDF}
-              onGoServices={() => setActiveTab('services')}
+              onGoServices={() => {
+                handleCreateNewDocument();
+                setActiveTab('services');
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 4A : ÉTAPE 1 - SAISIE DEVIS PROFESSIONNEL (1 000 FCFA)               */}
+        {/* VIEW 4A-GAL : ÉTAPE 1 - GALERIE MODÈLES DE DEVIS PROFESSIONNEL            */}
+        {/* ========================================================================= */}
+        {activeTab === 'devis_gallery' && (
+          <BusinessDocTemplateGallery
+            docType="devis"
+            selectedTemplateId={businessDocData.templateStyle}
+            selectedColor={businessDocData.themeColor}
+            onSelectTemplate={(templateId, color) => {
+              setBusinessDocData(prev => ({
+                ...prev,
+                type: 'devis',
+                templateStyle: templateId,
+                themeColor: color || prev.themeColor
+              }));
+              setActiveTab('devis');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onGoServices={() => {
+              handleCreateNewDocument();
+              setActiveTab('services');
+            }}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 4A : ÉTAPE 2 - SAISIE DEVIS PROFESSIONNEL (1 000 FCFA)               */}
         {/* ========================================================================= */}
         {activeTab === 'devis' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -793,12 +892,16 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               onOpenWizard={() => handleGenerateBusinessDoc('devis')}
               onPreview={() => setActiveTab('devis_preview')}
               hideTypeSwitch={true}
+              onChangeTemplateRequest={() => {
+                setActiveTab('devis_gallery');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 4B : ÉTAPE 2 - APERÇU PLEIN ÉCRAN DÉDIÉ DU DEVIS                    */}
+        {/* VIEW 4B : ÉTAPE 3 - APERÇU PLEIN ÉCRAN DÉDIÉ DU DEVIS                    */}
         {/* ========================================================================= */}
         {activeTab === 'devis_preview' && (
           <div className="animate-in fade-in">
@@ -809,7 +912,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               aiData={aiData}
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
-              isPaid={!!paidDocTypes['devis']}
+              isPaid={isCurrentDocPaid}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -822,13 +925,41 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadBusinessDocPDF}
-              onGoServices={() => setActiveTab('services')}
+              onGoServices={() => {
+                handleCreateNewDocument();
+                setActiveTab('services');
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 5A : ÉTAPE 1 - SAISIE FACTURE CLIENT (1 000 FCFA)                    */}
+        {/* VIEW 5A-GAL : ÉTAPE 1 - GALERIE MODÈLES DE FACTURE CLIENT                 */}
+        {/* ========================================================================= */}
+        {activeTab === 'facture_gallery' && (
+          <BusinessDocTemplateGallery
+            docType="facture"
+            selectedTemplateId={businessDocData.templateStyle}
+            selectedColor={businessDocData.themeColor}
+            onSelectTemplate={(templateId, color) => {
+              setBusinessDocData(prev => ({
+                ...prev,
+                type: 'facture',
+                templateStyle: templateId,
+                themeColor: color || prev.themeColor
+              }));
+              setActiveTab('facture');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onGoServices={() => {
+              handleCreateNewDocument();
+              setActiveTab('services');
+            }}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 5A : ÉTAPE 2 - SAISIE FACTURE CLIENT (1 000 FCFA)                    */}
         {/* ========================================================================= */}
         {activeTab === 'facture' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -838,12 +969,16 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               onOpenWizard={() => handleGenerateBusinessDoc('facture')}
               onPreview={() => setActiveTab('facture_preview')}
               hideTypeSwitch={true}
+              onChangeTemplateRequest={() => {
+                setActiveTab('facture_gallery');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 5B : ÉTAPE 2 - APERÇU PLEIN ÉCRAN DÉDIÉ DE LA FACTURE               */}
+        {/* VIEW 5B : ÉTAPE 3 - APERÇU PLEIN ÉCRAN DÉDIÉ DE LA FACTURE               */}
         {/* ========================================================================= */}
         {activeTab === 'facture_preview' && (
           <div className="animate-in fade-in">
@@ -854,7 +989,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               aiData={aiData}
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
-              isPaid={!!paidDocTypes['facture']}
+              isPaid={isCurrentDocPaid}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -867,17 +1002,43 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadBusinessDocPDF}
-              onGoServices={() => setActiveTab('services')}
+              onGoServices={() => {
+                handleCreateNewDocument();
+                setActiveTab('services');
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 7A : ÉTAPE 1 - SAISIE PACK BUSINESS (1 499 FCFA)                     */}
+        {/* VIEW 7A-GAL : ÉTAPE 1 - GALERIE MODÈLES PACK BUSINESS                     */}
+        {/* ========================================================================= */}
+        {activeTab === 'pack_business_gallery' && (
+          <BusinessDocTemplateGallery
+            docType="pack_business"
+            selectedTemplateId={businessDocData.templateStyle}
+            selectedColor={businessDocData.themeColor}
+            onSelectTemplate={(templateId, color) => {
+              setBusinessDocData(prev => ({
+                ...prev,
+                templateStyle: templateId,
+                themeColor: color || prev.themeColor
+              }));
+              setActiveTab('pack_business');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onGoServices={() => {
+              handleCreateNewDocument();
+              setActiveTab('services');
+            }}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 7A : ÉTAPE 2 - SAISIE PACK BUSINESS (1 499 FCFA)                     */}
         {/* ========================================================================= */}
         {activeTab === 'pack_business' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
-            {/* Pack Business Sub-Switcher Header */}
             <div className="bg-white border-2 border-amber-300 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase bg-amber-100 text-amber-900 px-2.5 py-1 rounded-md">
@@ -886,7 +1047,6 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
                 <span className="text-xs font-black text-amber-800">1 499 FCFA</span>
               </div>
 
-              {/* Sub Tabs: Devis vs Facture */}
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
                   <button
@@ -932,13 +1092,16 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               </div>
             </div>
 
-            {/* Saisie Devis & Facture Form */}
             <DevisFactureForm
               data={businessDocData}
               onChange={setBusinessDocData}
               onOpenWizard={() => handleGenerateBusinessDoc('pack_business')}
               onPreview={() => setActiveTab('pack_business_preview')}
               hideTypeSwitch={false}
+              onChangeTemplateRequest={() => {
+                setActiveTab('pack_business_gallery');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             />
           </div>
         )}
@@ -955,7 +1118,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               aiData={aiData}
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
-              isPaid={!!paidDocTypes['pack_business']}
+              isPaid={isCurrentDocPaid}
               packBusinessSubTab={packBusinessSubTab}
               setPackBusinessSubTab={setPackBusinessSubTab}
               isEditingDirectly={isEditingDirectly}
@@ -970,7 +1133,10 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadBusinessDocPDF}
-              onGoServices={() => setActiveTab('services')}
+              onGoServices={() => {
+                handleCreateNewDocument();
+                setActiveTab('services');
+              }}
             />
           </div>
         )}
@@ -987,7 +1153,10 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
                 setActiveTab('ebook_preview');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              onGoServices={() => setActiveTab('services')}
+              onGoServices={() => {
+                handleCreateNewDocument();
+                setActiveTab('services');
+              }}
             />
           </div>
         )}
@@ -1006,7 +1175,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               setBusinessDocData={setBusinessDocData}
               ebookData={ebookData}
               setEbookData={setEbookData}
-              isPaid={!!paidDocTypes['ebook']}
+              isPaid={isCurrentDocPaid}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -1019,13 +1188,16 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadEbookPDF}
-              onGoServices={() => setActiveTab('services')}
+              onGoServices={() => {
+                handleCreateNewDocument();
+                setActiveTab('services');
+              }}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 8 : CANDIDATE DASHBOARD / ESPACE SÉCURISÉ                            */}
+        {/* VIEW 9 : CANDIDATE DASHBOARD / ESPACE SÉCURISÉ                            */}
         {/* ========================================================================= */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in">
@@ -1047,7 +1219,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         documentTypeLabel={paymentDocTypeLabel}
         price={paymentPrice}
         userBalance={userBalance}
-        isAlreadyPaid={!!paidDocTypes[paymentDocType]}
+        isAlreadyPaid={isCurrentDocPaid}
         onPaymentSuccess={handlePaymentSuccess}
         onOpenRechargeModal={() => {
           setIsPaymentModalOpen(false);
@@ -1076,6 +1248,72 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           setTimeout(() => setSuccessMessage(null), 4000);
         }}
       />
+
+      {/* 5. POST-DOWNLOAD CONFIRMATION & ARCHIVAL MODAL */}
+      {isPostDownloadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 text-center space-y-5">
+            <button
+              onClick={() => setIsPostDownloadModalOpen(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+              title="Fermer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-16 h-16 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+              <CheckCircle2 className="w-9 h-9" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                Téléchargement Réussi & Archivé !
+              </h3>
+              <p className="text-sm text-slate-600 font-medium leading-relaxed">
+                Le document <span className="font-bold text-slate-900">« {downloadedDocTitle} »</span> a été téléchargé et sauvegardé dans votre profil sous la section <span className="font-bold text-indigo-600">« Mes Documents »</span>.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl text-left space-y-2 text-xs text-slate-600">
+              <div className="flex items-start gap-2">
+                <FolderHeart className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                <span><strong>Ré-téléchargements illimités :</strong> Vous pouvez à tout moment retrouver et réexporter ce document sans frais depuis votre profil.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span><strong>Pay-Per-Document :</strong> Pour garantir l'intégrité de vos documents, l'espace de création a été réinitialisé. Toute nouvelle création fera l'objet d'un nouveau paiement.</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPostDownloadModalOpen(false);
+                  setActiveTab('dashboard');
+                }}
+                className="w-full py-3 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-indigo-100 transition-all cursor-pointer active:scale-95"
+              >
+                <FolderHeart className="w-4 h-4" />
+                <span>Mes Documents</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPostDownloadModalOpen(false);
+                  handleCreateNewDocument();
+                  setActiveTab('services');
+                }}
+                className="w-full py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
+              >
+                <PlusCircle className="w-4 h-4 text-amber-400" />
+                <span>Nouveau Document</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

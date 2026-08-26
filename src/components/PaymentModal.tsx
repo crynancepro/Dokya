@@ -7,6 +7,7 @@ import {
 import { verifyReceiptImage } from '../services/receiptPaymentService';
 import { TransactionRecord, ReceiptVerificationResult } from '../types';
 import { safeParseJsonResponse } from '../utils/apiHelpers';
+import { usePricing } from '../contexts/PricingContext';
 
 interface AppliedPromoInfo {
   code: string;
@@ -25,7 +26,7 @@ interface PaymentModalProps {
   onClose: () => void;
   documentTitle: string;
   documentTypeLabel: string;
-  price: number;
+  price?: number;
   userBalance: number;
   isAlreadyPaid?: boolean;
   onPaymentSuccess: (method: 'wallet' | 'mobile_money' | 'free', transaction?: TransactionRecord) => void;
@@ -37,12 +38,39 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onClose,
   documentTitle,
   documentTypeLabel,
-  price = 1000,
+  price,
   userBalance = 0,
   isAlreadyPaid = false,
   onPaymentSuccess,
   onOpenRechargeModal
 }) => {
+  const { pricing, validatePromoCode } = usePricing();
+
+  // Determine real-time default price
+  const getInitialPrice = () => {
+    if (price && price > 0) return price;
+    const labelLower = (documentTypeLabel || '').toLowerCase();
+    if (labelLower.includes('full') || labelLower.includes('pack duo') || labelLower.includes('pack emploi') || labelLower.includes('cv + lettre')) {
+      return pricing.fullPackPrice;
+    }
+    if (labelLower.includes('business') || labelLower.includes('devis + facture')) {
+      return pricing.businessPackPrice;
+    }
+    if (labelLower.includes('lettre')) {
+      return pricing.letterOnlyPrice;
+    }
+    if (labelLower.includes('devis')) {
+      return pricing.devisPrice;
+    }
+    if (labelLower.includes('facture')) {
+      return pricing.facturePrice;
+    }
+    if (labelLower.includes('ebook') || labelLower.includes('livre')) {
+      return pricing.ebookPrice ?? 1500;
+    }
+    return pricing.cvOnlyPrice;
+  };
+
   // Stepper: 1 = Opérateur & Numéro, 2 = Instructions & Sélection Reçu, 3 = Scanner Laser IA
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
@@ -91,11 +119,136 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const originalPrice = Number(price) || 1000;
+  const originalPrice = price && price > 0 ? price : getInitialPrice();
   const safeBalance = Number(userBalance) || 0;
   const payablePrice = appliedPromo ? appliedPromo.finalAmount : originalPrice;
   const isFreeWithPromo = appliedPromo !== null && appliedPromo.isFree;
   const hasEnoughBalance = safeBalance >= payablePrice;
+
+  // Validate Promo Code using PricingContext + Firestore
+  const handleValidatePromo = async () => {
+    const cleanCode = promoInput.trim().toUpperCase();
+    if (!cleanCode) {
+      setPromoError('Veuillez entrer un code.');
+      return;
+    }
+
+    setIsCheckingPromo(true);
+    setPromoError(null);
+    setPromoSuccess(null);
+
+    try {
+      // 1. Check with PricingContext (real-time Firestore synced promo codes)
+      const contextResult = await validatePromoCode(cleanCode, originalPrice);
+      if (contextResult.valid && contextResult.promo) {
+        const promoItem = contextResult.promo;
+        const discountAmount = contextResult.discountAmount;
+        const finalAmount = Math.max(0, originalPrice - discountAmount);
+        const isFree = finalAmount === 0;
+        const discountLabel = promoItem.discountType === 'percentage' ? `-${promoItem.discountValue}%` : `-${promoItem.discountValue} FCFA`;
+
+        const promoInfo: AppliedPromoInfo = {
+          code: cleanCode,
+          discountType: promoItem.discountType,
+          discountValue: promoItem.discountValue,
+          discountAmount,
+          originalAmount: originalPrice,
+          finalAmount,
+          isFree,
+          message: isFree 
+            ? `Code "${cleanCode}" appliqué : Déblocage 100% Gratuit !` 
+            : `Code "${cleanCode}" appliqué : ${discountLabel} (-${discountAmount.toLocaleString('fr-FR')} FCFA)`,
+          discountLabel
+        };
+
+        setAppliedPromo(promoInfo);
+        setPromoSuccess(promoInfo.message);
+        setPromoError(null);
+        return;
+      }
+
+      // 2. Fallback known dictionary
+      const knownPromoDict: Record<string, { type: 'percentage' | 'fixed'; val: number; desc: string }> = {
+        'LIL': { type: 'percentage', val: 90, desc: 'Code spécial LIL (-90%)' },
+        'PETER': { type: 'percentage', val: 100, desc: 'Accès VIP Admin PETER (Gratuit)' },
+        'VIP100': { type: 'percentage', val: 100, desc: 'Code VIP (-100%)' },
+        'ADMIN100': { type: 'percentage', val: 100, desc: 'Code Admin (-100%)' },
+        'GRATUIT100': { type: 'percentage', val: 100, desc: 'Déblocage Gratuit (-100%)' },
+        'PROMO50': { type: 'percentage', val: 50, desc: '50% de réduction' },
+        'DAKAR2026': { type: 'percentage', val: 30, desc: '30% de remise' },
+        'TERANGA20': { type: 'percentage', val: 20, desc: '20% de réduction' },
+        'BIENVENUE500': { type: 'fixed', val: 500, desc: '500 FCFA offerts' }
+      };
+
+      if (knownPromoDict[cleanCode]) {
+        const item = knownPromoDict[cleanCode];
+        let discountAmount = 0;
+        if (item.type === 'percentage') {
+          discountAmount = item.val >= 100 ? originalPrice : Math.round((originalPrice * item.val) / 100);
+        } else {
+          discountAmount = Math.min(originalPrice, item.val);
+        }
+        const finalAmount = Math.max(0, originalPrice - discountAmount);
+        const isFree = finalAmount === 0;
+        const discountLabel = item.type === 'percentage' ? `-${item.val}%` : `-${item.val} FCFA`;
+
+        const promoInfo: AppliedPromoInfo = {
+          code: cleanCode,
+          discountType: item.type,
+          discountValue: item.val,
+          discountAmount,
+          originalAmount: originalPrice,
+          finalAmount,
+          isFree,
+          message: isFree 
+            ? `Code "${cleanCode}" appliqué : 100% de réduction !` 
+            : `Code "${cleanCode}" appliqué : ${discountLabel} (-${discountAmount.toLocaleString('fr-FR')} FCFA)`,
+          discountLabel
+        };
+
+        setAppliedPromo(promoInfo);
+        setPromoSuccess(promoInfo.message);
+        setPromoError(null);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/promo/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: cleanCode, amount: originalPrice, documentTitle })
+        });
+
+        if (response.ok && response.status !== 405) {
+          const data = await safeParseJsonResponse(response);
+          if (data.success && data.valid) {
+            const promoInfo: AppliedPromoInfo = {
+              code: data.code || cleanCode,
+              discountType: data.discountType || 'percentage',
+              discountValue: data.discountValue || 0,
+              discountAmount: data.discountAmount ?? (originalPrice - (data.finalAmount ?? 0)),
+              originalAmount: data.originalAmount || originalPrice,
+              finalAmount: data.finalAmount ?? Math.max(0, originalPrice - (data.discountAmount || 0)),
+              isFree: Boolean(data.isFree || data.finalAmount === 0),
+              message: data.message || `Code promo ${data.code} appliqué !`,
+              discountLabel: data.discountLabel || (data.discountType === 'percentage' ? `-${data.discountValue}%` : `-${data.discountValue} FCFA`)
+            };
+            setAppliedPromo(promoInfo);
+            setPromoSuccess(promoInfo.message);
+            setPromoError(null);
+            return;
+          }
+        }
+      } catch (_e) {}
+
+      throw new Error(`Code promo "${cleanCode}" invalide ou inactif.`);
+    } catch (err: any) {
+      setPromoError(err.message || 'Code promo non reconnu.');
+      setAppliedPromo(null);
+    } finally {
+      setIsCheckingPromo(false);
+    }
+  };
 
   // Copy to clipboard helper
   const handleCopy = (text: string, field: 'phone' | 'name') => {
@@ -117,7 +270,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setStep(2);
   };
 
-  // File selection in Step 2
   const handleFileSelect = (file: File) => {
     if (!file.type.startsWith('image/')) {
       setReceiptError('Veuillez sélectionner un fichier image valide (JPG, PNG, WEBP).');
