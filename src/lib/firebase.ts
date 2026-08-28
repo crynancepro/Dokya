@@ -1,14 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { 
-  getFirestore, doc, getDoc, getDocFromServer, setDoc, deleteDoc, 
+  initializeFirestore, doc, getDoc, getDocFromServer, setDoc, deleteDoc, 
   collection, query, where, getDocs, onSnapshot, Unsubscribe 
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode } from '../types';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+}, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 

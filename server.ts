@@ -233,10 +233,19 @@ function generateFallbackCVData(formData: any) {
         }
         if (descList.length === 0) {
           descList = [
-            `Piloter et exécuter les missions stratégiques liées au poste de ${exp.position || targetJob} chez ${exp.company || 'l\'entreprise'}.`,
-            `Garantir l'atteinte des objectifs opérationnels et la conformité des livrables.`,
-            `Assurer le reporting régulier et collaborer avec les parties prenantes clés.`
+            `Piloter et orchestrer les opérations stratégiques liées au poste de ${exp.position || targetJob} chez ${exp.company || 'l\'entreprise'}.`,
+            `Déployer des méthodes de travail optimisées pour accroître l'efficacité opérationnelle et la satisfaction client.`,
+            `Superviser le contrôle qualité des livrables et assurer un reporting analytique régulier auprès de la direction.`,
+            `Fédérer les équipes pluridisciplinaires autour des objectifs de performance et respecter les échéances critiques.`
           ];
+        } else {
+          // Enrich bullet points with strong action verbs if too simple
+          descList = descList.map((item: string) => {
+            if (item.length < 25) {
+              return `Piloter et optimiser avec rigueur : ${item}, garantissant qualité et respect des délais.`;
+            }
+            return item;
+          });
         }
         return {
           id: exp.id || `exp-${idx}`,
@@ -246,9 +255,10 @@ function generateFallbackCVData(formData: any) {
     : [{
         id: 'exp-default-1',
         optimizedDescription: [
-          `Superviser et coordonner les projets stratégiques en tant que ${targetJob}.`,
-          `Mettre en œuvre les meilleures pratiques du secteur et optimiser les flux de travail.`,
-          `Garantir un haut niveau de performance et de qualité de service.`
+          `Piloter et coordonner les projets stratégiques en tant que ${targetJob}, avec un focus constant sur la performance opérationnelle.`,
+          `Déployer les meilleures pratiques du secteur et moderniser les flux de travail pour maximiser la productivité.`,
+          `Garantir un haut niveau de conformité, d'excellence technique et d'optimisation des ressources disponibles.`,
+          `Assurer une communication transverse fluide avec l'ensemble des parties prenantes internes et externes.`
         ]
       }];
 
@@ -256,32 +266,154 @@ function generateFallbackCVData(formData: any) {
   const coverLetter = {
     subject: `Candidature${targetJob ? ` au poste de ${targetJob}` : ''}${company ? ` - ${company}` : ''}`,
     greeting: `Madame, Monsieur le Responsable des Recrutements,`,
-    opening: `C'est avec un vif intérêt et un réel enthousiasme que je vous soumets ma candidature pour le poste de ${targetJob} au sein de votre organisation ${company}. Reconnu pour son dynamisme, son exigence de rigueur et sa contribution majeure au secteur d'activité à ${city} et dans la zone UEMOA, votre établissement incarne une référence d'excellence au sein de laquelle je souhaite activement investir mes compétences et mon engagement.`,
+    opening: `C'est avec un vif intérêt et un réel enthousiasme que je vous soumets ma candidature pour le poste de ${targetJob} au sein de votre prestigieuse organisation ${company}. Reconnu pour son dynamisme, son exigence d'excellence et son impact structurant à ${city} et dans la sous-région, votre établissement incarne une référence au sein de laquelle je souhaite activement investir mon expertise et mon leadership.`,
     bodyParagraphs: [
       userInstructions
-        ? `Fort d'un parcours solide directement aligné avec vos attentes prioritaires (${userInstructions}), j'ai développé une solide maîtrise des méthodologies et outils indispensables à l'exercice de mes responsabilités. Mon sens aigu de l'organisation et mon pragmatisme m'ont permis de mener à bien des initiatives stratégiques, de résoudre des problématiques complexes et d'atteindre systématiquement les objectifs fixés avec un haut standard de qualité.`
-        : `Fort d'un parcours solide et diversifié dans l'exercice de mes fonctions, j'ai acquis une maîtrise approfondie des outils techniques et méthodologiques propres à mon secteur. Mon esprit d'analyse et mon sens de la rigueur m'ont permis de piloter des projets d'envergure, d'optimiser les flux opérationnels et d'atteindre avec régularité des objectifs ambitieux et chiffrés tout en garantissant une conformité exemplaire.`,
-      `Intégrer ${company} constitue pour moi une opportunité stratégique de conjuguer mon expertise à vos perspectives de développement. Parfaitement au fait des spécificités et des défis économiques du marché local à ${city}, je suis convaincu que mon approche proactive, mon leadership collaboratif et ma force de proposition constitueront un levier de performance durable et mesurable pour vos équipes.`
+        ? `Fort d'un parcours riche et directement aligné avec vos attentes prioritaires (${userInstructions}), j'ai développé une solide maîtrise des méthodologies indispensables à la réussite de cette mission. Mon esprit d'analyse, mon pragmatisme et ma rigueur d'exécution m'ont permis de mener à bien des chantiers d'envergure, de résoudre des problématiques complexes et d'atteindre avec régularité des objectifs chiffrés exigeants.`
+        : `Fort d'un parcours probant et diversifié, j'ai consolidé une expertise pointue dans les outils techniques, la gestion de projet et l'optimisation des processus. Mon approche orientée résultats m'a permis de piloter des initiatives stratégiques, de fluidifier les collaborations transverses et de garantir un haut niveau de performance conforme aux standards internationaux.`,
+      `Intégrer ${company} représente une opportunité stimulante de conjuguer mon savoir-faire à vos ambitions d'expansion. Parfaitement imprégné des réalités économiques et des exigences du marché à ${city}, je suis convaincu que mon sens de l'initiative, mon engagement et ma force de proposition constitueront un accélérateur de valeur durable pour vos équipes.`
     ],
-    callToAction: `Convaincu de la parfaite convergence entre vos besoins et mon profil, je serais honoré de vous rencontrer lors d'un entretien à votre convenance afin de vous exposer de vive voix le détail de mes motivations et mes perspectives de contribution. Je me tiens à votre entière disposition pour tout échange.`,
-    closing: `Dans l'attente de votre précieux retour, je vous prie d'agréer, Madame, Monsieur le Responsable des Recrutements, l'expression de mes salutations distinguées et respectueuses.`
+    callToAction: `Persuadé de la forte convergence entre vos besoins et mon profil, je serais très honoré de vous rencontrer lors d'un entretien afin d'échanger plus en détail sur ma vision du poste et mes contributions futures.`,
+    closing: `Dans l'attente de votre retour, je vous prie d'agréer, Madame, Monsieur le Responsable des Recrutements, l'expression de mes salutations les plus respectueuses et distinguées.`
   };
 
   return {
-    profileSummary: `${targetJob} expérimenté(e) et orienté(e) résultats basé(e) à ${city} (${country}). Reconnu(e) pour sa rigueur professionnelle, son esprit d'initiative et sa capacité à impulser des solutions performantes et adaptées au marché.`,
+    profileSummary: `${targetJob} chevronné(e), rigoureux(se) et orienté(e) résultats, justifiant d'une solide expertise à ${city} (${country}). Doté(e) d'un fort esprit d'initiative, d'un sens aigu de l'organisation et d'une excellente capacité d'adaptation, j'apporte des solutions concrètes, innovantes et à haute valeur ajoutée pour dynamiser la performance de vos activités.`,
     experiences,
-    suggestedKeywords: ['Analyse stratégique', 'Gestion de projet', 'Rigueur', 'Communication', 'Autonomie', 'Organisation', 'Leadership', 'Esprit d\'équipe'],
+    suggestedKeywords: [
+      'Pilotage stratégique',
+      'Gestion de projet',
+      'Optimisation des processus',
+      'Leadership d\'équipe',
+      'Rigueur & Analyse',
+      'Communication transverse',
+      'Orientation résultats',
+      'Résolution de problèmes',
+      'Négociation & Relation client',
+      'Transformation digitale'
+    ],
     coverLetter,
     interviewTips: [
-      `Préparez une présentation synthétique de 2 minutes axée sur vos principales réussites pour le poste de ${targetJob}.`,
-      `Démontrez votre connaissance précise du marché local à ${city} et des projets de ${company}.`,
-      `Structurez vos réponses avec des exemples chiffrés probants (Méthode STAR).`
+      `Structurez votre présentation initiale de 2 minutes en mettant en avant 2 à 3 accomplissements chiffrés majeurs pour le poste de ${targetJob}.`,
+      `Démontrez votre maîtrise fine des enjeux économiques de ${company} sur le marché de ${city} et en zone UEMOA.`,
+      `Adoptez la méthode STAR (Situation, Tâche, Action, Résultat) pour illustrer concrètement vos compétences comportementales et techniques.`
     ]
   };
 }
 
-// Main AI Generator Route
-app.post('/api/generate', async (req, res) => {
+// Helper: Intelligent Fallback for Interview Preparation
+function generateFallbackInterviewPrep(formData: any): any {
+  const p = formData?.personalInfo || {};
+  const candidateName = `${p.firstName || 'Candidat'} ${p.lastName || ''}`.trim();
+  const targetJob = p.targetJob || 'Professionnel';
+  const company = formData?.targetCompany || 'l\'Entreprise recruteuse';
+  const city = p.city || 'Dakar';
+  const country = p.country || 'Sénégal';
+
+  const userExps = Array.isArray(formData?.experiences) ? formData.experiences : [];
+  const primaryExp = userExps[0] || { position: targetJob, company: 'Organisation précédente' };
+  const userSkills = Array.isArray(formData?.skills) ? formData.skills.flatMap((s: any) => s.skills || []) : [];
+
+  return {
+    id: `PREP-${Date.now()}`,
+    candidateName: candidateName || 'Candidat Pro',
+    targetJob,
+    targetCompany: company,
+    city,
+    country,
+    createdAt: new Date().toISOString(),
+    pitch2Min: {
+      hook: `Bonjour, je m'appelle ${candidateName}. Je suis ${targetJob} passionné(e) par la création de valeur et l'excellence opérationnelle, avec une trajectoire professionnelle forgée au cœur d'environnements exigeants à ${city}.`,
+      careerHighlights: `Au cours de mes expériences récentes, notamment en tant que ${primaryExp.position || targetJob}, j'ai eu l'opportunité de piloter des projets structurants, d'optimiser les flux de travail et de collaborer avec des équipes pluridisciplinaires pour dépasser les objectifs fixés. Mon profil allie rigueur technique, sens du relationnel et capacité d'adaptation rapide.`,
+      valueProposition: `Aujourd'hui, je souhaite rejoindre ${company} car votre vision et vos défis de développement résonnent pleinement avec mes compétences. Je suis prêt(e) à mettre mon énergie, mon sens de l'initiative et mon engagement immédiat au service de votre réussite.`,
+      fullText: `« Bonjour, je m'appelle ${candidateName}. Je suis ${targetJob} orienté(e) résultats avec une expertise reconnue à ${city}. Au cours de mon parcours, j'ai notamment piloté des missions stratégiques chez ${primaryExp.company || 'mes précédents employeurs'}, où j'ai développé une grande capacité à structurer les opérations, fédérer les parties prenantes et délivrer des résultats concrets sous contrainte. Ce qui me motive à rejoindre ${company} aujourd'hui, c'est votre ambition et l'opportunité d'apporter ma rigueur, ma réactivité et mon esprit d'équipe pour accélérer vos performances. Je serais ravi(e) d'échanger avec vous sur la manière dont mes compétences répondent précisément à vos priorités actuelles. »`
+    },
+    questions: [
+      {
+        id: 'q-1',
+        category: 'motivation',
+        categoryLabel: 'Motivation & Adéquation',
+        question: `Pouvez-vous vous présenter en 2 minutes et nous expliquer pourquoi vous postulez au poste de ${targetJob} chez ${company} ?`,
+        recruiterIntent: `Le recruteur évalue votre esprit de synthèse, votre élocution, votre clarté mentale et si vous avez réellement fait des recherches sur ${company}.`,
+        suggestedAnswer: `« J'ai articulé mon parcours autour de 3 piliers : la maîtrise technique de mon métier de ${targetJob}, le sens du service orienté résultats, et la capacité à collaborer efficacement en équipe. J'ai choisi de postuler chez ${company} parce que votre positionnement sur le marché et vos projets récents correspondent exactement au cadre d'excellence dans lequel je souhaite m'investir durablement. »`,
+        keyStrengthsToHighlight: ['Capacité de synthèse', 'Clarté de la vision', 'Intérêt documenté pour l\'entreprise'],
+        pitfallsToAvoid: `Ne récitez pas votre CV de manière chronologique linéaire; insistez sur la valeur ajoutée et le lien direct avec les besoins du recruteur.`
+      },
+      {
+        id: 'q-2',
+        category: 'technique',
+        categoryLabel: 'Compétence Métier & Méthodologie',
+        question: `Quelles sont, selon vous, les 3 compétences techniques indispensables pour réussir en tant que ${targetJob} et comment les appliquez-vous au quotidien ?`,
+        recruiterIntent: `Vérifier la profondeur de votre maîtrise métier, votre capacité à structurer vos process et votre niveau d'autonomie opérationnelle.`,
+        suggestedAnswer: `« Premièrement, l'analyse rigoureuse des besoins et la planification méticuleuse. Deuxièmement, l'utilisation maîtrisée des outils et méthodologies de pointe du secteur. Troisièmement, le suivi de performance avec des indicateurs chiffrés fiables. Par exemple, lors de ma précédente mission, cette approche m'a permis de réduire les délais de traitement et d'accroître la qualité de service. »`,
+        keyStrengthsToHighlight: ['Maîtrise technique pointue', 'Rigueur méthodologique', 'Gestion des priorités'],
+        pitfallsToAvoid: `Évitez les réponses vagues; donnez des exemples concrets d'outils, de frameworks ou de livrables précis.`
+      },
+      {
+        id: 'q-3',
+        category: 'comportementale',
+        categoryLabel: 'Soft Skills & Gestion de la Pression',
+        question: `Racontez-moi une situation où vous avez fait face à un imprévu majeur ou un délai très serré. Comment avez-vous réagi ?`,
+        recruiterIntent: `Évaluer votre résilience émotionnelle, votre calme sous pression, vos compétences en résolution de problèmes et votre flexibilité.`,
+        suggestedAnswer: `« [Méthode STAR] Situation : Nous devions finaliser un livrable stratégique avec un délai raccourci de moitié suite à une demande urgente. Tâche : Réorganiser les priorités sans dégrader le niveau de qualité. Action : J'ai rapidement découpé le projet en étapes critiques, délégué les composantes secondaires et instauré un point d'étape quotidien de 10 minutes. Résultat : Le livrable a été remis dans les temps avec les félicitations de la hiérarchie. »`,
+        keyStrengthsToHighlight: ['Sang-froid', 'Priorisation rapide', 'Esprit d\'équipe et communication claire'],
+        pitfallsToAvoid: `Ne cherchez pas à rejeter la faute sur des collègues ou un supérieur; assumez la responsabilité et valorisez la solution constructive.`
+      },
+      {
+        id: 'q-4',
+        category: 'situationnelle',
+        categoryLabel: 'Collaboration & Résolution de Conflits',
+        question: `Comment gérez-vous un désaccord avec un collègue ou un responsable sur la méthode à suivre ?`,
+        recruiterIntent: `Tester votre maturité professionnelle, votre intelligence relationnelle, votre écoute active et votre sens de l'intérêt collectif.`,
+        suggestedAnswer: `« Je privilégie toujours l'échange direct et factuel dans un esprit constructif. Je commence par écouter attentivement le point de vue de mon interlocuteur pour comprendre ses motivations sous-jacentes. Ensuite, nous comparons nos approches au regard des objectifs globaux du projet. Si nécessaire, nous testons une solution pilote ou sollicitons un arbitrage neutre, tout en restant 100% engagé une fois la décision finale prise. »`,
+        keyStrengthsToHighlight: ['Écoute active', 'Maturité relationnelle', 'Orientation vers l\'intérêt général'],
+        pitfallsToAvoid: `Ne prétendez jamais que vous n'avez jamais eu de désaccord; cela sonne faux. Montrez plutôt votre capacité à dialoguer posément.`
+      },
+      {
+        id: 'q-5',
+        category: 'piege',
+        categoryLabel: 'Question Délicate / Projection',
+        question: `Quel est votre principal axe d'amélioration (ou point faible) et que faites-vous concrètement pour progresser ?`,
+        recruiterIntent: `Mesurer votre lucidité, votre humilité et votre volonté d'apprentissage continu.`,
+        suggestedAnswer: `« Par souci du détail et exigence de qualité, j'avais parfois tendance à vouloir tout superviser par moi-même. J'ai pris conscience que cela pouvait ralentir certains processus. J'ai donc développé l'art de déléguer davantage, en mettant en place des points de contrôle structurés et des modèles partagés, ce qui a considérablement renforcé l'autonomie collective de mon équipe. »`,
+        keyStrengthsToHighlight: ['Auto-critique constructive', 'Proactivité d\'apprentissage', 'Capacité de prise de recul'],
+        pitfallsToAvoid: `Bannissez les faux défauts clichés ("je suis trop perfectionniste") ou les défauts rédhibitoires ("j'arrive souvent en retard"). Choisissez un point réel avec son plan d'action d'amélioration.`
+      },
+      {
+        id: 'q-6',
+        category: 'leadership',
+        categoryLabel: 'Vision & Projection à 3 Ans',
+        question: `Où vous voyez-vous dans 3 à 5 ans et comment ce poste chez ${company} s'inscrit-il dans votre plan de carrière ?`,
+        recruiterIntent: `Vérifier votre stabilité, votre ambition mesurée et la cohérence de votre projet professionnel avec les perspectives offertes par l'entreprise.`,
+        suggestedAnswer: `« Dans les 3 prochaines années, mon objectif est de devenir une référence incontournable sur le périmètre de ${targetJob} au sein de ${company}, en maîtrisant tous les rouages et en apportant des gains d'efficacité mesurables. À terme, j'aspire à prendre des responsabilités de coordination plus larges ou à mentorer de nouveaux collaborateurs. »`,
+        keyStrengthsToHighlight: ['Stabilité et fidélité', 'Ambition saine', 'Volonté d\'impact durable'],
+        pitfallsToAvoid: `Évitez de donner l'impression que le poste n'est qu'un simple tremplin éphémère ou, à l'inverse, que vous n'avez aucune ambition d'évolution.`
+      }
+    ],
+    behavioralTips: [
+      `Maintenez un contact visuel bienveillant et assuré avec tous les interlocuteurs présents dans la salle ou en visioconférence.`,
+      `Prenez 2 à 3 secondes de silence avant de répondre aux questions complexes : cela montre que vous réfléchissez avec calme et structure.`,
+      `Adoptez une posture droite et ouverte : mains posées sur la table, épaules détendues et sourire naturel à l'accueil.`,
+      `Exprimez-vous avec un débit mesuré et une voix claire en articulant vos idées avec des connecteurs logiques (Premièrement, De plus, Enfin).`,
+      `Montrez une énergie positive : les recruteurs recrutent avant tout une personnalité agréable avec qui il fait bon collaborer au quotidien.`
+    ],
+    suggestedQuestionsToAskRecruiter: [
+      `« Quels sont les 3 défis prioritaires que le/la futur(e) titulaire de ce poste devra relever au cours des 6 premiers mois ? »`,
+      `« Comment décririez-vous la culture de travail et la dynamique au sein de l'équipe que je vais intégrer ? »`,
+      `« Quels sont les critères clés sur lesquels vous mesurerez le succès de cette mission à la fin de la période d'essai ? »`,
+      `« Quelles sont les prochaines étapes du processus de recrutement et sous quel délai puis-je espérer votre retour ? »`
+    ],
+    strengthsSummary: [
+      `Expertise ciblée pour le métier de ${targetJob}`,
+      `Aisance relationnelle et dynamisme communicatif`,
+      `Capacité d'analyse et sens aigu de la rigueur`,
+      `Adaptabilité éprouvée aux contextes à forte exigence`
+    ]
+  };
+}
+
+// Main AI Generator Route for CV & Letter
+app.post(['/api/generate', '/api/gemini/generate-cv'], async (req, res) => {
   try {
     const formData = req.body;
     if (!formData || !formData.personalInfo) {
@@ -309,36 +441,41 @@ app.post('/api/generate', async (req, res) => {
     let userPrompt = '';
 
     if (isCvOnly) {
-      // CV Only Prompt
-      systemPrompt = `Tu es un expert RH de haut niveau spécialisé dans l'optimisation de CV au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
-Ta mission est d'optimiser le contenu du CV d'un candidat pour maximiser son impact auprès des recruteurs et passer les filtres ATS.
+      // CV Only Prompt with Strong Action Verbs & High Content Enrichment
+      systemPrompt = `Tu es un Directeur RH d'élite et expert ATS de référence spécialisé dans l'optimisation de CV au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
+Ta mission est d'optimiser, d'enrichir et de sublimer le contenu du CV d'un candidat pour maximiser son impact auprès des recruteurs les plus exigeants et obtenir un score ATS parfait (> 95%).
 
-Consignes :
-1. **Accroche / Profil Professionnel** : Rédige un profil professionnel d'accroche de 3 lignes max, percutant et orienté valeur ajoutée pour le poste visé (${cleanData.personalInfo.targetJob || 'Poste visé'}).
-2. **Expériences Professionnelles** : Pour chaque expérience fournie, retranscris la description sous forme de 3 à 5 puces percutantes avec verbes d'action au présent ou passé, chiffrées si possible.
-3. **Mots-clés ATS & Conseils d'Entretien** : Propose 6 à 8 mots-clés stratégiques pour le poste et 3 conseils d'entretien clés pour le marché sénégalais / ouest-africain.
+CONSIGNES STRICTES D'ENRICHISSEMENT & DE QUALITÉ :
+1. **Interdiction de recopie brute** : Ne te contente JAMAIS de recopier passivement le texte saisi par l'utilisateur. Sublime, professionnalise et étoffe chaque section.
+2. **Accroche / Profil Professionnel percutant (3-4 lignes denses)** : Rédige une synthèse de profil captivante, percutante et orientée valeur ajoutée pour le poste visé (${cleanData.personalInfo.targetJob || 'Poste visé'}). Mets en valeur son positionnement, ses points forts distinctifs, son niveau d'expertise et son dynamisme.
+3. **Expériences Professionnelles enrichies (Verbes d'action puissants)** :
+   - Pour CHAQUE expérience, génère 3 à 5 puces percutantes.
+   - Commence IMPÉRATIVEMENT chaque puce par un verbe d'action fort à l'infinitif ou au participe passé (ex: *Piloter, Déployer, Structurer, Coordonner, Optimiser, Négocier, Automatiser, Harmoniser, Fédérer, Analyser, Superviser, Accroître*).
+   - Intègre des réalisations concrètes, des livrables clés et des métriques chiffrées estimées adaptées au marché professionnel ouest-africain.
+4. **Mots-clés ATS & Compétences Stratégiques** : Génère 8 à 12 mots-clés stratégiques indispensables pour franchir les filtres ATS et prouver une solide maîtrise métier.
+5. **Conseils d'Entretien RH** : Fournis 3 conseils tactiques concrets pour performer lors des entretiens d'embauche.
 
-Propose un JSON contenant profileSummary, experiences, suggestedKeywords, et interviewTips.`;
+Format de sortie JSON requis.`;
 
-      userPrompt = `Données du candidat :
-- Candidat : ${cleanData.personalInfo.firstName} ${cleanData.personalInfo.lastName}
+      userPrompt = `Données complètes du candidat à sublimer :
+- Nom & Prénom : ${cleanData.personalInfo.firstName} ${cleanData.personalInfo.lastName}
 - Poste visé : ${cleanData.personalInfo.targetJob}
 - Localisation : ${cleanData.personalInfo.city || 'Dakar'}, ${cleanData.personalInfo.country || 'Sénégal'}
 - Secteur cible : ${cleanData.targetSector || 'Non spécifié'}
 
-Expériences :
+Expériences professionnelles fournies :
 ${JSON.stringify(cleanData.experiences, null, 2)}
 
-Formations :
+Formations & Diplômes :
 ${JSON.stringify(cleanData.education, null, 2)}
 
-Compétences :
+Compétences saisies :
 ${JSON.stringify(cleanData.skills, null, 2)}
 
 Langues :
 ${JSON.stringify(cleanData.languages, null, 2)}
 
-Génère la réponse optimisée au format JSON.`;
+Génère la version enrichie, professionnelle et optimisée ATS au format JSON.`;
 
     } else if (isLetterOnly) {
       // Standalone Cover Letter Prompt
@@ -362,7 +499,7 @@ CONSIGNES STRICTES DE RÉDACTION :
 
 2. **Structure stricte en 4 paragraphes distincts et développés (Architecture VOUS / MOI / NOUS / CONCLUSION)** :
    - **Paragraphe 1 (Accroche - Le "VOUS")** : Raison de la candidature et intérêt ciblé pour l'entreprise (${cleanData.targetCompany || "l'entreprise"}). Démontre une compréhension fine de leur positionnement et explique pourquoi cette structure vous attire particulièrement.
-   - **Paragraphe 2 (Vos compétences & réalisations - Le "MOI")** : Mise en valeur des expériences techniques, projets marquants, réalisations concrètes et résultats chiffrés probants.
+   - **Paragraphe 2 (Vos compétences & réalisations - Le "MOI")** : Mise en valeur des expériences techniques, projets marquants, réalisations concrètes et résultats chiffrés probants avec verbes d'action forts.
    - **Paragraphe 3 (Apport mutuel & synergie - Le "NOUS")** : Ce que votre profil va apporter concrètement aux objectifs de l'entreprise au Sénégal/UEMOA, vos soft skills, votre force de proposition et votre adaptabilité.
    - **Paragraphe 4 (Conclusion & Entretien)** : Demande explicite d'entretien, disponibilité immédiate et affirmation de votre motivation à échanger de vive voix.
 
@@ -391,24 +528,16 @@ Génère la lettre de motivation idéale au format JSON.`;
       // Full Pack CV + Letter Prompt
       const userInstructions = (cleanData.letterInstructions || cleanData.highlightsSummary || '').trim();
 
-      systemPrompt = `Tu es un expert RH de haut niveau spécialisé dans le recrutement au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
-Ta mission est d'optimiser les données de CV d'un candidat ET de lui rédiger une lettre de motivation assortie sur-mesure ultra convaincante, percutante, substantielle et complète occupant élégamment toute la feuille A4 (entre 250 et 350 mots, au moins 300 mots).
+      systemPrompt = `Tu es un Directeur RH et expert ATS de référence au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
+Ta mission est d'enrichir et de sublimer les données de CV d'un candidat ET de lui rédiger une lettre de motivation assortie sur-mesure ultra convaincante, percutante, substantielle et complète occupant élégamment toute la feuille A4 (entre 250 et 350 mots, au moins 300 mots).
 
-Consignes impératives pour l'optimisation :
-1. **Accroche / Profil Professionnel** : Rédige une phrase ou un paragraphe d'accroche de 3 lignes maximum, très percutant, mettant en valeur la proposition de valeur du candidat pour le poste visé (${cleanData.personalInfo.targetJob || 'Poste visé'}).
-2. **Expériences Professionnelles** : Pour chaque expérience fournie, transforme la description brute en 3 à 5 puces d'impact rédigées avec des verbes d'action forts à l'infinitif ou au passé composé, orientées résultats, métriques et maîtrise technique adaptée aux attentes des recruteurs au Sénégal et en Afrique francophone.
-3. **Lettre de Motivation Sur-Mesure A4 (Architecture VOUS / MOI / NOUS / CONCLUSION)** :
-   - Longueur : Corps de texte d'au moins 300 mots (entre 250 et 350 mots au total).
-   - Structure en 4 paragraphes distincts et développés :
-     * Paragraphe 1 (Accroche - VOUS) : Raison de la candidature et intérêt ciblé pour l'entreprise.
-     * Paragraphe 2 (MOI) : Compétences & réalisations techniques, projets et résultats chiffrés.
-     * Paragraphe 3 (NOUS) : Apport mutuel, synergie et contribution aux objectifs de l'entreprise.
-     * Paragraphe 4 (Conclusion) : Demande explicite d'entretien et disponibilité.
-   - Formule de politesse soignée (Closing).
-${userInstructions ? `Consignes particulières à respecter impérativement pour la lettre : "${userInstructions}"` : ''}
-4. **Mots-clés Clés ATS & Conseils d'Entretien** : Fournis 6 à 8 mots-clés stratégiques à valoriser, et 3 conseils d'entretien spécifiques au marché sénégalais / ouest-africain.
+CONSIGNES STRICTES :
+1. **Accroche de CV percutante** : 3-4 lignes denses mettant en lumière la proposition de valeur pour le poste de ${cleanData.personalInfo.targetJob || 'Poste visé'}.
+2. **Expériences Professionnelles (Verbes d'action)** : Ne jamais recopier passivement. Rédige 3 à 5 puces par expérience commençant par des verbes d'action puissants (Piloter, Déployer, Structurer, Coordonner, Optimiser, Négocier, Automatiser), orientées résultats et métriques.
+3. **Lettre de Motivation Sur-Mesure A4 (VOUS / MOI / NOUS / CONCLUSION)** : Au moins 300 mots, 4 paragraphes distincts et développés.
+4. **Mots-clés ATS & Conseils d'Entretien** : 8 à 12 mots-clés stratégiques et 3 conseils d'entretien probants.
 
-Format de sortie : JSON respectant strictly la structure demandée.`;
+Format de sortie : JSON.`;
 
       userPrompt = `Voici les données du candidat :
 - Nom complet : ${cleanData.personalInfo.firstName} ${cleanData.personalInfo.lastName}
@@ -431,7 +560,7 @@ ${JSON.stringify(cleanData.skills, null, 2)}
 Langues :
 ${JSON.stringify(cleanData.languages, null, 2)}
 
-Génère la réponse optimisée en JSON.`;
+Génère la réponse enrichie au format JSON.`;
     }
 
     try {
@@ -448,7 +577,7 @@ Génère la réponse optimisée en JSON.`;
             properties: {
               profileSummary: {
                 type: Type.STRING,
-                description: 'Profil professionnel ou accroche de candidat.',
+                description: 'Profil professionnel ou accroche de candidat captivante.',
               },
               experiences: {
                 type: Type.ARRAY,
@@ -459,7 +588,7 @@ Génère la réponse optimisée en JSON.`;
                     optimizedDescription: {
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
-                      description: 'Liste de puces percutantes avec verbes d action.',
+                      description: 'Liste de puces percutantes commençant par des verbes d\'action forts.',
                     },
                   },
                   required: ['id', 'optimizedDescription'],
@@ -533,6 +662,176 @@ Génère la réponse optimisée en JSON.`;
     });
   }
 });
+
+// =========================================================================
+// ROUTE : GÉNÉRATEUR DE FICHE DE PRÉPARATION D'ENTRETIEN RH
+// =========================================================================
+app.post(['/api/generate-interview-prep', '/api/gemini/generate-interview-prep'], async (req, res) => {
+  try {
+    const { formData, aiData } = req.body || {};
+    if (!formData || !formData.personalInfo) {
+      return res.status(400).json({ error: 'Données du candidat manquantes pour la préparation d\'entretien.' });
+    }
+
+    const cleanData = sanitizeForPrompt(formData);
+    const p = cleanData.personalInfo || {};
+    const candidateName = `${p.firstName || 'Candidat'} ${p.lastName || ''}`.trim();
+    const targetJob = p.targetJob || 'Professionnel';
+    const targetCompany = cleanData.targetCompany || 'l\'Entreprise recruteuse';
+    const city = p.city || 'Dakar';
+    const country = p.country || 'Sénégal';
+
+    let ai: GoogleGenAI | null = null;
+    try {
+      ai = getGenAIClient();
+    } catch (keyErr) {
+      console.warn('[Gemini API Notice] Utilisation de la préparation d\'entretien intelligente de secours.');
+      return res.json({
+        success: true,
+        data: generateFallbackInterviewPrep(formData)
+      });
+    }
+
+    const systemPrompt = `Tu es un Directeur des Ressources Humaines (DRH) d'élite, coach en prise de parole professionnelle et expert du recrutement au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
+Ta mission est d'analyser en profondeur le profil et le CV du candidat pour lui générer une FICHE DE PRÉPARATION D'ENTRETIEN RH ULTRA-PERSONNALISÉE ET STRATÉGIQUE.
+
+Structure obligatoire de la fiche d'entretien :
+1. **Pitch de présentation de 2 minutes (L'Accroche "Parlez-moi de vous")** :
+   - Divisé en 3 temps :
+     * Hook (0-30s) : Présentation percutante, vision et accroche directe.
+     * Career Highlights (30-90s) : Réalisations majeures et compétences techniques/managériales prouvées.
+     * Value Proposition (90-120s) : Adéquation parfaite avec le poste de ${targetJob} chez ${targetCompany} et promesse de valeur.
+     * Full Text : Le texte intégral rédigé à la 1ère personne, prêt à être répété et déclamé avec naturel et assurance.
+2. **6 à 8 Questions d'Entretien RH Ultra-Probables & Stratégiques** :
+   - Mélange de questions techniques sur le métier de ${targetJob}, comportementales (Soft Skills), situationnelles (Gestion de crise/délai), questions de motivation et questions pièges classiques des recruteurs.
+   - Pour CHAQUE question :
+     * "id": string unique
+     * "category": 'technique' | 'comportementale' | 'motivation' | 'situationnelle' | 'piege' | 'leadership'
+     * "categoryLabel": Libellé lisible (ex: "Question Comportementale / Gestion du Stress")
+     * "question": La question formulée telle qu'un DRH la poserait.
+     * "recruiterIntent": Ce que le recruteur cherche réellement à évaluer sous la surface.
+     * "suggestedAnswer": La réponse idéale modèle, articulée selon la méthode STAR (Situation, Tâche, Action, Résultat chiffré).
+     * "keyStrengthsToHighlight": 2 à 4 arguments ou mots-clés indispensables à prononcer.
+     * "pitfallsToAvoid": Le piège classique à ne surtout pas commettre.
+3. **Conseils comportementaux & posture d'impact (4-5 conseils)** : Langage non-verbal, gestion de la respiration, intonation de la voix et écoute active.
+4. **4 à 5 Questions intelligentes à poser au recruteur en fin d'entretien** : Montrant un esprit stratégique et une vision de long terme.
+5. **Synthèse des atouts majeurs détectés** : 4 points forts distinctifs du profil.
+
+Format requis : JSON structuré selon le schéma.`;
+
+    const userPrompt = `Voici le profil et le CV complet du candidat à coacher :
+- Nom : ${candidateName}
+- Poste visé : ${targetJob}
+- Entreprise ciblée : ${targetCompany}
+- Ville / Pays : ${city}, ${country}
+- Profil / Accroche actuelle : ${aiData?.profileSummary || cleanData.highlightsSummary || 'Non spécifié'}
+
+Expériences professionnelles :
+${JSON.stringify(cleanData.experiences || [], null, 2)}
+
+Formations & Diplômes :
+${JSON.stringify(cleanData.education || [], null, 2)}
+
+Compétences déclarées :
+${JSON.stringify(cleanData.skills || [], null, 2)}
+
+Langues :
+${JSON.stringify(cleanData.languages || [], null, 2)}
+
+Génère la fiche de préparation d'entretien d'embauche sur-mesure en JSON.`;
+
+    try {
+      const response = await generateContentWithRetry(ai, {
+        model: 'gemini-flash-latest',
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              pitch2Min: {
+                type: Type.OBJECT,
+                properties: {
+                  hook: { type: Type.STRING },
+                  careerHighlights: { type: Type.STRING },
+                  valueProposition: { type: Type.STRING },
+                  fullText: { type: Type.STRING }
+                },
+                required: ['hook', 'careerHighlights', 'valueProposition', 'fullText']
+              },
+              questions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    categoryLabel: { type: Type.STRING },
+                    question: { type: Type.STRING },
+                    recruiterIntent: { type: Type.STRING },
+                    suggestedAnswer: { type: Type.STRING },
+                    keyStrengthsToHighlight: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    pitfallsToAvoid: { type: Type.STRING }
+                  },
+                  required: ['id', 'category', 'question', 'recruiterIntent', 'suggestedAnswer', 'keyStrengthsToHighlight', 'pitfallsToAvoid']
+                }
+              },
+              behavioralTips: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              suggestedQuestionsToAskRecruiter: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              strengthsSummary: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
+            },
+            required: ['pitch2Min', 'questions', 'behavioralTips', 'suggestedQuestionsToAskRecruiter']
+          }
+        }
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      const interviewPrepData = {
+        id: `PREP-${Date.now()}`,
+        candidateName,
+        targetJob,
+        targetCompany,
+        city,
+        country,
+        createdAt: new Date().toISOString(),
+        ...parsed
+      };
+
+      return res.json({
+        success: true,
+        data: interviewPrepData
+      });
+    } catch (genErr: any) {
+      console.warn('[Gemini Interview Prep] Erreur lors de la génération IA, basculement vers le fallback intelligent :', genErr?.message);
+      return res.json({
+        success: true,
+        data: generateFallbackInterviewPrep(formData)
+      });
+    }
+  } catch (error: any) {
+    console.error('Erreur API generate-interview-prep:', error);
+    return res.json({
+      success: true,
+      data: generateFallbackInterviewPrep(req.body?.formData || req.body)
+    });
+  }
+});
+
 
 // Individual section optimizer (Quick AI rewrite)
 app.post('/api/generate-business-doc', async (req, res) => {

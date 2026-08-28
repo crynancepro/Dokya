@@ -382,6 +382,18 @@ export interface ThemeOption {
   badgeBg: string;
 }
 
+export interface UserSubscription {
+  planId: 'weekly' | 'monthly' | 'annual' | 'none';
+  planName: string;
+  status: 'active' | 'expired' | 'none';
+  startedAt?: string;
+  expiresAt?: string;
+  autoRenew?: boolean;
+  pricePaid?: number;
+  paymentMethod?: string;
+  documentsGeneratedCount?: number;
+}
+
 export interface CandidateProfile {
   uid: string;
   email: string;
@@ -393,6 +405,7 @@ export interface CandidateProfile {
   credits: number;
   balance: number; // Solde utilisateur en FCFA (ex: 3 000 FCFA)
   subscriptionStatus: 'free' | 'pro' | 'unlimited';
+  subscription?: UserSubscription;
   updatedAt: string;
 }
 
@@ -408,6 +421,7 @@ export interface SavedUserDocument {
   aiData: AIOptimizedData | null;
   businessDocData?: BusinessDocData;
   ebookData?: EbookData;
+  interviewPrepData?: InterviewPrepData;
   selectedFormat?: string;
 }
 
@@ -579,6 +593,49 @@ export interface AdminWalletAdjustmentPayload {
   type: 'credit' | 'debit';
   reason: string;
   adminEmail?: string;
+}
+
+// ==========================================
+// RH INTERVIEW PREPARATION (PRÉPARATION ENTRETIEN RH)
+// ==========================================
+
+export type InterviewQuestionCategory = 
+  | 'technique'
+  | 'comportementale'
+  | 'motivation'
+  | 'situationnelle'
+  | 'leadership'
+  | 'piege';
+
+export interface InterviewQuestionItem {
+  id: string;
+  category: InterviewQuestionCategory | string;
+  categoryLabel?: string;
+  question: string;
+  recruiterIntent: string; // Ce que le RH / recruteur cherche réellement à tester
+  suggestedAnswer: string; // Réponse modèle structurée (Méthode STAR : Contexte, Action, Résultat chiffré)
+  keyStrengthsToHighlight: string[]; // 2-4 points forts indispensables à placer
+  pitfallsToAvoid: string; // Erreur classique ou piège à éviter absolument
+}
+
+export interface InterviewPrepData {
+  id: string;
+  candidateName: string;
+  targetJob: string;
+  targetCompany?: string;
+  city?: string;
+  country?: string;
+  createdAt: string;
+  pitch2Min: {
+    hook: string; // 0-30s : Qui je suis, vision & accroche immédiate
+    careerHighlights: string; // 30-90s : Réalisations majeures & compétences clés
+    valueProposition: string; // 90-120s : Pourquoi vous, valeur ajoutée pour l'entreprise & conclusion
+    fullText: string; // Texte intégral fluide prêt à être déclamé
+  };
+  questions: InterviewQuestionItem[];
+  behavioralTips: string[]; // 4-6 conseils de posture, communication non-verbale & négociation
+  suggestedQuestionsToAskRecruiter: string[]; // 4-5 questions stratégiques intelligentes à poser en fin d'entretien
+  strengthsSummary?: string[]; // Synthèse des atouts majeurs détectés
 }
 
 

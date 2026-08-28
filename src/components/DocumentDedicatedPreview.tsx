@@ -40,6 +40,7 @@ interface DocumentDedicatedPreviewProps {
   setPackEmploiSubTab?: (tab: 'cv' | 'letter') => void;
   packBusinessSubTab?: 'devis' | 'facture';
   setPackBusinessSubTab?: (tab: 'devis' | 'facture') => void;
+  onOpenInterviewPrep?: () => void;
 }
 
 export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> = ({
@@ -63,7 +64,8 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   isGeneratingPDF = false,
   isGeneratingDocx = false,
   packBusinessSubTab = 'devis',
-  setPackBusinessSubTab
+  setPackBusinessSubTab,
+  onOpenInterviewPrep
 }) => {
   const { pricing } = usePricing();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -205,6 +207,19 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
             >
               Tous les services
             </button>
+
+            {docType === 'cv' && onOpenInterviewPrep && (
+              <button
+                id="btn-preview-open-interview-prep"
+                type="button"
+                onClick={onOpenInterviewPrep}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-indigo-500/20 transition-all cursor-pointer active:scale-95 animate-pulse"
+                title="Accéder à votre fiche d'entretien RH personnalisée"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>🎯 Préparer mon Entretien RH</span>
+              </button>
+            )}
           </div>
 
           {/* Center: Title & Document Badge */}

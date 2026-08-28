@@ -23,12 +23,14 @@ import { auth, googleProvider } from '../lib/firebase';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   initialMode?: 'login' | 'signup';
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
+  onSuccess,
   initialMode = 'login'
 }) => {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
@@ -52,14 +54,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         await signInWithEmailAndPassword(auth, email, password);
         setSuccessMsg('Connexion réussie !');
         setTimeout(() => {
+          if (onSuccess) onSuccess();
           onClose();
-        }, 1000);
+        }, 800);
       } else {
         await createUserWithEmailAndPassword(auth, email, password);
         setSuccessMsg('Compte créé avec succès !');
         setTimeout(() => {
+          if (onSuccess) onSuccess();
           onClose();
-        }, 1000);
+        }, 800);
       }
     } catch (err: any) {
       console.warn('Auth notice:', err.code, err.message);
@@ -88,8 +92,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       await signInWithPopup(auth, googleProvider);
       setSuccessMsg('Connexion Google réussie !');
       setTimeout(() => {
+        if (onSuccess) onSuccess();
         onClose();
-      }, 1000);
+      }, 800);
     } catch (err: any) {
       console.warn('Google Auth notice:', err.code, err.message);
       if (err.code === 'auth/popup-closed-by-user') {

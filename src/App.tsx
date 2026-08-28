@@ -1,8 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { CVFormData, AIOptimizedData, CandidateProfile, SavedUserDocument, BusinessDocData, EbookData } from './types';
+import { 
+  CVFormData, 
+  AIOptimizedData, 
+  CandidateProfile, 
+  SavedUserDocument, 
+  BusinessDocData, 
+  EbookData,
+  TemplateStyle,
+  CoverLetterType
+} from './types';
 import { SAMPLE_CV_DATA } from './data/sampleData';
-import { SAMPLE_EBOOK_DATA } from './data/sampleEbookData';
 import { Header } from './components/Header';
+import { LandingPage } from './components/LandingPage';
+import { TemplatesView } from './components/TemplatesView';
 import { StepForm } from './components/StepForm';
 import { LetterEditorForm } from './components/LetterEditorForm';
 import { CandidateDashboard } from './components/CandidateDashboard';
@@ -11,18 +21,20 @@ import { RechargeWalletModal } from './components/RechargeWalletModal';
 import { DevisFactureForm } from './components/DevisFactureForm';
 import { EbookWizardForm } from './components/EbookWizardForm';
 import { DocumentDedicatedPreview } from './components/DocumentDedicatedPreview';
-import { ServicesOverviewBanner } from './components/ServicesOverviewBanner';
 import { CVTemplateGallery } from './components/CVTemplateGallery';
 import { BusinessDocTemplateGallery } from './components/BusinessDocTemplateGallery';
 import { LetterTemplateGallery } from './components/LetterTemplateGallery';
+import { AuthModal } from './components/AuthModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
 import { auth, saveUserDocument, saveTransactionRecord } from './lib/firebase';
+import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { generateCVWithGemini } from './lib/geminiService';
 
 import { 
-  CheckCircle2, User, ArrowRight,
-  FileCheck, Receipt, Eye, FolderHeart, Sparkles, PlusCircle, X, ShieldCheck
+  CheckCircle2, ArrowLeft,
+  FileCheck, Receipt, Eye, FolderHeart, PlusCircle, X, ShieldCheck,
+  Layers, Sparkles
 } from 'lucide-react';
 
 export const createEmptyCVFormData = (): CVFormData => ({
@@ -122,12 +134,40 @@ export const createEmptyEbookData = (): EbookData => ({
   updatedAt: new Date().toISOString()
 });
 
+export type MainAppView = 
+  | 'landing'
+  | 'auth'
+  | 'dashboard'
+  | 'templates'
+  | 'cv_gallery'
+  | 'cv'
+  | 'cv_preview'
+  | 'letter_gallery'
+  | 'letter'
+  | 'letter_preview'
+  | 'devis_gallery'
+  | 'devis'
+  | 'devis_preview'
+  | 'facture_gallery'
+  | 'facture'
+  | 'facture_preview'
+  | 'pack_business_gallery'
+  | 'pack_business'
+  | 'pack_business_preview'
+  | 'ebook'
+  | 'ebook_preview'
+  | 'tarifs'
+  | 'subscription';
+
 interface AppProps {
   onOpenAdmin?: () => void;
 }
 
 export default function App({ onOpenAdmin }: AppProps = {}) {
-  // CLEAN FORM STATE - NO LOCALSTORAGE PERSISTENCE FOR INPUT FIELDS
+  // Authentication status
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(auth.currentUser);
+
+  // Form State
   const [formData, setFormData] = useState<CVFormData>(createEmptyCVFormData);
   const [businessDocData, setBusinessDocData] = useState<BusinessDocData>(() => createEmptyBusinessDocData('devis'));
   const [ebookData, setEbookData] = useState<EbookData>(createEmptyEbookData);
@@ -145,39 +185,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Clean any old stale form cache from browser on first mount
-  useEffect(() => {
-    try {
-      localStorage.removeItem('cv_form_data');
-      localStorage.removeItem('business_doc_data');
-      localStorage.removeItem('ebook_data');
-      localStorage.removeItem('cv_ai_data');
-      localStorage.removeItem('senegal_cv_paid_docs');
-    } catch (_e) {}
-  }, []);
-
-  // Main Active View: 'services' (Home), dedicated gallery views, form views, or preview views
-  const [activeTab, setActiveTab] = useState<
-    | 'services'
-    | 'cv_gallery'
-    | 'cv'
-    | 'cv_preview'
-    | 'letter_gallery'
-    | 'letter'
-    | 'letter_preview'
-    | 'devis_gallery'
-    | 'devis'
-    | 'devis_preview'
-    | 'facture_gallery'
-    | 'facture'
-    | 'facture_preview'
-    | 'pack_business_gallery'
-    | 'pack_business'
-    | 'pack_business_preview'
-    | 'ebook'
-    | 'ebook_preview'
-    | 'dashboard'
-  >('services');
+  // Service for templates view
+  const [templatesService, setTemplatesService] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook'>('cv');
 
   // Pack specific sub-switchers
   const [packBusinessSubTab, setPackBusinessSubTab] = useState<'devis' | 'facture'>('devis');
@@ -197,6 +206,132 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     }
     return 3000;
   });
+
+  // Modal states
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
+  const [paymentDocType, setPaymentDocType] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook'>('cv');
+  const [paymentDocTitle, setPaymentDocTitle] = useState<string>('');
+  const [paymentDocTypeLabel, setPaymentDocTypeLabel] = useState<string>('CV Pro ATS');
+  const [paymentPrice, setPaymentPrice] = useState<number>(1000);
+  const [isRechargeModalOpen, setIsRechargeModalOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'signup'>('login');
+
+  // -------------------------------------------------------------
+  // Initial View Determination & URL Sync
+  // -------------------------------------------------------------
+  const [activeTab, setActiveTab] = useState<MainAppView>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      const pathname = window.location.pathname.toLowerCase();
+      const user = auth.currentUser;
+
+      if (hash === '#landing' || pathname === '/') {
+        return user ? 'dashboard' : 'landing';
+      }
+      if (hash === '#auth' || pathname === '/auth') {
+        return user ? 'dashboard' : 'landing';
+      }
+      if (hash === '#dashboard' || pathname === '/dashboard') {
+        return user ? 'dashboard' : 'landing';
+      }
+      if (hash === '#templates' || pathname === '/templates') {
+        return user ? 'templates' : 'landing';
+      }
+      if (hash === '#editor' || pathname === '/editor') {
+        return user ? 'cv' : 'landing';
+      }
+      if (hash === '#tarifs' || pathname === '/tarifs') {
+        return 'tarifs';
+      }
+      if (hash === '#subscription' || pathname === '/subscription') {
+        return 'subscription';
+      }
+    }
+    return auth.currentUser ? 'dashboard' : 'landing';
+  });
+
+  // Clean stale storage
+  useEffect(() => {
+    try {
+      localStorage.removeItem('cv_form_data');
+      localStorage.removeItem('business_doc_data');
+      localStorage.removeItem('ebook_data');
+      localStorage.removeItem('cv_ai_data');
+      localStorage.removeItem('senegal_cv_paid_docs');
+    } catch (_e) {}
+  }, []);
+
+  // Handle user Sign Out with direct redirection to Landing Page
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn('Sign out error:', e);
+    }
+    setCurrentUser(null);
+    navigateToView('landing');
+  };
+
+  // Listen to Firebase Auth state
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      if (user) {
+        // If user just logged in and was on landing or auth, navigate to dashboard
+        if (activeTab === 'landing' || activeTab === 'auth') {
+          setActiveTab('dashboard');
+        }
+      } else {
+        // When user logs out / is logged out, redirect immediately to landing page
+        if (activeTab !== 'landing') {
+          setActiveTab('landing');
+          if (typeof window !== 'undefined') {
+            window.location.hash = 'landing';
+          }
+        }
+      }
+    });
+    return () => unsub();
+  }, [activeTab]);
+
+  // Handle URL Hash synchronization
+  const navigateToView = (view: MainAppView, serviceContext?: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook') => {
+    // Auth Guard for protected views
+    const protectedViews: MainAppView[] = [
+      'dashboard', 'templates', 'cv', 'cv_preview', 'letter', 'letter_preview',
+      'devis', 'devis_preview', 'facture', 'facture_preview', 'pack_business',
+      'pack_business_preview', 'ebook', 'ebook_preview'
+    ];
+
+    // Check either auth.currentUser or React state currentUser
+    const isAuthUser = !!auth.currentUser || !!currentUser;
+
+    if (protectedViews.includes(view) && !isAuthUser) {
+      setAuthModalInitialMode('signup');
+      setIsAuthModalOpen(true);
+      setErrorMessage("Veuillez vous connecter ou créer un compte pour accéder à cette fonctionnalité.");
+      setTimeout(() => setErrorMessage(null), 5000);
+      return;
+    }
+
+    if (serviceContext) {
+      setTemplatesService(serviceContext);
+    }
+
+    setActiveTab(view);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Sync hash in browser without full reload
+    if (typeof window !== 'undefined') {
+      if (view === 'landing') window.location.hash = 'landing';
+      else if (view === 'dashboard') window.location.hash = 'dashboard';
+      else if (view === 'templates') window.location.hash = `templates${serviceContext ? `?service=${serviceContext}` : ''}`;
+      else if (view === 'cv' || view === 'letter' || view === 'devis' || view === 'facture' || view === 'pack_business' || view === 'ebook') window.location.hash = 'editor';
+      else if (view === 'tarifs') window.location.hash = 'tarifs';
+      else if (view === 'subscription') window.location.hash = 'subscription';
+    }
+  };
 
   // Handle return from SenePay Hosted Checkout return URL
   useEffect(() => {
@@ -245,14 +380,6 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     } catch (_e) {}
   }, []);
 
-  // Payment Modal State
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
-  const [paymentDocType, setPaymentDocType] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook'>('cv');
-  const [paymentDocTitle, setPaymentDocTitle] = useState<string>('');
-  const [paymentDocTypeLabel, setPaymentDocTypeLabel] = useState<string>('CV Pro ATS');
-  const [paymentPrice, setPaymentPrice] = useState<number>(1000);
-  const [isRechargeModalOpen, setIsRechargeModalOpen] = useState<boolean>(false);
-
   // -------------------------------------------------------------
   // Open Payment Modal Handlers for each service
   // -------------------------------------------------------------
@@ -279,7 +406,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     } else if (docType === 'ebook') {
       setPaymentDocTitle(ebookData.title || 'Mon Livre Numérique');
       setPaymentDocTypeLabel('Livre Numérique (Ebook Pro)');
-      setPaymentPrice(1500);
+      setPaymentPrice(3000);
     } else {
       setPaymentDocTitle(`Pack Business (Devis + Facture) - ${businessDocData.docNumber}`);
       setPaymentDocTypeLabel('Pack Business (Devis + Facture)');
@@ -290,10 +417,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
   // Handle successful payment
   const handlePaymentSuccess = (method: 'wallet' | 'mobile_money' | 'free', tx?: any) => {
-    // 1. Mark strictly current document as paid
     setIsCurrentDocPaid(true);
 
-    // 2. If paid by wallet debit, update local balance & transaction logs
     if (method === 'wallet' && tx) {
       if (typeof tx.newBalance === 'number') {
         setUserBalance(tx.newBalance);
@@ -403,36 +528,79 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   };
 
   // -------------------------------------------------------------
-  // Service Selection Dispatcher from Home / Catalog (Gallery First Flow)
+  // Step A -> Step B: Selection of Service from Dashboard -> Templates Gallery
   // -------------------------------------------------------------
-  const handleSelectService = (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'dashboard') => {
+  const handleSelectService = (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'dashboard' | 'tarifs' | 'subscription' | 'gallery') => {
     handleCreateNewDocument();
 
-    if (service === 'cv' || service === 'full_pack') {
-      setFormData(prev => ({ ...prev, generationMode: 'cv_only' }));
-      setActiveTab('cv_gallery');
-    } else if (service === 'letter') {
-      setFormData(prev => ({ ...prev, generationMode: 'letter_only' }));
-      setActiveTab('letter_gallery');
-    } else if (service === 'devis') {
-      setBusinessDocData(createEmptyBusinessDocData('devis'));
-      setActiveTab('devis_gallery');
-    } else if (service === 'facture') {
-      setBusinessDocData(createEmptyBusinessDocData('facture'));
-      setActiveTab('facture_gallery');
-    } else if (service === 'pack_business') {
-      setBusinessDocData(createEmptyBusinessDocData('devis'));
+    if (service === 'dashboard') {
+      navigateToView('dashboard');
+      return;
+    }
+    if (service === 'tarifs') {
+      navigateToView('tarifs');
+      return;
+    }
+    if (service === 'subscription') {
+      navigateToView('subscription');
+      return;
+    }
+
+    const serviceKey = (service === 'full_pack' ? 'cv' : service === 'gallery' ? 'cv' : service) as 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook';
+    setTemplatesService(serviceKey);
+    navigateToView('templates', serviceKey);
+  };
+
+  // -------------------------------------------------------------
+  // Step B -> Step C: Selection of Template in Gallery -> Editor
+  // -------------------------------------------------------------
+  const handleSelectCVTemplate = (templateId: TemplateStyle, accentColor?: string) => {
+    setFormData(prev => ({
+      ...prev,
+      generationMode: 'cv_only',
+      templateStyle: templateId,
+      themeColor: accentColor || prev.themeColor
+    }));
+    setActiveTab('cv');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSelectLetterTemplate = (styleId: string, letterType: CoverLetterType) => {
+    setFormData(prev => ({
+      ...prev,
+      generationMode: 'letter_only',
+      templateStyle: styleId as any,
+      letterType
+    }));
+    setActiveTab('letter');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSelectBusinessTemplate = (docType: 'devis' | 'facture' | 'pack_business', templateId: string, themeStyle?: 'indigo' | 'emerald' | 'amber' | 'slate') => {
+    setBusinessDocData(prev => ({
+      ...prev,
+      type: docType === 'pack_business' ? 'devis' : docType,
+      templateStyle: templateId,
+      themeColor: themeStyle === 'emerald' ? '#059669' : themeStyle === 'amber' ? '#d97706' : themeStyle === 'slate' ? '#334155' : '#4f46e5'
+    }));
+
+    if (docType === 'pack_business') {
       setPackBusinessSubTab('devis');
-      setActiveTab('pack_business_gallery');
-    } else if (service === 'ebook') {
-      setActiveTab('ebook');
-    } else if (service === 'dashboard') {
-      setActiveTab('dashboard');
+      setActiveTab('pack_business');
+    } else if (docType === 'facture') {
+      setActiveTab('facture');
+    } else {
+      setActiveTab('devis');
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Load Sample Data (For demonstration, preserves user-selected template style & color)
+  const handleSelectEbookTemplate = () => {
+    setActiveTab('ebook');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Load Sample Data
   const handleLoadSample = () => {
     setFormData(prev => ({
       ...SAMPLE_CV_DATA,
@@ -483,7 +651,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     setTimeout(() => setSuccessMessage(null), 3500);
   };
 
-  // Load Saved Document to Editor (Creates a fresh new draft requiring its own payment)
+  // Load Saved Document to Editor
   const handleLoadDocumentToEditor = (loadedFormData: CVFormData, loadedAiData: any) => {
     setFormData(loadedFormData);
     if (loadedAiData) {
@@ -496,7 +664,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     setTimeout(() => setSuccessMessage(null), 3500);
   };
 
-  // Main Submit Call using Gemini SDK directly
+  // Main Submit Call using Gemini SDK
   const handleGenerate = async () => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -512,7 +680,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       setSuccessMessage("Document généré et optimisé avec succès par l'IA Gemini !");
       setTimeout(() => setSuccessMessage(null), 3500);
 
-      // AUTOMATIC REDIRECTION TO ÉTAPE 2 : APERÇU PLEIN ÉCRAN
+      // Transition to Preview
       if (activeTab === 'letter') {
         setActiveTab('letter_preview');
       } else {
@@ -541,7 +709,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // PDF Download Handlers
+  // PDF Downloads
   const downloadCVPDF = async () => {
     setIsGeneratingPDF(true);
     setErrorMessage(null);
@@ -634,40 +802,118 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   };
 
   const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name || !!ebookData?.title;
+  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription';
+  const isLandingView = activeTab === 'landing';
+  const isTemplatesView = activeTab === 'templates';
 
+  // -------------------------------------------------------------
+  // ROUTE 1: PUBLIC LANDING PAGE (Vitrine commerciale aérée)
+  // -------------------------------------------------------------
+  if (isLandingView) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col">
+        <LandingPage
+          onGoToAuth={(mode) => {
+            setAuthModalInitialMode(mode || 'login');
+            setIsAuthModalOpen(true);
+          }}
+          onGoToDashboard={() => navigateToView('dashboard')}
+          onSelectService={(service) => {
+            if (currentUser) {
+              handleSelectService(service);
+            } else {
+              setAuthModalInitialMode('signup');
+              setIsAuthModalOpen(true);
+            }
+          }}
+          onOpenTarifs={() => navigateToView('tarifs')}
+          onOpenTemplates={(service) => {
+            if (currentUser) {
+              navigateToView('templates', (service || 'cv') as any);
+            } else {
+              setAuthModalInitialMode('signup');
+              setIsAuthModalOpen(true);
+            }
+          }}
+        />
+
+        {/* Global Auth Modal */}
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          initialMode={authModalInitialMode}
+          onClose={() => setIsAuthModalOpen(false)}
+          onSuccess={() => {
+            setIsAuthModalOpen(false);
+            navigateToView('dashboard');
+          }}
+        />
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // ROUTE 2, 3, 4, 5: DASHBOARD, TEMPLATES GALLERY, EDITOR & PREVIEWS
+  // -------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
       
-      {/* 1. DEDICATED OR PORTAL HEADER */}
-      <Header
-        currentView={activeTab}
-        userBalance={userBalance}
-        onLoadSample={handleLoadSample}
-        onReset={handleReset}
-        hasData={hasActiveData}
-        onOpenDashboard={() => setActiveTab('dashboard')}
-        onGoServices={() => {
-          handleCreateNewDocument();
-          setActiveTab('services');
-        }}
-        onOpenAdmin={onOpenAdmin}
-        onOpenRecharge={() => setIsRechargeModalOpen(true)}
-      />
+      {/* 1. TOP HEADER (When in Editor or Studio) */}
+      {!isDashboardView && !isTemplatesView && (
+        <Header
+          currentView={activeTab}
+          userBalance={userBalance}
+          onLoadSample={handleLoadSample}
+          onReset={handleReset}
+          hasData={hasActiveData}
+          onOpenDashboard={() => navigateToView('dashboard')}
+          onOpenAuth={() => {
+            setAuthModalInitialMode('login');
+            setIsAuthModalOpen(true);
+          }}
+          onSignOut={handleSignOut}
+          onBackToTemplates={() => {
+            const service = (activeTab.startsWith('letter') ? 'letter' : activeTab.startsWith('devis') ? 'devis' : activeTab.startsWith('facture') ? 'facture' : activeTab.startsWith('pack_business') ? 'pack_business' : activeTab.startsWith('ebook') ? 'ebook' : 'cv') as any;
+            navigateToView('templates', service);
+          }}
+          onGoServices={() => navigateToView('templates', 'cv')}
+          onOpenAdmin={onOpenAdmin}
+          onOpenRecharge={() => setIsRechargeModalOpen(true)}
+        />
+      )}
 
       {/* 2. MAIN WORKSPACE */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7 space-y-6">
+      {isDashboardView ? (
+        <CandidateDashboard
+          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : 'dashboard_home'}
+          onApplyProfileToEditor={handleApplyProfileToEditor}
+          onLoadDocumentToEditor={handleLoadDocumentToEditor}
+          onSelectService={handleSelectService}
+          onOpenAdmin={onOpenAdmin}
+          onSignOut={handleSignOut}
+        />
+      ) : isTemplatesView ? (
+        <TemplatesView
+          initialService={templatesService}
+          onSelectCVTemplate={handleSelectCVTemplate}
+          onSelectLetterTemplate={handleSelectLetterTemplate}
+          onSelectBusinessTemplate={handleSelectBusinessTemplate}
+          onSelectEbookTemplate={handleSelectEbookTemplate}
+          onBackToDashboard={() => navigateToView('dashboard')}
+        />
+      ) : (
+        <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7 space-y-6">
         
         {/* Success Alert Box */}
         {successMessage && (
-          <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs sm:text-sm flex items-center justify-between gap-3 shadow-xs animate-in fade-in">
+          <div className="p-3.5 bg-emerald-950/80 border border-emerald-500/40 rounded-2xl text-emerald-200 text-xs sm:text-sm flex items-center justify-between gap-3 shadow-lg animate-in fade-in">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <span className="font-bold">{successMessage}</span>
             </div>
             <button
               type="button"
               onClick={() => setSuccessMessage(null)}
-              className="text-emerald-700 hover:text-emerald-900 font-bold text-xs cursor-pointer"
+              className="text-emerald-400 hover:text-white font-bold text-xs cursor-pointer"
             >
               Fermer
             </button>
@@ -676,58 +922,65 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
         {/* Error Alert Box */}
         {errorMessage && (
-          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs sm:text-sm flex items-center justify-between gap-3 shadow-xs">
+          <div className="p-3.5 bg-rose-950/80 border border-rose-500/40 rounded-2xl text-rose-200 text-xs sm:text-sm flex items-center justify-between gap-3 shadow-lg">
             <span>{errorMessage}</span>
             <button
               type="button"
               onClick={() => setErrorMessage(null)}
-              className="text-rose-600 hover:text-rose-800 font-bold text-xs cursor-pointer"
+              className="text-rose-400 hover:text-white font-bold text-xs cursor-pointer"
             >
               Fermer
             </button>
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* VIEW 1 : SERVICES CATALOG & HOME (DEFAULT)                                */}
-        {/* ========================================================================= */}
-        {activeTab === 'services' && (
-          <ServicesOverviewBanner
-            currentTab={activeTab}
-            onSelectService={handleSelectService}
-            onOpenRecharge={() => setIsRechargeModalOpen(true)}
-            onLoadSample={() => {
-              handleLoadSample();
-              setActiveTab('cv');
-            }}
-          />
-        )}
+        {/* Top Navigation Bar: Back to Dashboard & Change Template */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-2.5 sm:p-3.5 rounded-2xl shadow-sm">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigateToView('dashboard')}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold transition-all cursor-pointer shadow-sm border border-slate-700/60"
+            >
+              <ArrowLeft className="w-4 h-4 text-indigo-400" />
+              <span>← Tableau de Bord</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const service = (activeTab.startsWith('letter') ? 'letter' : activeTab.startsWith('devis') ? 'devis' : activeTab.startsWith('facture') ? 'facture' : activeTab.startsWith('pack_business') ? 'pack_business' : activeTab.startsWith('ebook') ? 'ebook' : 'cv') as any;
+                navigateToView('templates', service);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-bold transition-all cursor-pointer border border-indigo-500/30"
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Changer de Modèle (Galerie)</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-slate-400 font-semibold">
+            <span className="hidden sm:inline">Étape 3 / 4 : Saisie & Génération IA</span>
+            <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-black uppercase">
+              Éditeur Actif
+            </span>
+          </div>
+        </div>
 
         {/* ========================================================================= */}
-        {/* VIEW 2A-GAL : ÉTAPE 1 - GALERIE OBLIGATOIRE DES MODÈLES CV (50+ MODÈLES)  */}
+        {/* VIEW 2A-GAL : GALERIE DES MODÈLES CV                                      */}
         {/* ========================================================================= */}
         {activeTab === 'cv_gallery' && (
           <CVTemplateGallery
             selectedTemplateId={formData.templateStyle}
             selectedColor={formData.themeColor}
-            onSelectTemplate={(templateId, color) => {
-              setFormData(prev => ({
-                ...prev,
-                templateStyle: templateId as any,
-                themeColor: color || prev.themeColor
-              }));
-              setActiveTab('cv');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onGoServices={() => {
-              handleCreateNewDocument();
-              setActiveTab('services');
-            }}
+            onSelectTemplate={handleSelectCVTemplate}
+            onGoServices={() => navigateToView('dashboard')}
           />
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 2A : ÉTAPE 2 - FORMULAIRE DE SAISIE CV PRO ATS (1 000 FCFA)          */}
+        {/* VIEW 2A : SAISIE DU CV PRO ATS (1 000 FCFA)                               */}
         {/* ========================================================================= */}
         {activeTab === 'cv' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -739,16 +992,13 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isLoading={isLoading}
               hideModeSelector={true}
               forceMode="cv_only"
-              onChangeTemplateRequest={() => {
-                setActiveTab('cv_gallery');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
+              onChangeTemplateRequest={() => navigateToView('templates', 'cv')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 2B : ÉTAPE 3 - APERÇU PLEIN ÉCRAN DÉDIÉ DU CV PRO ATS               */}
+        {/* VIEW 2B : APERÇU PLEIN ÉCRAN DU CV PRO ATS                                */}
         {/* ========================================================================= */}
         {activeTab === 'cv_preview' && (
           <div className="animate-in fade-in">
@@ -772,39 +1022,25 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadCVPDF}
-              onGoServices={() => {
-                handleCreateNewDocument();
-                setActiveTab('services');
-              }}
+              onGoServices={() => navigateToView('dashboard')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 3A-GAL : ÉTAPE 1 - GALERIE MODÈLES DE LETTRE DE MOTIVATION           */}
+        {/* VIEW 3A-GAL : GALERIE MODÈLES LETTRE DE MOTIVATION                        */}
         {/* ========================================================================= */}
         {activeTab === 'letter_gallery' && (
           <LetterTemplateGallery
             selectedStyleId={formData.templateStyle}
             selectedLetterType={formData.letterType}
-            onSelectTemplate={(styleId, letterType) => {
-              setFormData(prev => ({
-                ...prev,
-                templateStyle: styleId as any,
-                letterType
-              }));
-              setActiveTab('letter');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onGoServices={() => {
-              handleCreateNewDocument();
-              setActiveTab('services');
-            }}
+            onSelectTemplate={handleSelectLetterTemplate}
+            onGoServices={() => navigateToView('dashboard')}
           />
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 3A : ÉTAPE 2 - SAISIE LETTRE DE MOTIVATION (1 000 FCFA)              */}
+        {/* VIEW 3A : SAISIE LETTRE DE MOTIVATION (1 000 FCFA)                        */}
         {/* ========================================================================= */}
         {activeTab === 'letter' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -815,16 +1051,13 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               onPreview={() => setActiveTab('letter_preview')}
               isLoading={isLoading}
               onOpenWizard={() => handleOpenPaymentModal('letter')}
-              onChangeTemplateRequest={() => {
-                setActiveTab('letter_gallery');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
+              onChangeTemplateRequest={() => navigateToView('templates', 'letter')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 3B : ÉTAPE 3 - APERÇU PLEIN ÉCRAN DÉDIÉ DE LA LETTRE                */}
+        {/* VIEW 3B : APERÇU PLEIN ÉCRAN DE LA LETTRE                                 */}
         {/* ========================================================================= */}
         {activeTab === 'letter_preview' && (
           <div className="animate-in fade-in">
@@ -848,41 +1081,26 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadLetterPDF}
-              onGoServices={() => {
-                handleCreateNewDocument();
-                setActiveTab('services');
-              }}
+              onGoServices={() => navigateToView('dashboard')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 4A-GAL : ÉTAPE 1 - GALERIE MODÈLES DE DEVIS PROFESSIONNEL            */}
+        {/* VIEW 4A-GAL : GALERIE MODÈLES DE DEVIS PROFESSIONNEL                      */}
         {/* ========================================================================= */}
         {activeTab === 'devis_gallery' && (
           <BusinessDocTemplateGallery
             docType="devis"
             selectedTemplateId={businessDocData.templateStyle}
             selectedColor={businessDocData.themeColor}
-            onSelectTemplate={(templateId, color) => {
-              setBusinessDocData(prev => ({
-                ...prev,
-                type: 'devis',
-                templateStyle: templateId,
-                themeColor: color || prev.themeColor
-              }));
-              setActiveTab('devis');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onGoServices={() => {
-              handleCreateNewDocument();
-              setActiveTab('services');
-            }}
+            onSelectTemplate={(tplId, theme) => handleSelectBusinessTemplate('devis', tplId, theme)}
+            onGoServices={() => navigateToView('dashboard')}
           />
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 4A : ÉTAPE 2 - SAISIE DEVIS PROFESSIONNEL (1 000 FCFA)               */}
+        {/* VIEW 4A : SAISIE DEVIS PROFESSIONNEL (1 000 FCFA)                         */}
         {/* ========================================================================= */}
         {activeTab === 'devis' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -892,16 +1110,13 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               onOpenWizard={() => handleGenerateBusinessDoc('devis')}
               onPreview={() => setActiveTab('devis_preview')}
               hideTypeSwitch={true}
-              onChangeTemplateRequest={() => {
-                setActiveTab('devis_gallery');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
+              onChangeTemplateRequest={() => navigateToView('templates', 'devis')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 4B : ÉTAPE 3 - APERÇU PLEIN ÉCRAN DÉDIÉ DU DEVIS                    */}
+        {/* VIEW 4B : APERÇU PLEIN ÉCRAN DU DEVIS                                     */}
         {/* ========================================================================= */}
         {activeTab === 'devis_preview' && (
           <div className="animate-in fade-in">
@@ -925,41 +1140,26 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadBusinessDocPDF}
-              onGoServices={() => {
-                handleCreateNewDocument();
-                setActiveTab('services');
-              }}
+              onGoServices={() => navigateToView('dashboard')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 5A-GAL : ÉTAPE 1 - GALERIE MODÈLES DE FACTURE CLIENT                 */}
+        {/* VIEW 5A-GAL : GALERIE MODÈLES DE FACTURE CLIENT                           */}
         {/* ========================================================================= */}
         {activeTab === 'facture_gallery' && (
           <BusinessDocTemplateGallery
             docType="facture"
             selectedTemplateId={businessDocData.templateStyle}
             selectedColor={businessDocData.themeColor}
-            onSelectTemplate={(templateId, color) => {
-              setBusinessDocData(prev => ({
-                ...prev,
-                type: 'facture',
-                templateStyle: templateId,
-                themeColor: color || prev.themeColor
-              }));
-              setActiveTab('facture');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onGoServices={() => {
-              handleCreateNewDocument();
-              setActiveTab('services');
-            }}
+            onSelectTemplate={(tplId, theme) => handleSelectBusinessTemplate('facture', tplId, theme)}
+            onGoServices={() => navigateToView('dashboard')}
           />
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 5A : ÉTAPE 2 - SAISIE FACTURE CLIENT (1 000 FCFA)                    */}
+        {/* VIEW 5A : SAISIE FACTURE CLIENT (1 000 FCFA)                              */}
         {/* ========================================================================= */}
         {activeTab === 'facture' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -969,16 +1169,13 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               onOpenWizard={() => handleGenerateBusinessDoc('facture')}
               onPreview={() => setActiveTab('facture_preview')}
               hideTypeSwitch={true}
-              onChangeTemplateRequest={() => {
-                setActiveTab('facture_gallery');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
+              onChangeTemplateRequest={() => navigateToView('templates', 'facture')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 5B : ÉTAPE 3 - APERÇU PLEIN ÉCRAN DÉDIÉ DE LA FACTURE               */}
+        {/* VIEW 5B : APERÇU PLEIN ÉCRAN DE LA FACTURE                                */}
         {/* ========================================================================= */}
         {activeTab === 'facture_preview' && (
           <div className="animate-in fade-in">
@@ -1002,40 +1199,26 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadBusinessDocPDF}
-              onGoServices={() => {
-                handleCreateNewDocument();
-                setActiveTab('services');
-              }}
+              onGoServices={() => navigateToView('dashboard')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 7A-GAL : ÉTAPE 1 - GALERIE MODÈLES PACK BUSINESS                     */}
+        {/* VIEW 7A-GAL : GALERIE MODÈLES PACK BUSINESS                               */}
         {/* ========================================================================= */}
         {activeTab === 'pack_business_gallery' && (
           <BusinessDocTemplateGallery
             docType="pack_business"
             selectedTemplateId={businessDocData.templateStyle}
             selectedColor={businessDocData.themeColor}
-            onSelectTemplate={(templateId, color) => {
-              setBusinessDocData(prev => ({
-                ...prev,
-                templateStyle: templateId,
-                themeColor: color || prev.themeColor
-              }));
-              setActiveTab('pack_business');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onGoServices={() => {
-              handleCreateNewDocument();
-              setActiveTab('services');
-            }}
+            onSelectTemplate={(tplId, theme) => handleSelectBusinessTemplate('pack_business', tplId, theme)}
+            onGoServices={() => navigateToView('dashboard')}
           />
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 7A : ÉTAPE 2 - SAISIE PACK BUSINESS (1 499 FCFA)                     */}
+        {/* VIEW 7A : SAISIE PACK BUSINESS (1 499 FCFA)                               */}
         {/* ========================================================================= */}
         {activeTab === 'pack_business' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -1098,16 +1281,13 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               onOpenWizard={() => handleGenerateBusinessDoc('pack_business')}
               onPreview={() => setActiveTab('pack_business_preview')}
               hideTypeSwitch={false}
-              onChangeTemplateRequest={() => {
-                setActiveTab('pack_business_gallery');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
+              onChangeTemplateRequest={() => navigateToView('templates', 'pack_business')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 7B : ÉTAPE 2 - APERÇU PLEIN ÉCRAN DÉDIÉ DU PACK BUSINESS             */}
+        {/* VIEW 7B : APERÇU PLEIN ÉCRAN DU PACK BUSINESS                             */}
         {/* ========================================================================= */}
         {activeTab === 'pack_business_preview' && (
           <div className="animate-in fade-in">
@@ -1133,16 +1313,13 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadBusinessDocPDF}
-              onGoServices={() => {
-                handleCreateNewDocument();
-                setActiveTab('services');
-              }}
+              onGoServices={() => navigateToView('dashboard')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 8A : ÉTAPE 1 - CRÉATION D'EBOOK / LIVRE NUMÉRIQUE (1 500 FCFA)       */}
+        {/* VIEW 8A : CRÉATION D'EBOOK / LIVRE NUMÉRIQUE (3 000 FCFA)                 */}
         {/* ========================================================================= */}
         {activeTab === 'ebook' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
@@ -1153,16 +1330,13 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
                 setActiveTab('ebook_preview');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              onGoServices={() => {
-                handleCreateNewDocument();
-                setActiveTab('services');
-              }}
+              onGoServices={() => navigateToView('dashboard')}
             />
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 8B : ÉTAPE 2 - APERÇU PLEIN ÉCRAN DÉDIÉ DU LIVRE NUMÉRIQUE           */}
+        {/* VIEW 8B : APERÇU PLEIN ÉCRAN DU LIVRE NUMÉRIQUE                           */}
         {/* ========================================================================= */}
         {activeTab === 'ebook_preview' && (
           <div className="animate-in fade-in">
@@ -1188,30 +1362,15 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingPDF={isGeneratingPDF}
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadEbookPDF}
-              onGoServices={() => {
-                handleCreateNewDocument();
-                setActiveTab('services');
-              }}
+              onGoServices={() => navigateToView('dashboard')}
             />
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* VIEW 9 : CANDIDATE DASHBOARD / ESPACE SÉCURISÉ                            */}
-        {/* ========================================================================= */}
-        {activeTab === 'dashboard' && (
-          <div className="space-y-6 animate-in fade-in">
-            <CandidateDashboard
-              onApplyProfileToEditor={handleApplyProfileToEditor}
-              onLoadDocumentToEditor={handleLoadDocumentToEditor}
-              onOpenAdmin={onOpenAdmin}
-            />
-          </div>
-        )}
+        </main>
+      )}
 
-      </main>
-
-      {/* 3. NEW DIRECT 2-OPTION PAYMENT MODAL (WALLET vs MOBILE MONEY & CARTE) */}
+      {/* 3. DIRECT PAYMENT MODAL (WALLET vs MOBILE MONEY & CARTE) */}
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
@@ -1249,7 +1408,18 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         }}
       />
 
-      {/* 5. POST-DOWNLOAD CONFIRMATION & ARCHIVAL MODAL */}
+      {/* 5. AUTH MODAL (LOGIN & SIGNUP WITH DIRECT REDIRECT TO DASHBOARD) */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        initialMode={authModalInitialMode}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={() => {
+          setIsAuthModalOpen(false);
+          navigateToView('dashboard');
+        }}
+      />
+
+      {/* 6. POST-DOWNLOAD CONFIRMATION & ARCHIVAL MODAL */}
       {isPostDownloadModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-lg bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 text-center space-y-5">
@@ -1290,7 +1460,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
                 type="button"
                 onClick={() => {
                   setIsPostDownloadModalOpen(false);
-                  setActiveTab('dashboard');
+                  navigateToView('dashboard');
                 }}
                 className="w-full py-3 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-indigo-100 transition-all cursor-pointer active:scale-95"
               >
@@ -1303,7 +1473,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
                 onClick={() => {
                   setIsPostDownloadModalOpen(false);
                   handleCreateNewDocument();
-                  setActiveTab('services');
+                  navigateToView('templates', 'cv');
                 }}
                 className="w-full py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
               >
