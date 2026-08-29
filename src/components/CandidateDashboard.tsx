@@ -4,7 +4,7 @@ import {
   CheckCircle2, Download, Eye, ExternalLink, RefreshCw, AlertCircle, 
   Briefcase, GraduationCap, Award, Globe, Phone, Mail, MapPin, Linkedin, 
   Check, ArrowRight, ShieldCheck, Zap, X, Wallet, History, Menu, Crown,
-  Search, Filter, Wand2, Receipt, BookOpen, Clock, Package, UserCircle2, FileCheck, LogOut
+  Search, Filter, Wand2, Receipt, BookOpen, Clock, Package, UserCircle2, FileCheck, LogOut, BookmarkCheck
 } from 'lucide-react';
 import { 
   CandidateProfile, SavedUserDocument, CVFormData, Experience, Education, 
@@ -272,16 +272,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   };
 
   // Handle subscription activation
-  const handleSubscriptionSuccess = async (newSub: UserSubscription, method: 'wallet' | 'mobile_money') => {
+  const handleSubscriptionSuccess = async (newSub: UserSubscription, method: 'wallet' | 'mobile_money' | 'card') => {
     let newBal = profile.balance ?? 0;
     if (method === 'wallet' && newSub.pricePaid) {
       newBal = Math.max(0, newBal - newSub.pricePaid);
     }
 
+    const isPending = newSub.status === 'pending';
+
     const updatedProfile: CandidateProfile = {
       ...profile,
       balance: newBal,
-      subscriptionStatus: 'unlimited',
+      subscriptionStatus: isPending ? 'pending' : 'unlimited',
       subscription: newSub,
       updatedAt: new Date().toISOString()
     };
@@ -290,16 +292,21 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updatedProfile));
 
     const tx: TransactionRecord = {
-      id: `TX-SUB-${Date.now()}`,
+      id: newSub.transactionReference || `TX-SUB-${Date.now()}`,
       userId: user?.uid || 'guest',
-      type: 'document_purchase',
+      userEmail: user?.email || profile.email,
+      userName: `${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim() || undefined,
+      type: 'subscription_purchase',
       amount: -(newSub.pricePaid || 0),
       currency: 'XOF',
-      description: `Souscription ${newSub.planName}`,
-      status: 'success',
+      description: `Souscription ${newSub.planName}${isPending ? ' (En attente de validation)' : ''}`,
+      status: isPending ? 'pending' : 'VALIDATED_BY_AI',
+      aiStatus: isPending ? 'PENDING' : 'VALIDATED_BY_AI',
       createdAt: new Date().toISOString(),
-      paymentMethod: method === 'wallet' ? 'wallet' : 'orange_money',
-      newBalance: newBal
+      paymentMethod: (newSub.paymentMethod as any) || (method === 'wallet' ? 'wallet' : 'wave'),
+      newBalance: newBal,
+      senderPhone: newSub.senderPhone,
+      receiptImage: newSub.receiptImage
     };
 
     const updatedTxs = [tx, ...transactions];
@@ -487,6 +494,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     const matchesType = docFilterType === 'all' || 
       (docFilterType === 'cv' && (docItem.generationMode === 'cv_only' || docItem.generationMode === 'full_pack')) ||
       (docFilterType === 'letter' && docItem.generationMode === 'letter_only') ||
+      (docFilterType === 'entretiens' && ((docItem.generationMode as any) === 'interview_prep' || !!docItem.interviewPrepData)) ||
       (docFilterType === 'business' && (docItem.generationMode === 'devis' || docItem.generationMode === 'facture' || docItem.generationMode === 'pack_business')) ||
       (docFilterType === 'ebook' && docItem.generationMode === 'ebook');
 
@@ -542,6 +550,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 <h2 className="text-sm sm:text-base font-black text-white capitalize">
                   {activeSidebarTab === 'dashboard_home' || activeSidebarTab === 'dashboard' ? 'Tableau de bord'
                     : activeSidebarTab === 'documents' ? 'Mes Documents Générés'
+                    : activeSidebarTab === 'entretiens' ? 'Mes Fiches de Préparation d\'Entretien RH'
                     : activeSidebarTab === 'tarifs' ? 'Tarifs & Offres'
                     : activeSidebarTab === 'subscription' ? 'Mon Abonnement & Privilèges VIP'
                     : activeSidebarTab === 'profile' ? 'Mon Profil & Paramètres'
@@ -1084,6 +1093,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   { id: 'all', label: `Tous (${documents.length})` },
                   { id: 'cv', label: 'CVs ATS' },
                   { id: 'letter', label: 'Lettres de Motivation' },
+                  { id: 'entretiens', label: 'Entretiens RH' },
                   { id: 'business', label: 'Factures & Devis' },
                   { id: 'ebook', label: 'Ebooks & Livres' }
                 ].map(pill => (
@@ -1120,15 +1130,22 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {filteredDocuments.map(docItem => (
+                  {filteredDocuments.map(docItem => {
+                    const isInterviewDoc = !!docItem.interviewPrepData || (docItem.generationMode as any) === 'interview_prep';
+                    return (
                     <div
                       key={docItem.id}
-                      className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-3xl p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all"
+                      className={`bg-slate-900 border ${isInterviewDoc ? 'border-indigo-500/40 hover:border-indigo-500/70' : 'border-slate-800 hover:border-slate-700'} rounded-3xl p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all`}
                     >
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                            {docItem.generationMode === 'letter_only' ? 'Lettre de Motivation'
+                          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${
+                            isInterviewDoc
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                              : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                          }`}>
+                            {isInterviewDoc ? 'Coaching Entretien RH'
+                              : docItem.generationMode === 'letter_only' ? 'Lettre de Motivation'
                               : docItem.generationMode === 'devis' ? 'Devis Pro'
                               : docItem.generationMode === 'facture' ? 'Facture Client'
                               : docItem.generationMode === 'ebook' ? 'Ebook Pro AI'
@@ -1146,56 +1163,89 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       </div>
 
                       <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-1.5">
-                          {/* PDF */}
+                        {isInterviewDoc ? (
                           <button
                             type="button"
                             onClick={() => {
-                              setPreviewDoc(docItem);
-                              setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
-                              setTimeout(handleModalDownloadPDF, 150);
+                              if (onOpenInterviewPrepDocument) {
+                                const prepData: InterviewPrepData = docItem.interviewPrepData || {
+                                  id: docItem.id,
+                                  candidateName: `${docItem.formData?.personalInfo?.firstName || ''} ${docItem.formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat Pro',
+                                  targetJob: docItem.formData?.personalInfo?.targetJob || 'Poste Cible',
+                                  targetCompany: docItem.formData?.targetCompany || '',
+                                  createdAt: docItem.createdAt,
+                                  pitch2Min: {
+                                    hook: `Madame, Monsieur, fort d'un parcours dynamique en tant que ${docItem.formData?.personalInfo?.targetJob || 'professionnel'}, j'ai développé une solide expertise technique et managériale.`,
+                                    careerHighlights: `Au fil de mes expériences, j'ai piloté des projets stratégiques et optimisé des processus clés.`,
+                                    valueProposition: `Aujourd'hui, je souhaite mettre ma rigueur et mon dynamisme au service de vos objectifs.`,
+                                    fullText: `Bonjour, je suis ${docItem.formData?.personalInfo?.firstName || 'Candidat'} ${docItem.formData?.personalInfo?.lastName || ''}. Fort d'une expérience confirmée dans le domaine de ${docItem.formData?.personalInfo?.targetJob || 'mon secteur'}, j'ai consolidé une expertise reconnue dans la gestion opérationnelle et le travail en équipe.`
+                                  },
+                                  questions: [],
+                                  behavioralTips: [],
+                                  questionsToAskRecruiter: []
+                                };
+                                onOpenInterviewPrepDocument(prepData);
+                              }
                             }}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
-                            title="Télécharger PDF"
+                            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
                           >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>PDF</span>
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                            <span>Réviser l'Entretien 🎯</span>
                           </button>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            {/* PDF */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreviewDoc(docItem);
+                                setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
+                                setTimeout(handleModalDownloadPDF, 150);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
+                              title="Télécharger PDF"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </button>
 
-                          {/* Word */}
-                          <button
-                            type="button"
-                            onClick={() => handleDirectCardDocx(docItem)}
-                            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
-                            title="Télécharger Word (.docx)"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Word</span>
-                          </button>
+                            {/* Word */}
+                            <button
+                              type="button"
+                              onClick={() => handleDirectCardDocx(docItem)}
+                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
+                              title="Télécharger Word (.docx)"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Word</span>
+                            </button>
 
-                          {/* Preview */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPreviewDoc(docItem);
-                              setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
-                            }}
-                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                            title="Aperçu Grand Format"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                            {/* Preview */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreviewDoc(docItem);
+                                setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
+                              }}
+                              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                              title="Aperçu Grand Format"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
 
                         <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => onLoadDocumentToEditor(docItem.formData, docItem.aiData)}
-                            className="p-2 rounded-xl text-indigo-400 hover:bg-indigo-950/40 transition-colors cursor-pointer"
-                            title="Modifier dans l'éditeur"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
+                          {!isInterviewDoc && (
+                            <button
+                              type="button"
+                              onClick={() => onLoadDocumentToEditor(docItem.formData, docItem.aiData)}
+                              className="p-2 rounded-xl text-indigo-400 hover:bg-indigo-950/40 transition-colors cursor-pointer"
+                              title="Modifier dans l'éditeur"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleDeleteDoc(docItem.id)}
@@ -1207,9 +1257,189 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                         </div>
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               )}
+
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB: ENTRETIENS (INTERVIEW PREPARATION & COACHING REPOSITORY)              */}
+          {/* ========================================================================= */}
+          {activeSidebarTab === 'entretiens' && (
+            <div className="space-y-6 animate-in fade-in">
+              
+              {/* Header */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div>
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-400" />
+                    <span>Fiches de Préparation à l'Entretien RH</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Accédez à tout moment à vos pitchs de 2 min, vos questions pièges décryptées et vos réponses modèles STAR.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('gen_cv')}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer self-start md:self-auto flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nouveau CV / Coaching RH</span>
+                </button>
+              </div>
+
+              {/* Information Banner */}
+              <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-300 shrink-0">
+                  <BookmarkCheck className="w-5 h-5" />
+                </div>
+                <div className="text-xs space-y-1">
+                  <p className="font-bold text-white">Espace de Révision 100% Persistant</p>
+                  <p className="text-slate-300 leading-relaxed">
+                    Vos fiches d'entretien sont sauvegardées automatiquement dans votre compte Dokya AI. Vous pouvez les réviser tranquillement sur votre téléphone ou ordinateur avant chaque entretien d'embauche, sans téléchargement préalable.
+                  </p>
+                </div>
+              </div>
+
+              {/* List of Interview Prep Documents */}
+              {(() => {
+                const interviewDocs = documents.filter(d => !!d.interviewPrepData || (d.generationMode as any) === 'interview_prep' || d.generationMode === 'cv_only' || d.generationMode === 'full_pack');
+
+                if (interviewDocs.length === 0) {
+                  return (
+                    <div className="p-12 rounded-3xl bg-slate-900/60 border border-slate-800 text-center space-y-4">
+                      <Sparkles className="w-12 h-12 text-slate-600 mx-auto" />
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Aucune fiche d'entretien enregistrée</h4>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Créez votre CV avec l'IA pour débloquer automatiquement votre préparation personnalisée.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectTab('gen_cv')}
+                        className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-md cursor-pointer hover:bg-indigo-500"
+                      >
+                        Générer un CV & Coaching RH →
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {interviewDocs.map((docItem) => {
+                      const prep: InterviewPrepData = docItem.interviewPrepData || {
+                        id: `PREP-${docItem.id}`,
+                        candidateName: `${docItem.formData?.personalInfo?.firstName || ''} ${docItem.formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat Pro',
+                        targetJob: docItem.formData?.personalInfo?.targetJob || 'Poste Cible',
+                        targetCompany: docItem.formData?.targetCompany || '',
+                        createdAt: docItem.createdAt,
+                        pitch2Min: {
+                          hook: `Madame, Monsieur, fort d'un parcours dynamique en tant que ${docItem.formData?.personalInfo?.targetJob || 'professionnel'}, j'ai développé une solide expertise technique.`,
+                          careerHighlights: `Au fil de mes expériences, j'ai piloté des missions stratégiques et optimisé des processus clés.`,
+                          valueProposition: `Aujourd'hui, je souhaite mettre ma rigueur et mes compétences au service de votre croissance.`,
+                          fullText: `Bonjour, je suis ${docItem.formData?.personalInfo?.firstName || 'Candidat'} ${docItem.formData?.personalInfo?.lastName || ''}. Passionné par le domaine de ${docItem.formData?.personalInfo?.targetJob || 'mon secteur'}, j'ai consolidé une expertise reconnue dans la gestion de projets et la coordination d'équipe.`
+                        },
+                        questions: [
+                          {
+                            id: 'q-demo-1',
+                            category: 'motivation',
+                            categoryLabel: 'Motivation & Projet',
+                            question: `Pourquoi postulez-vous pour ce poste de ${docItem.formData?.personalInfo?.targetJob || 'ce poste'} ?`,
+                            recruiterIntent: 'Vérifier la cohérence de vos objectifs professionnels et votre compréhension des enjeux.',
+                            suggestedAnswer: `Votre structure offre des défis stimulants en phase avec mon expertise. Je souhaite apporter une contribution concrète et rapide dès ma prise de fonction.`,
+                            keyStrengthsToHighlight: ['Motivation ciblée', 'Proactivité', 'Esprit d\'équipe'],
+                            pitfallsToAvoid: 'Donner une réponse vague ou centrée uniquement sur les avantages personnels.'
+                          }
+                        ],
+                        behavioralTips: [
+                          'Adoptez une posture ouverte et souriante dès l\'accueil.',
+                          'Structurez vos exemples selon la méthode STAR (Situation, Tâche, Action, Résultat).',
+                          'Prenez 2 secondes de réflexion avant de répondre aux questions complexes.'
+                        ],
+                        questionsToAskRecruiter: [
+                          'Quelles seront les priorités stratégiques des 3 premiers mois pour ce poste ?',
+                          'Comment est organisée l\'équipe au quotidien ?'
+                        ]
+                      };
+
+                      return (
+                        <div
+                          key={docItem.id}
+                          className="bg-slate-900 border border-slate-800 hover:border-indigo-500/60 rounded-3xl p-6 flex flex-col justify-between space-y-5 shadow-xl transition-all"
+                        >
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                                <Sparkles className="w-3 h-3 text-amber-300" />
+                                <span>Coaching RH Prêt</span>
+                              </span>
+                              <span className="text-[11px] text-slate-400 font-mono">
+                                {new Date(docItem.createdAt).toLocaleDateString('fr-FR')}
+                              </span>
+                            </div>
+
+                            <div>
+                              <h4 className="text-base font-black text-white">
+                                {prep.candidateName || docItem.title}
+                              </h4>
+                              <p className="text-xs font-semibold text-indigo-300 mt-0.5">
+                                {prep.targetJob || docItem.formData?.personalInfo?.targetJob || 'Poste Cible'}
+                                {prep.targetCompany ? ` • ${prep.targetCompany}` : ''}
+                              </p>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
+                                <p className="text-[10px] text-slate-400">Pitch Chrono</p>
+                                <p className="text-xs font-bold text-white">2 min</p>
+                              </div>
+                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
+                                <p className="text-[10px] text-slate-400">Questions</p>
+                                <p className="text-xs font-bold text-white">{prep.questions?.length || 5}+ Q/R</p>
+                              </div>
+                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
+                                <p className="text-[10px] text-slate-400">Méthode</p>
+                                <p className="text-xs font-bold text-emerald-400">STAR</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onOpenInterviewPrepDocument) {
+                                  onOpenInterviewPrepDocument(prep);
+                                }
+                              }}
+                              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                            >
+                              <Sparkles className="w-4 h-4 text-amber-300" />
+                              <span>Réviser mon Entretien 🎯</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDoc(docItem.id)}
+                              className="p-2.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Supprimer la fiche"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
             </div>
           )}
@@ -1555,6 +1785,71 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
+                {onOpenInterviewPrepDocument && (previewDoc.generationMode === 'cv_only' || previewDoc.generationMode === 'full') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prepData: InterviewPrepData = previewDoc.interviewPrepData || {
+                        id: `PREP-${previewDoc.id || Date.now()}`,
+                        candidateName: `${previewDoc.formData?.personalInfo?.firstName || ''} ${previewDoc.formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat Pro',
+                        targetJob: previewDoc.formData?.personalInfo?.targetJob || 'Poste Cible',
+                        targetCompany: previewDoc.formData?.targetCompany || 'Entreprise Cible',
+                        createdAt: new Date().toISOString(),
+                        pitch2Min: {
+                          hook: `Madame, Monsieur, fort d'un parcours dynamique et polyvalent en tant que ${previewDoc.formData?.personalInfo?.targetJob || 'professionnel'}, j'ai développé une solide expertise technique et managériale.`,
+                          careerHighlights: `Au fil de mes expériences, j'ai piloté des projets stratégiques, encadré des équipes et optimisé des processus clés pour accroître significativement la performance opérationnelle.`,
+                          valueProposition: `Aujourd'hui, je souhaite mettre ma réactivité, mon sens aigu de l'organisation et mon leadership au service des objectifs ambitieux de votre entreprise.`,
+                          fullText: `Bonjour, je suis ${previewDoc.formData?.personalInfo?.firstName || 'Candidat'} ${previewDoc.formData?.personalInfo?.lastName || ''}. Titulaire d'une solide expérience dans le domaine de ${previewDoc.formData?.personalInfo?.targetJob || 'mon secteur'}, j'ai consolidé une expertise reconnue dans la gestion de projets et la coordination opérationnelle. Mon approche allie rigueur méthodique, force de proposition et esprit collaboratif. Rejoindre vos équipes représente l'opportunité idéale d'apporter une valeur ajoutée concrète et mesurable.`
+                        },
+                        questions: [
+                          {
+                            id: 'q-modal-1',
+                            category: 'motivation',
+                            categoryLabel: 'Motivation & Projet',
+                            question: `Pourquoi souhaitez-vous rejoindre notre entreprise pour le poste de ${previewDoc.formData?.personalInfo?.targetJob || 'ce poste'} ?`,
+                            recruiterIntent: 'Vérifier l\'intérêt réel, la connaissance de l\'entreprise et la cohérence du projet professionnel.',
+                            suggestedAnswer: `Votre entreprise se distingue par son dynamisme et son exigence d'excellence. Mon expertise en gestion et mon orientation résultats me permettront de m'intégrer rapidement et de contribuer dès le premier jour à vos priorités stratégiques.`,
+                            keyStrengthsToHighlight: ['Connaissance de l\'entreprise', 'Valeur ajoutée immédiate', 'Alignement des valeurs'],
+                            pitfallsToAvoid: 'Donner une réponse générique interchangeable avec n\'importe quelle autre entreprise.'
+                          },
+                          {
+                            id: 'q-modal-2',
+                            category: 'comportementale',
+                            categoryLabel: 'Méthode STAR - Résolution de Problème',
+                            question: 'Pouvez-vous me décrire une situation où vous avez surmonté un défi complexe ?',
+                            recruiterIntent: 'Évaluer votre capacité de résilience, de sang-froid et votre rigueur d\'analyse face aux imprévus.',
+                            suggestedAnswer: `Face à un délai critique et des contraintes imprévues, j'ai restructuré les priorités d'action, mobilisé les parties prenantes et instauré un suivi quotidien serré. Cette coordination a permis de livrer le projet dans les temps tout en garantissant une qualité optimale.`,
+                            keyStrengthsToHighlight: ['Leadership', 'Pragmatisme', 'Gestion du stress'],
+                            pitfallsToAvoid: 'Rejeter la faute sur les collègues ou rester trop vague sur les actions personnelles.'
+                          }
+                        ],
+                        behavioralTips: [
+                          'Maintenez un contact visuel franc et chaleureux avec chacun de vos interlocuteurs.',
+                          'Structurez systématiquement vos réponses selon la logique Situation, Tâche, Action, Résultat (STAR).',
+                          'Parlez d\'une voix posée en marquant de courtes pauses pour valoriser vos propos clés.'
+                        ],
+                        questionsToAskRecruiter: [
+                          'Quels sont les trois premiers défis prioritaires attendus pour la personne qui prendra ce poste ?',
+                          'Comment définiriez-vous la culture interne et la dynamique de travail au sein de votre équipe ?',
+                          'Quelles sont les perspectives d\'évolution à moyen terme associées à cette opportunité ?'
+                        ],
+                        profileStrengths: [
+                          'Excellente capacité d\'adaptation opérationnelle',
+                          'Sens éprouvé de l\'organisation et du respect des délais',
+                          'Communication fluide et leadership d\'équipe'
+                        ]
+                      };
+                      setPreviewDoc(null);
+                      onOpenInterviewPrepDocument(prepData);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    title="Ouvrir la Fiche d'Entretien RH associée"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span className="hidden sm:inline">Coaching Entretien RH</span>
+                  </button>
+                )}
+
                 <button
                   onClick={handleModalDownloadPDF}
                   disabled={isExportingPDF}
@@ -1617,6 +1912,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         isOpen={isRechargeModalOpen}
         onClose={() => setIsRechargeModalOpen(false)}
         currentBalance={profile.balance ?? 3000}
+        userId={user?.uid || profile.uid}
+        userEmail={user?.email || profile.email}
+        userName={`${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim()}
         onRechargeSuccess={handleRechargeSuccess}
       />
 
@@ -1628,6 +1926,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         planTitle={subscriptionModalConfig.planTitle}
         price={subscriptionModalConfig.price}
         userBalance={profile.balance ?? 3000}
+        userId={user?.uid || profile.uid}
+        userEmail={user?.email || profile.email}
+        userName={`${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim()}
         onSuccess={handleSubscriptionSuccess}
         onOpenRecharge={() => {
           setSubscriptionModalConfig(prev => ({ ...prev, isOpen: false }));

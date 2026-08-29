@@ -112,7 +112,7 @@ export const InterviewPrepOfferModal: React.FC<InterviewPrepOfferModalProps> = (
             disabled={isLoading}
             className="w-full py-2.5 px-4 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded-xl transition-all cursor-pointer text-center"
           >
-            Non merci, télécharger seulement le CV
+            Non merci, continuer vers mon CV
           </button>
         </div>
       </div>

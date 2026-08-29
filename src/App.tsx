@@ -7,7 +7,8 @@ import {
   BusinessDocData, 
   EbookData,
   TemplateStyle,
-  CoverLetterType
+  CoverLetterType,
+  InterviewPrepData
 } from './types';
 import { SAMPLE_CV_DATA } from './data/sampleData';
 import { Header } from './components/Header';
@@ -24,12 +25,14 @@ import { DocumentDedicatedPreview } from './components/DocumentDedicatedPreview'
 import { CVTemplateGallery } from './components/CVTemplateGallery';
 import { BusinessDocTemplateGallery } from './components/BusinessDocTemplateGallery';
 import { LetterTemplateGallery } from './components/LetterTemplateGallery';
+import { InterviewPrepOfferModal } from './components/InterviewPrepOfferModal';
+import { InterviewPrepView } from './components/InterviewPrepView';
 import { AuthModal } from './components/AuthModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
 import { auth, saveUserDocument, saveTransactionRecord } from './lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
-import { generateCVWithGemini } from './lib/geminiService';
+import { generateCVWithGemini, generateInterviewPrepWithGemini } from './lib/geminiService';
 
 import { 
   CheckCircle2, ArrowLeft,
@@ -156,6 +159,7 @@ export type MainAppView =
   | 'pack_business_preview'
   | 'ebook'
   | 'ebook_preview'
+  | 'interview_prep'
   | 'tarifs'
   | 'subscription';
 
@@ -172,6 +176,11 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   const [businessDocData, setBusinessDocData] = useState<BusinessDocData>(() => createEmptyBusinessDocData('devis'));
   const [ebookData, setEbookData] = useState<EbookData>(createEmptyEbookData);
   const [aiData, setAiData] = useState<AIOptimizedData | null>(null);
+  const [interviewPrepData, setInterviewPrepData] = useState<InterviewPrepData | null>(null);
+
+  // Interview prep offer modal
+  const [isInterviewOfferOpen, setIsInterviewOfferOpen] = useState<boolean>(false);
+  const [isGeneratingInterviewPrep, setIsGeneratingInterviewPrep] = useState<boolean>(false);
 
   // Pay-per-document state strictly attached to the current document being crafted
   const [isCurrentDocPaid, setIsCurrentDocPaid] = useState<boolean>(false);
@@ -685,6 +694,10 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         setActiveTab('letter_preview');
       } else {
         setActiveTab('cv_preview');
+        // Show the RH interview preparation offer modal automatically after CV generation
+        setTimeout(() => {
+          setIsInterviewOfferOpen(true);
+        }, 1200);
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
@@ -692,6 +705,59 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       setErrorMessage(err.message || 'Une erreur est survenue lors de la communication avec l\'IA Gemini.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Generate customized Interview Prep Sheet with Gemini
+  const handleGenerateInterviewPrep = async () => {
+    setIsGeneratingInterviewPrep(true);
+    setErrorMessage(null);
+    try {
+      const res = await generateInterviewPrepWithGemini(formData, aiData);
+      if (res.data) {
+        setInterviewPrepData(res.data);
+        setIsInterviewOfferOpen(false);
+        setActiveTab('interview_prep');
+
+        // Auto-save interview prep to Saved Documents and Account Storage
+        const nowIso = new Date().toISOString();
+        const prepDoc: SavedUserDocument = {
+          id: `PREP-${Date.now()}`,
+          userId: auth.currentUser?.uid || 'guest-user',
+          title: `Fiche Entretien RH - ${res.data.candidateName || formData?.personalInfo?.firstName || 'Candidat'} (${res.data.targetJob || formData?.personalInfo?.targetJob || 'Poste Cible'})`,
+          generationMode: 'interview_prep' as any,
+          formData: formData,
+          aiData: aiData,
+          interviewPrepData: res.data,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          isPaid: true
+        };
+
+        try {
+          const raw = localStorage.getItem('senegal_cv_saved_documents');
+          let list: SavedUserDocument[] = raw ? JSON.parse(raw) : [];
+          list = [prepDoc, ...list.filter(d => d.id !== prepDoc.id)];
+          localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(list));
+        } catch (e) {
+          console.error('Erreur sauvegarde locale:', e);
+        }
+
+        if (auth.currentUser) {
+          saveUserDocument(prepDoc).catch(err => console.error('Erreur sync Firestore:', err));
+        }
+
+        setSuccessMessage("Fiche de préparation d'entretien générée et enregistrée dans votre Espace !");
+        setTimeout(() => setSuccessMessage(null), 3500);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        throw new Error(res.error || "Impossible de générer la préparation d'entretien.");
+      }
+    } catch (err: any) {
+      console.error("Erreur génération préparation d'entretien:", err);
+      setErrorMessage(err.message || "Erreur lors de la création de la fiche d'entretien.");
+    } finally {
+      setIsGeneratingInterviewPrep(false);
     }
   };
 
@@ -884,12 +950,17 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       {/* 2. MAIN WORKSPACE */}
       {isDashboardView ? (
         <CandidateDashboard
-          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : 'dashboard_home'}
+          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : activeTab === 'entretiens' ? 'entretiens' : 'dashboard_home'}
           onApplyProfileToEditor={handleApplyProfileToEditor}
           onLoadDocumentToEditor={handleLoadDocumentToEditor}
           onSelectService={handleSelectService}
           onOpenAdmin={onOpenAdmin}
           onSignOut={handleSignOut}
+          onOpenInterviewPrepDocument={(prepData) => {
+            setInterviewPrepData(prepData);
+            setActiveTab('interview_prep');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
         />
       ) : isTemplatesView ? (
         <TemplatesView
@@ -1023,6 +1094,14 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               isGeneratingDocx={isGeneratingDocx}
               onPrint={downloadCVPDF}
               onGoServices={() => navigateToView('dashboard')}
+              onOpenInterviewPrep={() => {
+                if (interviewPrepData) {
+                  setActiveTab('interview_prep');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                  setIsInterviewOfferOpen(true);
+                }
+              }}
             />
           </div>
         )}
@@ -1367,8 +1446,62 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           </div>
         )}
 
+        {/* ========================================================================= */}
+        {/* VIEW 9 : FICHE DE PRÉPARATION D'ENTRETIEN RH PERSONNALISÉE                */}
+        {/* ========================================================================= */}
+        {activeTab === 'interview_prep' && interviewPrepData && (
+          <div className="animate-in fade-in max-w-5xl mx-auto space-y-6">
+            <InterviewPrepView
+              data={interviewPrepData}
+              onBackToDashboard={() => navigateToView('dashboard')}
+              onBackToCV={() => {
+                setActiveTab('cv_preview');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onSaveToProfile={(savedData) => {
+                setInterviewPrepData(savedData);
+                const nowIso = new Date().toISOString();
+                const prepDoc: SavedUserDocument = {
+                  id: savedData.id || `PREP-${Date.now()}`,
+                  userId: auth.currentUser?.uid || 'guest-user',
+                  title: `Fiche Entretien RH - ${savedData.candidateName || formData?.personalInfo?.firstName || 'Candidat'} (${savedData.targetJob || formData?.personalInfo?.targetJob || 'Poste Cible'})`,
+                  generationMode: 'interview_prep' as any,
+                  formData: formData,
+                  aiData: aiData,
+                  interviewPrepData: savedData,
+                  createdAt: savedData.createdAt || nowIso,
+                  updatedAt: nowIso,
+                  isPaid: true
+                };
+                try {
+                  const raw = localStorage.getItem('senegal_cv_saved_documents');
+                  let list: SavedUserDocument[] = raw ? JSON.parse(raw) : [];
+                  list = [prepDoc, ...list.filter(d => d.id !== prepDoc.id)];
+                  localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(list));
+                } catch (e) {}
+                if (auth.currentUser) {
+                  saveUserDocument(prepDoc).catch(() => {});
+                }
+                setSuccessMessage("Fiche d'entretien enregistrée dans votre Espace !");
+                setTimeout(() => setSuccessMessage(null), 3000);
+              }}
+            />
+          </div>
+        )}
+
         </main>
       )}
+
+      {/* 2.5. POST-GENERATION RH INTERVIEW PREP OFFER MODAL */}
+      <InterviewPrepOfferModal
+        isOpen={isInterviewOfferOpen}
+        onClose={() => setIsInterviewOfferOpen(false)}
+        onAccept={handleGenerateInterviewPrep}
+        candidateName={`${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat'}
+        targetJob={formData?.personalInfo?.targetJob || 'votre poste cible'}
+        targetCompany={formData?.targetCompany}
+        isLoading={isGeneratingInterviewPrep}
+      />
 
       {/* 3. DIRECT PAYMENT MODAL (WALLET vs MOBILE MONEY & CARTE) */}
       <PaymentModal
@@ -1379,6 +1512,9 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         price={paymentPrice}
         userBalance={userBalance}
         isAlreadyPaid={isCurrentDocPaid}
+        userId={currentUser?.uid}
+        userEmail={currentUser?.email || undefined}
+        userName={currentUser?.displayName || undefined}
         onPaymentSuccess={handlePaymentSuccess}
         onOpenRechargeModal={() => {
           setIsPaymentModalOpen(false);
@@ -1391,6 +1527,9 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         isOpen={isRechargeModalOpen}
         onClose={() => setIsRechargeModalOpen(false)}
         userBalance={userBalance}
+        userId={currentUser?.uid}
+        userEmail={currentUser?.email || undefined}
+        userName={currentUser?.displayName || undefined}
         onSuccess={(addedAmount) => {
           const newBal = userBalance + addedAmount;
           setUserBalance(newBal);

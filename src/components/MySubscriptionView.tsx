@@ -78,6 +78,7 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
   };
 
   const remaining = calculateRemaining();
+  const isPending = isSubscriptionDefined && subscription.status === 'pending';
   const isCurrentlyActive = isSubscriptionDefined && !remaining.isExpired && subscription.status === 'active';
 
   // Calculate duration progress percentage
@@ -122,6 +123,10 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
             {isCurrentlyActive ? (
               <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">
                 🟢 Actif
+              </span>
+            ) : isPending ? (
+              <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                ⏳ Validation en cours
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
@@ -278,9 +283,101 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
           </div>
 
         </div>
+      ) : isPending ? (
+        /* ========================================================================= */
+        /* CASE B: SUBSCRIPTION PAYMENT IS SUBMITTED & PENDING VALIDATION            */
+        /* ========================================================================= */
+        <div className="space-y-6 animate-in fade-in">
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-950/50 via-slate-900 to-slate-950 border-2 border-amber-500/60 p-6 sm:p-8 shadow-2xl space-y-6">
+            
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shadow-lg">
+                  <Clock className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider">
+                    Souscription en cours de traitement
+                  </span>
+                  <h2 className="text-xl sm:text-2xl font-black text-white">
+                    {subscription?.planName || 'Pass VIP Dokya AI'}
+                  </h2>
+                </div>
+              </div>
+
+              <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 w-fit">
+                <Clock className="w-4 h-4 animate-spin" />
+                <span>Validation en cours (5-15 min)</span>
+              </span>
+            </div>
+
+            {/* Validation Progress Stepper */}
+            <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+              <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                État d'avancement de votre validation :
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-900 border border-emerald-500/30 flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-emerald-400">1. Paiement Émis</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {subscription?.paymentMethod?.toUpperCase() || 'MOBILE MONEY'} • {subscription?.pricePaid?.toLocaleString('fr-FR')} F
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900 border border-emerald-500/30 flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-emerald-400">2. Preuve Transmise</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Réf : {subscription?.transactionReference || 'Reçu téléversé'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5">
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 animate-spin" />
+                  <div>
+                    <p className="font-bold text-amber-300">3. Examen & Activation</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Délai estimé : 5 à 15 minutes max
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Direct WhatsApp acceleration CTA */}
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+              <div className="space-y-0.5">
+                <p className="font-bold text-white">Envie d'accélérer l'activation en 2 minutes ?</p>
+                <p className="text-[11px] text-slate-300">
+                  Notre équipe support vérifie votre preuve immédiatement sur WhatsApp.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const message = encodeURIComponent(
+                    `Bonjour Dokya AI, j'ai transmis mon reçu pour l'activation de mon ${subscription?.planName || 'Pass VIP'}.\nRéf: ${subscription?.transactionReference || 'Reçu Dokya'}\nMerci de valider mon accès !`
+                  );
+                  window.open(`https://wa.me/221789619088?text=${message}`, '_blank');
+                }}
+                className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+              >
+                <span>Accélérer sur WhatsApp →</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
       ) : (
         /* ========================================================================= */
-        /* CASE B: USER HAS NO ACTIVE VIP SUBSCRIPTION (FREE / PAY-PER-DOC)          */
+        /* CASE C: USER HAS NO ACTIVE VIP SUBSCRIPTION (FREE / PAY-PER-DOC)          */
         /* ========================================================================= */
         <div className="space-y-6">
           

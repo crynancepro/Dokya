@@ -31,6 +31,7 @@ export type SidebarTab =
   | 'dashboard_home'
   | 'gallery'
   | 'documents'
+  | 'entretiens'
   | 'gen_cv'
   | 'gen_letter'
   | 'gen_business'
@@ -270,6 +271,26 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </div>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 font-black text-indigo-300">
                 {documentsCount}
+              </span>
+            </button>
+
+            {/* 2.1 Entretiens RH */}
+            <button
+              id="nav-entretiens"
+              type="button"
+              onClick={() => handleNavClick('entretiens')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'entretiens' || activeTab === 'interview_prep'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>Préparation Entretiens</span>
+              </div>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Coaching RH
               </span>
             </button>
 

@@ -1,17 +1,36 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Wallet, Sparkles, X, Check, ShieldCheck, Zap, AlertCircle, 
-  ArrowRight, ArrowLeft, Loader2, RefreshCw, Copy, Upload, Smartphone, CheckCircle2,
-  ScanLine, FileCheck
+  X, 
+  Wallet, 
+  ShieldCheck, 
+  CheckCircle2, 
+  AlertCircle, 
+  ArrowRight, 
+  ArrowLeft, 
+  Loader2, 
+  Zap, 
+  Sparkles,
+  Copy, 
+  Upload, 
+  Smartphone, 
+  ScanLine, 
+  FileCheck,
+  CreditCard,
+  MessageCircle,
+  Clock,
+  Check
 } from 'lucide-react';
 import { verifyReceiptImage } from '../services/receiptPaymentService';
-import { TransactionRecord, ReceiptVerificationResult } from '../types';
+import { TransactionRecord } from '../types';
 
 interface RechargeWalletModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentBalance?: number;
   userBalance?: number;
+  userId?: string;
+  userEmail?: string;
+  userName?: string;
   onRechargeSuccess?: (addedAmount: number, transaction: TransactionRecord) => void;
   onSuccess?: (addedAmount: number, transaction?: TransactionRecord) => void;
 }
@@ -21,43 +40,46 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
   onClose,
   currentBalance: propCurrentBalance,
   userBalance: propUserBalance,
+  userId,
+  userEmail,
+  userName,
   onRechargeSuccess,
   onSuccess
 }) => {
   const currentBalance = propCurrentBalance ?? propUserBalance ?? 0;
 
-  // Stepper: 1 = Choix Montant & Opérateur, 2 = Instructions & Sélection Reçu, 3 = Scanner Laser IA
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-
-  // Recharge Amount State
+  // Stepper: 1 = Montant & Opérateur, 2 = Coordonnées & Preuve, 3 = Résultat (Active / Pending)
+  const [step, setStep] = useState<1 | 2>(1);
   const [selectedAmount, setSelectedAmount] = useState<number>(3000);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [isCustom, setIsCustom] = useState<boolean>(false);
+  const [selectedMethod, setSelectedMethod] = useState<'wave' | 'orange_money' | 'card'>('wave');
+  const [senderPhone, setSenderPhone] = useState<string>('');
+  const [transactionRef, setTransactionRef] = useState<string>('');
 
-  // Operator & Phone
-  const [selectedOperator, setSelectedOperator] = useState<'wave' | 'orange_money'>('wave');
-  const [userPhoneNumber, setUserPhoneNumber] = useState<string>('');
-  const [phoneError, setPhoneError] = useState<string | null>(null);
-
-  // Beneficiary Info & Copy states
+  // Official Beneficiary Info
   const BENEFICIARY_PHONE = '+221 78 961 90 88';
   const BENEFICIARY_NAME = 'NGOUALA LAVOISIER FORTUNE PETER';
-  const [copiedField, setCopiedField] = useState<'phone' | 'name' | null>(null);
+  const [copiedField, setCopiedField] = useState<'phone' | 'amount' | null>(null);
 
-  // Receipt File State
+  // File Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Step 3 Laser AI Scan States
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const [ocrSuccess, setOcrSuccess] = useState<boolean>(false);
-  const [receiptError, setReceiptError] = useState<string | null>(null);
-  const [scanCheckRecipient, setScanCheckRecipient] = useState<'pending' | 'success' | 'failed'>('pending');
-  const [scanCheckAmount, setScanCheckAmount] = useState<'pending' | 'success' | 'failed'>('pending');
-  const [scanCheckTimestamp, setScanCheckTimestamp] = useState<'pending' | 'success' | 'failed'>('pending');
-  const [scanCheckUniqueness, setScanCheckUniqueness] = useState<'pending' | 'success' | 'failed'>('pending');
+  // Processing & AI Verification States
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [isAiScanning, setIsAiScanning] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [validationOutcome, setValidationOutcome] = useState<'active' | 'pending' | null>(null);
+  const [validationDetails, setValidationDetails] = useState<{
+    txId?: string;
+    message?: string;
+    senderPhone?: string;
+    addedAmount?: number;
+    newBalance?: number;
+  }>({});
 
   useEffect(() => {
     return () => {
@@ -68,838 +90,719 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
   if (!isOpen) return null;
 
   const presetAmounts = [1000, 2000, 3000, 5000, 10000];
-  const parsedCustomAmount = Number(customAmount);
-  const validCustomAmount = !isNaN(parsedCustomAmount) && parsedCustomAmount > 0 ? parsedCustomAmount : 0;
-  const finalAmount = isCustom ? validCustomAmount : selectedAmount;
-  const newComputedBalance = currentBalance + finalAmount;
+  const parsedCustom = Number(customAmount);
+  const validCustom = !isNaN(parsedCustom) && parsedCustom > 0 ? parsedCustom : 0;
+  const effectiveAmount = isCustom ? validCustom : selectedAmount;
+  const projectedBalance = currentBalance + effectiveAmount;
 
-  // Copy to clipboard helper
-  const handleCopy = (text: string, field: 'phone' | 'name') => {
-    try {
-      navigator.clipboard.writeText(text);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2500);
-    } catch (_e) {}
+  const handleCopy = (text: string, field: 'phone' | 'amount') => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
+
+  const handleFileSelect = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setErrorMessage("Veuillez sélectionner un fichier image valide (JPG, PNG, WEBP).");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setErrorMessage("L'image est trop volumineuse (max 8 Mo).");
+      return;
+    }
+    setSelectedFile(file);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+    setErrorMessage(null);
   };
 
   // Move from Step 1 to Step 2
   const handleProceedToStep2 = () => {
-    if (finalAmount < 500) {
-      setPhoneError('Le montant minimum de recharge est de 500 FCFA.');
+    if (effectiveAmount < 500) {
+      setErrorMessage("Le montant minimum de recharge est de 500 FCFA.");
       return;
     }
-    const cleanPhone = userPhoneNumber.trim().replace(/[^0-9+]/g, '');
-    if (cleanPhone && cleanPhone.length < 9) {
-      setPhoneError('Veuillez saisir un numéro de téléphone valide (ex: 77 123 45 67).');
-      return;
-    }
-    setPhoneError(null);
+    setErrorMessage(null);
     setStep(2);
   };
 
-  // File selection in Step 2
-  const handleFileSelect = (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      setReceiptError('Veuillez sélectionner un fichier image valide (JPG, PNG, WEBP).');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setReceiptError("L'image est trop volumineuse (maximum 10 Mo).");
-      return;
-    }
-
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    const objectUrl = URL.createObjectURL(file);
-    setSelectedFile(file);
-    setPreviewUrl(objectUrl);
-    setReceiptError(null);
-    setOcrSuccess(false);
-  };
-
-  // Move from Step 2 to Step 3 and launch Laser AI OCR Scan
-  const handleLaunchStep3LaserScan = async () => {
+  // 1. Instant AI Receipt OCR Validation (Gemini Vision)
+  const handleAiScanValidation = async () => {
     if (!selectedFile) {
-      setReceiptError("Veuillez d'abord sélectionner une capture d'écran du reçu.");
+      setErrorMessage("Veuillez téléverser la capture d'écran du reçu de votre recharge.");
       return;
     }
 
-    setStep(3);
-    setIsAnalyzing(true);
-    setOcrSuccess(false);
-    setReceiptError(null);
-
-    // Initialise progressive visual checkpoints
-    setScanCheckRecipient('pending');
-    setScanCheckAmount('pending');
-    setScanCheckTimestamp('pending');
-    setScanCheckUniqueness('pending');
-
-    const t1 = setTimeout(() => setScanCheckRecipient('pending'), 400);
-    const t2 = setTimeout(() => setScanCheckAmount('pending'), 1000);
-    const t3 = setTimeout(() => setScanCheckTimestamp('pending'), 1600);
-    const t4 = setTimeout(() => setScanCheckUniqueness('pending'), 2200);
+    setIsAiScanning(true);
+    setErrorMessage(null);
 
     try {
-      const res = await verifyReceiptImage({
+      const result = await verifyReceiptImage({
         file: selectedFile,
-        expectedAmount: finalAmount,
-        documentTitle: `Recharge Solde (${finalAmount.toLocaleString('fr-FR')} FCFA)`,
-        userId: 'current-user',
-        userEmail: 'candidat@dokya.sn',
+        expectedAmount: effectiveAmount,
+        documentTitle: `Recharge Solde (${effectiveAmount.toLocaleString('fr-FR')} FCFA)`,
+        userId: userId || 'guest',
+        userEmail: userEmail || 'candidat@dokya.sn',
         purpose: 'wallet_recharge'
       });
 
-      if (res.success && res.status === 'COMPLETED') {
-        setScanCheckRecipient('success');
-        setScanCheckAmount('success');
-        setScanCheckTimestamp('success');
-        setScanCheckUniqueness('success');
-        setOcrSuccess(true);
+      if (result.success && result.status === 'COMPLETED') {
+        const added = result.amount || effectiveAmount;
+        const newBalance = (result.newBalance !== undefined) ? result.newBalance : (currentBalance + added);
 
-        const added = res.amount || finalAmount;
         const newTx: TransactionRecord = {
-          id: res.transactionId || `TX-RECHARGE-${Date.now()}`,
-          userId: 'guest',
+          id: result.transactionId || `TX-REC-${Date.now()}`,
+          userId: userId || 'guest',
+          userEmail: userEmail || 'candidat@dokya.sn',
+          userName: userName || 'Candidat Dokya',
           type: 'recharge',
           amount: added,
           currency: 'XOF',
-          description: `Recharge Solde (${res.method === 'wave' ? 'Wave' : 'Orange Money'} - Scanner Laser - Ref: ${res.transactionId})`,
+          description: `Recharge Solde Wallet (+${added.toLocaleString('fr-FR')} FCFA via Scanner IA)`,
           status: 'COMPLETED',
+          aiStatus: 'VALIDATED_BY_AI',
+          paymentMethod: result.method === 'wave' ? 'wave' : 'orange_money',
           createdAt: new Date().toISOString(),
-          paymentMethod: res.method === 'wave' ? 'wave' : 'orange_money',
-          newBalance: currentBalance + added
+          newBalance,
+          senderPhone: result.senderPhone || senderPhone,
+          receiptImage: previewUrl || undefined
         };
 
-        setTimeout(() => {
-          if (onRechargeSuccess) onRechargeSuccess(added, newTx);
-          if (onSuccess) onSuccess(added, newTx);
-          onClose();
-        }, 1500);
+        setValidationOutcome('active');
+        setValidationDetails({
+          txId: result.transactionId,
+          message: result.message || `Votre solde Dokya a été crédité de ${added.toLocaleString('fr-FR')} FCFA avec succès !`,
+          senderPhone: result.senderPhone || senderPhone,
+          addedAmount: added,
+          newBalance
+        });
+
+        if (onRechargeSuccess) onRechargeSuccess(added, newTx);
+        if (onSuccess) onSuccess(added, newTx);
       } else {
-        const err = res.error || 'Reçu non valide ou transaction expirée.';
-        setReceiptError(err);
-        
-        if (res.errorCode === 'EXPIRED_RECEIPT' || err.toLowerCase().includes('expiré') || err.toLowerCase().includes('30 minutes')) {
-          setScanCheckRecipient('success');
-          setScanCheckAmount('success');
-          setScanCheckTimestamp('failed');
-          setScanCheckUniqueness('pending');
-        } else if (res.errorCode === 'INVALID_RECIPIENT') {
-          setScanCheckRecipient('failed');
-          setScanCheckAmount('pending');
-          setScanCheckTimestamp('pending');
-          setScanCheckUniqueness('pending');
-        } else if (res.errorCode === 'INSUFFICIENT_AMOUNT') {
-          setScanCheckRecipient('success');
-          setScanCheckAmount('failed');
-          setScanCheckTimestamp('pending');
-          setScanCheckUniqueness('pending');
-        } else if (res.errorCode === 'ALREADY_USED') {
-          setScanCheckRecipient('success');
-          setScanCheckAmount('success');
-          setScanCheckTimestamp('success');
-          setScanCheckUniqueness('failed');
-        } else {
-          setScanCheckRecipient('failed');
-          setScanCheckAmount('failed');
-          setScanCheckTimestamp('failed');
-          setScanCheckUniqueness('failed');
-        }
+        setErrorMessage(
+          result.error || 
+          "L'IA n'a pas pu certifier automatiquement ce reçu de recharge. Vous pouvez transmettre la preuve pour validation manuelle par l'équipe en 1 clic."
+        );
       }
     } catch (err: any) {
-      const errStr = err?.message || 'Reçu non valide ou déjà utilisé.';
-      setReceiptError(errStr);
-      if (errStr.toLowerCase().includes('expiré') || errStr.toLowerCase().includes('30 minutes')) {
-        setScanCheckTimestamp('failed');
-      } else {
-        setScanCheckUniqueness('failed');
-      }
+      setErrorMessage(err.message || "Erreur lors de l'analyse du reçu. Vous pouvez soumettre pour validation manuelle.");
     } finally {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
-      setIsAnalyzing(false);
+      setIsAiScanning(false);
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
+  // 2. Submit for Manual Validation (Pending)
+  const handleSubmitForManualValidation = async () => {
+    if (!senderPhone && !transactionRef && !selectedFile) {
+      setErrorMessage("Veuillez fournir au moins une capture d'écran, une référence ou votre numéro expéditeur.");
+      return;
+    }
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
+    setIsProcessing(true);
+    setErrorMessage(null);
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileSelect(e.dataTransfer.files[0]);
+    try {
+      let receiptBase64 = '';
+      if (selectedFile) {
+        const reader = new FileReader();
+        receiptBase64 = await new Promise((resolve) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(selectedFile);
+        });
+      }
+
+      const res = await fetch('/api/recharge/submit-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userId || 'guest',
+          userEmail: userEmail || 'candidat@dokya.sn',
+          userName: userName || 'Candidat Dokya',
+          amount: effectiveAmount,
+          paymentMethod: selectedMethod,
+          senderPhone,
+          transactionReference: transactionRef,
+          receiptImage: receiptBase64.slice(0, 300000)
+        })
+      });
+
+      const data = await res.json();
+      const generatedTxId = data.transactionId || `REF-REC-${Date.now().toString().slice(-6)}`;
+
+      const pendingTx: TransactionRecord = {
+        id: generatedTxId,
+        userId: userId || 'guest',
+        userEmail: userEmail || 'candidat@dokya.sn',
+        userName: userName || 'Candidat Dokya',
+        type: 'recharge',
+        amount: effectiveAmount,
+        currency: 'XOF',
+        description: `Recharge Solde Wallet (+${effectiveAmount.toLocaleString('fr-FR')} FCFA - En attente)`,
+        status: 'pending',
+        aiStatus: 'PENDING',
+        createdAt: new Date().toISOString(),
+        paymentMethod: selectedMethod,
+        senderPhone: senderPhone || undefined,
+        transactionReference: transactionRef || generatedTxId,
+        receiptImage: previewUrl || undefined
+      };
+
+      setValidationOutcome('pending');
+      setValidationDetails({
+        txId: generatedTxId,
+        message: data.message || "Votre demande de recharge a été transmise avec succès.",
+        senderPhone,
+        addedAmount: effectiveAmount
+      });
+
+      if (onRechargeSuccess) onRechargeSuccess(0, pendingTx);
+      if (onSuccess) onSuccess(0, pendingTx);
+    } catch (e: any) {
+      setErrorMessage(e.message || "Erreur lors de la transmission de la demande.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileSelect(e.target.files[0]);
-    }
-  };
-
-  const resetReceipt = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setSelectedFile(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
-    setReceiptError(null);
-    setOcrSuccess(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    setStep(2);
+  const openWhatsAppSupport = () => {
+    const message = encodeURIComponent(
+      `Bonjour Dokya AI, je viens d'effectuer un rechargement de ${effectiveAmount.toLocaleString('fr-FR')} FCFA par ${selectedMethod.toUpperCase()}.\nNuméro émetteur: ${senderPhone || 'Non précisé'}\nRéférence: ${transactionRef || 'Reçu en pièce jointe'}\nMerci de créditer mon compte sans délai !`
+    );
+    window.open(`https://wa.me/221789619088?text=${message}`, '_blank');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-      {/* Container compact (max-width: 480px) */}
-      <div 
-        id="compact-recharge-wallet-modal"
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-[480px] border border-slate-200/90 overflow-hidden relative animate-in zoom-in-95 my-auto"
-      >
+    <div id="wallet-recharge-guichet-modal" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in overflow-y-auto">
+      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl text-slate-100 space-y-6 my-auto max-h-[92vh] overflow-y-auto">
         
-        {/* ========================================================================= */}
-        {/* HEADER COMPACT & STEPPER (Palette Ardoise / Nuit / Émeraude)              */}
-        {/* ========================================================================= */}
-        <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-4 text-white relative">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fermer"
-            className="absolute top-3.5 right-3.5 text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-all cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+        {/* Top Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-colors z-10 cursor-pointer"
+          title="Fermer"
+        >
+          <X className="w-5 h-5" />
+        </button>
 
-          <div className="flex items-center justify-between pr-8">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Guichet de Recharge Dokya</span>
+        {/* ========================================================================= */}
+        {/* OUTCOME SCREENS (ACTIVE OR PENDING)                                       */}
+        {/* ========================================================================= */}
+        {validationOutcome === 'active' && (
+          <div className="text-center py-6 space-y-5 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+              <CheckCircle2 className="w-10 h-10" />
             </div>
 
-            {/* Stepper à 3 étapes */}
-            <div className="flex items-center gap-1 bg-white/10 px-2.5 py-0.5 rounded-full text-[10px] font-black text-slate-300">
-              <span className={step === 1 ? 'text-amber-400 font-extrabold' : 'text-slate-400'}>1. Montant</span>
-              <span className="text-slate-600">›</span>
-              <span className={step === 2 ? 'text-sky-400 font-extrabold' : 'text-slate-400'}>2. Reçu</span>
-              <span className="text-slate-600">›</span>
-              <span className={step === 3 ? 'text-emerald-400 font-extrabold flex items-center gap-0.5' : 'text-slate-400'}>
-                {step === 3 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block mr-0.5"></span>}
-                3. Scanner IA
+            <div className="space-y-1.5">
+              <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                🟢 Solde Crédité Immédiatement
               </span>
-            </div>
-          </div>
-
-          <div className="mt-2.5 flex items-baseline justify-between gap-2">
-            <div className="truncate pr-2">
-              <h3 className="text-base font-black tracking-tight text-white flex items-center gap-1.5">
-                <Wallet className="w-4 h-4 text-emerald-400" />
-                <span>Dokya Wallet</span>
-              </h3>
-              <p className="text-[11px] text-slate-300 font-medium">
-                Solde actuel : <strong className="text-emerald-300 font-bold">{(currentBalance || 0).toLocaleString('fr-FR')} FCFA</strong>
+              <h3 className="text-2xl font-black text-white mt-2">Recharge Effectuée avec Succès !</h3>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+                Votre compte a été crédité de <strong className="text-amber-400 font-black">+{(validationDetails.addedAmount || effectiveAmount).toLocaleString('fr-FR')} FCFA</strong>. Votre nouveau solde est disponible immédiatement.
               </p>
             </div>
 
-            <div className="shrink-0 text-right">
-              <span className="text-xs text-slate-400 block font-medium">À créditer</span>
-              <span className="text-base font-black text-emerald-300 bg-emerald-950/60 px-2.5 py-0.5 rounded-lg border border-emerald-500/40">
-                +{(finalAmount || 0).toLocaleString('fr-FR')} FCFA
-              </span>
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left text-xs space-y-2 max-w-md mx-auto">
+              <div className="flex justify-between text-slate-400">
+                <span>Montant crédité :</span>
+                <span className="text-amber-400 font-bold">+{(validationDetails.addedAmount || effectiveAmount).toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Nouveau solde total :</span>
+                <span className="text-emerald-400 font-black text-sm">{(validationDetails.newBalance ?? projectedBalance).toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              {validationDetails.txId && (
+                <div className="flex justify-between text-slate-400">
+                  <span>Réf. Transaction :</span>
+                  <span className="text-indigo-300 font-mono">{validationDetails.txId}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
+              >
+                <span>Utiliser mon Solde Immédiatement</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* ========================================================================= */}
-        {/* CORPS DE LA MODALE                                                        */}
-        {/* ========================================================================= */}
-        <div className="p-4 sm:p-5 space-y-3.5">
-          
-          {/* ========================================================================= */}
-          {/* ÉTAPE 1 : CHOIX DU MONTANT & OPÉRATEUR                                    */}
-          {/* ========================================================================= */}
-          {step === 1 && (
-            <div className="space-y-3.5 animate-in fade-in">
-              
-              {/* 1. Sélection rapide du montant */}
-              <div>
-                <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-2">
-                  1. Choisissez le montant à recharger
-                </label>
+        {validationOutcome === 'pending' && (
+          <div className="text-center py-6 space-y-5 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
+              <Clock className="w-10 h-10 animate-pulse" />
+            </div>
 
-                {/* Grille de puces montants rapides */}
-                <div className="grid grid-cols-5 gap-1.5 mb-2">
-                  {presetAmounts.map((amt) => {
-                    const isSelected = !isCustom && selectedAmount === amt;
-                    return (
-                      <button
-                        key={amt}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAmount(amt);
-                          setIsCustom(false);
-                          if (phoneError) setPhoneError(null);
-                        }}
-                        className={`py-2 px-1 rounded-xl font-black text-xs transition-all border text-center cursor-pointer ${
-                          isSelected
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-500/20'
-                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div>{(amt >= 1000 ? `${amt / 1000}k` : amt)}</div>
-                        <div className="text-[9px] font-semibold opacity-80 uppercase">FCFA</div>
-                      </button>
-                    );
-                  })}
+            <div className="space-y-1.5">
+              <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                ⏳ Recharge en Attente de Validation Administrative
+              </span>
+              <h3 className="text-2xl font-black text-white mt-2">Demande de Recharge Enregistrée !</h3>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+                Votre preuve de paiement pour une recharge de <strong className="text-amber-400 font-black">{effectiveAmount.toLocaleString('fr-FR')} FCFA</strong> a été transmise. Notre équipe valide et crédite votre solde sous <strong>5 à 15 minutes</strong>.
+              </p>
+            </div>
+
+            {/* Validation Progress Stepper */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left text-xs space-y-2.5 max-w-md mx-auto">
+              <div className="flex justify-between text-slate-400">
+                <span>Montant à créditer :</span>
+                <span className="text-amber-400 font-bold">{effectiveAmount.toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              {validationDetails.txId && (
+                <div className="flex justify-between text-slate-400">
+                  <span>Numéro de dossier :</span>
+                  <span className="text-amber-400 font-mono font-bold">{validationDetails.txId}</span>
                 </div>
+              )}
+              <div className="flex justify-between text-slate-400">
+                <span>Délai de traitement :</span>
+                <span className="text-emerald-400 font-bold">5 à 15 minutes</span>
+              </div>
+            </div>
 
-                {/* Champ montant libre */}
-                <div className="relative">
+            {/* WhatsApp Quick Notification */}
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-left text-emerald-200 flex items-start gap-3">
+              <MessageCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold text-white">Besoin d'un rechargement express en 2 minutes ?</p>
+                <p className="text-[11px] text-slate-300">
+                  Envoyez votre capture d'écran directement sur notre WhatsApp officiel pour un crédit immédiat.
+                </p>
+                <button
+                  type="button"
+                  onClick={openWhatsAppSupport}
+                  className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-400 hover:text-emerald-300 underline cursor-pointer mt-1"
+                >
+                  Ouvrir WhatsApp (+221 78 961 90 88) →
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <span>Fermer et suivre l'état sur mon Tableau de Bord</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* STEP 1 : CHOIX DU MONTANT & OPÉRATEUR                                     */}
+        {/* ========================================================================= */}
+        {validationOutcome === null && step === 1 && (
+          <div className="space-y-5 animate-in fade-in">
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 flex items-center justify-center text-white shadow-md">
+                <Wallet className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider block">
+                  Étape 1/2 • Guichet de Rechargement Solde Wallet
+                </span>
+                <h3 className="text-lg sm:text-xl font-black text-white">Créditer mon Solde Dokya</h3>
+              </div>
+            </div>
+
+            {/* Current Balance Card */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-slate-400">Solde actuel disponible</p>
+                <p className="text-base font-black text-emerald-400 mt-0.5">
+                  {currentBalance.toLocaleString('fr-FR')} FCFA
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-400">Solde après recharge</p>
+                <p className="text-xl font-black text-amber-400">
+                  {projectedBalance.toLocaleString('fr-FR')} FCFA
+                </p>
+              </div>
+            </div>
+
+            {/* Amount Selection */}
+            <div className="space-y-2.5">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                Sélectionnez le montant de la recharge :
+              </label>
+
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {presetAmounts.map((amt) => {
+                  const isSelected = !isCustom && selectedAmount === amt;
+                  return (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAmount(amt);
+                        setIsCustom(false);
+                        setCustomAmount('');
+                      }}
+                      className={`py-2.5 px-2 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-md scale-[1.02]'
+                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {amt.toLocaleString('fr-FR')} F
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Amount Field */}
+              <div className="pt-1">
+                <div className="flex items-center gap-2">
                   <input
                     type="number"
-                    min="500"
-                    step="500"
+                    placeholder="Ou saisissez un autre montant (FCFA)..."
                     value={customAmount}
-                    onFocus={() => setIsCustom(true)}
                     onChange={(e) => {
                       setCustomAmount(e.target.value);
                       setIsCustom(true);
-                      if (phoneError) setPhoneError(null);
                     }}
-                    placeholder="Ou saisissez un autre montant (ex: 7 500, 15 000...)"
-                    className={`w-full pl-3 pr-14 py-2 bg-slate-50 border rounded-xl text-xs font-bold text-slate-900 transition-all focus:bg-white focus:outline-none ${
-                      isCustom
-                        ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-white'
-                        : 'border-slate-300 focus:border-indigo-600'
+                    className={`flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border text-xs text-white placeholder-slate-600 focus:outline-hidden ${
+                      isCustom && validCustom > 0 ? 'border-amber-400 ring-1 ring-amber-400/50' : 'border-slate-800'
                     }`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-slate-400">
-                    FCFA
-                  </span>
+                  {isCustom && validCustom > 0 && (
+                    <span className="text-xs font-bold text-amber-400 shrink-0">
+                      = {validCustom.toLocaleString('fr-FR')} FCFA
+                    </span>
+                  )}
                 </div>
               </div>
+            </div>
 
-              {/* 2. Sélection de l'opérateur (Wave vs Orange Money) */}
-              <div>
-                <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-2">
-                  2. Moyen de rechargement
-                </label>
+            {/* Select Payment Operator */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                Choisissez votre moyen de paiement :
+              </label>
 
-                <div className="grid grid-cols-2 gap-2">
-                  {/* WAVE */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedOperator('wave')}
-                    className={`p-2.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-center justify-between ${
-                      selectedOperator === 'wave'
-                        ? 'border-sky-500 bg-sky-50/70 shadow-sm ring-2 ring-sky-500/20'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-sky-500 text-white flex items-center justify-center font-black text-xs shadow-2xs">
-                        🌊
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-900 leading-tight">Wave</h4>
-                        <p className="text-[10px] font-semibold text-sky-700">0% de frais</p>
-                      </div>
-                    </div>
-                    {selectedOperator === 'wave' && (
-                      <span className="w-4 h-4 rounded-full bg-sky-500 text-white flex items-center justify-center text-[10px] font-bold">
-                        ✓
-                      </span>
-                    )}
-                  </button>
-
-                  {/* ORANGE MONEY */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedOperator('orange_money')}
-                    className={`p-2.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-center justify-between ${
-                      selectedOperator === 'orange_money'
-                        ? 'border-orange-500 bg-orange-50/70 shadow-sm ring-2 ring-orange-500/20'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-orange-500 text-white flex items-center justify-center font-black text-xs shadow-2xs">
-                        🍊
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-900 leading-tight">Orange Money</h4>
-                        <p className="text-[10px] font-semibold text-orange-700">Sénégal & Maxit</p>
-                      </div>
-                    </div>
-                    {selectedOperator === 'orange_money' && (
-                      <span className="w-4 h-4 rounded-full bg-orange-500 text-white flex items-center justify-center text-[10px] font-bold">
-                        ✓
-                      </span>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* 3. Numéro de l'émetteur */}
-              <div className="space-y-1.5">
-                <label htmlFor="rechargePhoneInput" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <Smartphone className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Votre numéro de téléphone (émetteur)</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-xs font-bold">
-                    🇸🇳 +221
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* Wave */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod('wave')}
+                  className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                    selectedMethod === 'wave'
+                      ? 'bg-blue-600/20 border-blue-500 text-white shadow-md ring-1 ring-blue-500'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <Smartphone className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-black text-white">Wave Sénégal</p>
+                    <p className="text-[10px] text-slate-400">Sans frais • 0%</p>
                   </div>
-                  <input
-                    id="rechargePhoneInput"
-                    type="tel"
-                    value={userPhoneNumber}
-                    onChange={(e) => {
-                      setUserPhoneNumber(e.target.value);
-                      if (phoneError) setPhoneError(null);
-                    }}
-                    placeholder="77 XXX XX XX"
-                    className="w-full pl-18 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all shadow-2xs"
-                  />
-                </div>
-                {phoneError && (
-                  <p className="text-[11px] font-semibold text-rose-600 flex items-center gap-1">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    <span>{phoneError}</span>
-                  </p>
-                )}
-              </div>
+                </button>
 
-              {/* Récapitulatif compact */}
-              <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                <span className="text-slate-600 font-medium">Nouveau solde estimé :</span>
-                <span className="font-black text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md">
-                  {(newComputedBalance || 0).toLocaleString('fr-FR')} FCFA
+                {/* Orange Money */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod('orange_money')}
+                  className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                    selectedMethod === 'orange_money'
+                      ? 'bg-orange-600/20 border-orange-500 text-white shadow-md ring-1 ring-orange-500'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <Smartphone className="w-5 h-5 text-orange-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-black text-white">Orange Money</p>
+                    <p className="text-[10px] text-slate-400">#144# / Max It</p>
+                  </div>
+                </button>
+
+                {/* Carte Bancaire */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod('card')}
+                  className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                    selectedMethod === 'card'
+                      ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <CreditCard className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-black text-white">Carte Bancaire</p>
+                    <p className="text-[10px] text-slate-400">Visa, Mastercard</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Step 1 Action Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleProceedToStep2}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
+              >
+                <span>Recharger {effectiveAmount.toLocaleString('fr-FR')} FCFA</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* STEP 2 : PROCÉDURE DE RECHARGE & ENVOI DU REÇU                            */}
+        {/* ========================================================================= */}
+        {validationOutcome === null && step === 2 && (
+          <div className="space-y-5 animate-in fade-in">
+            {/* Step 2 Header & Back */}
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Modifier le montant</span>
+              </button>
+
+              <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">
+                Étape 2/2 • Procédure & Preuve de Recharge
+              </span>
+            </div>
+
+            {/* Official Beneficiary Details Card */}
+            <div className="p-4.5 rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-950 to-slate-900 border-2 border-indigo-500/50 space-y-3 shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  Coordonnées Officielles Dokya AI
+                </span>
+                <span className="text-xs font-bold text-amber-300">
+                  {selectedMethod === 'wave' ? 'Wave Direct' : selectedMethod === 'orange_money' ? 'Orange Money' : 'Mobile Money'}
                 </span>
               </div>
 
-              {/* Bouton d'action principal Étape 1 */}
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={handleProceedToStep2}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 via-teal-700 to-indigo-900 hover:from-emerald-700 hover:to-indigo-950 text-white font-black text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-                >
-                  <span>Suivant : Instructions & Reçu</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+              {/* Number to Transfer */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-slate-400">Numéro Mobile Money agréé</p>
+                    <p className="text-sm font-black text-white font-mono">{BENEFICIARY_PHONE}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy('789619088', 'phone')}
+                    className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all"
+                  >
+                    {copiedField === 'phone' ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedField === 'phone' ? 'Copié !' : 'Copier'}</span>
+                  </button>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-slate-400">Montant exact de recharge</p>
+                    <p className="text-sm font-black text-amber-400 font-mono">{effectiveAmount.toLocaleString('fr-FR')} FCFA</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(String(effectiveAmount), 'amount')}
+                    className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all"
+                  >
+                    {copiedField === 'amount' ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedField === 'amount' ? 'Copié !' : 'Copier'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-between">
+                <span>Destinataire officiel : <strong>{BENEFICIARY_NAME}</strong></span>
+                <span className="text-emerald-400 text-[10px] font-bold">Compte certifié ✓</span>
               </div>
             </div>
-          )}
 
-          {/* ========================================================================= */}
-          {/* ÉTAPE 2 : INSTRUCTIONS DE TRANSFERT & SÉLECTION DU REÇU                   */}
-          {/* ========================================================================= */}
-          {step === 2 && (
-            <div className="space-y-3.5 animate-in fade-in">
-              
-              {/* Coordonnées Dokya avec copie rapide 1-clic */}
-              <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2.5">
-                <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-slate-600">
-                  <span>Coordonnées de recharge Dokya</span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    selectedOperator === 'wave' ? 'bg-sky-100 text-sky-800' : 'bg-orange-100 text-orange-800'
-                  }`}>
-                    {selectedOperator === 'wave' ? '🌊 Wave' : '🍊 Orange Money'}
-                  </span>
-                </div>
+            {/* Step-by-Step Instructions */}
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs text-slate-300">
+              <p className="font-bold text-white uppercase text-[10px] tracking-wider text-slate-400">
+                Procédure de recharge de votre Solde :
+              </p>
+              <ol className="space-y-1.5 list-decimal list-inside text-[11px] text-slate-300">
+                <li>Ouvrez votre application <strong>{selectedMethod === 'wave' ? 'Wave' : 'Orange Money (#144# / Max It)'}</strong>.</li>
+                <li>Transférez le montant de <strong>{effectiveAmount.toLocaleString('fr-FR')} FCFA</strong> vers le <strong>{BENEFICIARY_PHONE}</strong>.</li>
+                <li>Faites une <strong>capture d'écran</strong> nette du reçu de confirmation.</li>
+                <li>Téléversez l'image ci-dessous pour une <strong>créditation instantanée par scanner IA (3 sec)</strong> ou transmettez votre référence.</li>
+              </ol>
+            </div>
 
-                {/* Ligne Numéro */}
-                <div className="flex items-center justify-between p-2 bg-white rounded-xl border border-slate-200">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold">Numéro à créditer</span>
-                    <strong className="text-xs font-black text-slate-900 font-mono tracking-wide">
-                      {BENEFICIARY_PHONE}
-                    </strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(BENEFICIARY_PHONE, 'phone')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                      copiedField === 'phone'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {copiedField === 'phone' ? (
-                      <>
-                        <Check className="w-3 h-3" />
-                        <span>Copié !</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        <span>Copier</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+            {/* Receipt Upload & Inputs Form */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                <span>Preuve de recharge (Reçu ou capture) :</span>
+                <span className="text-[10px] text-amber-400 font-normal">Recommandé pour crédit en 3 sec</span>
+              </label>
 
-                {/* Ligne Nom du destinataire */}
-                <div className="flex items-center justify-between p-2 bg-white rounded-xl border border-slate-200">
-                  <div className="truncate pr-2">
-                    <span className="text-[10px] text-slate-400 block font-semibold">Nom du destinataire</span>
-                    <strong className="text-[11px] font-black text-slate-900 uppercase truncate block">
-                      {BENEFICIARY_NAME}
-                    </strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(BENEFICIARY_NAME, 'name')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 transition-all cursor-pointer ${
-                      copiedField === 'name'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {copiedField === 'name' ? (
-                      <>
-                        <Check className="w-3 h-3" />
-                        <span>Copié !</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        <span>Copier</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <p className="text-[11px] text-slate-500 font-medium leading-tight">
-                  Envoyez <strong className="text-slate-900 font-black">{(finalAmount || 0).toLocaleString('fr-FR')} FCFA</strong> puis importez la capture du reçu ci-dessous.
-                </p>
-              </div>
-
-              {/* ZONE D'IMPORTATION DU REÇU */}
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-800 uppercase tracking-wider block">
-                  Importez la capture du reçu
-                </label>
-
+              {/* Drag & Drop Box */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleFileSelect(e.dataTransfer.files[0]);
+                  }
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${
+                  isDragging 
+                    ? 'border-emerald-400 bg-emerald-500/10' 
+                    : previewUrl 
+                    ? 'border-emerald-500/60 bg-emerald-500/5' 
+                    : 'border-slate-700 hover:border-slate-600 bg-slate-950'
+                }`}
+              >
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  accept="image/*"
+                  onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
                   className="hidden"
-                  onChange={handleInputChange}
                 />
 
-                {!selectedFile ? (
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${
-                      isDragging
-                        ? 'border-emerald-600 bg-emerald-50/80 scale-[0.99]'
-                        : 'border-slate-300 hover:border-emerald-500 hover:bg-slate-50 bg-white'
-                    }`}
-                  >
-                    <div className="flex flex-col items-center justify-center space-y-1.5">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-2xs">
-                        <Upload className="w-5 h-5" />
-                      </div>
-                      <p className="text-xs font-bold text-slate-800">
-                        Déposez la capture d'écran du reçu ici
+                {previewUrl ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <img
+                      src={previewUrl}
+                      alt="Reçu"
+                      className="w-12 h-12 object-cover rounded-xl border border-slate-700 shadow-md"
+                    />
+                    <div className="text-left text-xs">
+                      <p className="font-bold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Reçu sélectionné : {selectedFile?.name.slice(0, 20)}...
                       </p>
-                      <p className="text-[10px] text-slate-400">
-                        ou <span className="text-emerald-600 underline font-semibold">parcourez vos photos</span> (PNG, JPG)
-                      </p>
+                      <p className="text-[10px] text-slate-400">Cliquez pour changer d'image</p>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5 truncate">
-                        {previewUrl && (
-                          <img
-                            src={previewUrl}
-                            alt="Reçu"
-                            className="w-11 h-11 object-cover rounded-lg border border-slate-200 shadow-xs"
-                          />
-                        )}
-                        <div className="truncate">
-                          <p className="text-xs font-bold text-slate-900 truncate">
-                            {selectedFile.name}
-                          </p>
-                          <p className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                            <FileCheck className="w-3 h-3" />
-                            <span>Reçu prêt pour le scan IA ({(selectedFile.size / 1024).toFixed(1)} Ko)</span>
-                          </p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={resetReceipt}
-                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition-all cursor-pointer"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-[11px] text-indigo-600 hover:underline font-bold block"
-                    >
-                      Changer d'image
-                    </button>
-                  </div>
-                )}
-
-                {receiptError && (
-                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>{receiptError}</span>
+                  <div className="space-y-1">
+                    <Upload className="w-6 h-6 text-slate-400 mx-auto" />
+                    <p className="text-xs font-bold text-white">Cliquez ou glissez la capture de votre reçu</p>
+                    <p className="text-[10px] text-slate-500">Formats supportés : JPG, PNG, WEBP (Max 8 Mo)</p>
                   </div>
                 )}
               </div>
 
-              {/* Boutons d'action Étape 2 */}
-              <div className="pt-2 space-y-2">
-                <button
-                  type="button"
-                  disabled={!selectedFile}
-                  onClick={handleLaunchStep3LaserScan}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 via-teal-700 to-indigo-900 hover:from-emerald-700 hover:to-indigo-950 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ScanLine className="w-4 h-4" />
-                  <span>Lancer la vérification IA →</span>
-                </button>
+              {/* Optional Phone & Ref Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400 font-bold">Votre numéro expéditeur :</label>
+                  <input
+                    type="tel"
+                    placeholder="Ex: 77 123 45 67"
+                    value={senderPhone}
+                    onChange={(e) => setSenderPhone(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder-slate-600 focus:outline-hidden focus:border-emerald-500"
+                  />
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="text-xs text-slate-500 hover:text-slate-800 font-bold flex items-center justify-center gap-1 transition-all cursor-pointer py-1 w-full"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Modifier montant ou opérateur</span>
-                </button>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400 font-bold">Réf. transaction (si visible) :</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: TX-98214-SN"
+                    value={transactionRef}
+                    onChange={(e) => setTransactionRef(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder-slate-600 focus:outline-hidden focus:border-emerald-500"
+                  />
+                </div>
               </div>
             </div>
-          )}
 
-          {/* ========================================================================= */}
-          {/* ÉTAPE 3 : EXAMEN DU REÇU PAR L'IA (SCANNER LASER HIGH-TECH)               */}
-          {/* ========================================================================= */}
-          {step === 3 && (
-            <div className="space-y-3.5 animate-in fade-in">
-              
-              {/* Cadre HUD Scanner Laser */}
-              <div className="relative rounded-2xl bg-slate-950 border border-slate-800 p-3 overflow-hidden shadow-2xl">
-                
-                {/* Grille d'arrière-plan cybernétique */}
-                <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
-
-                {/* En-tête du Scanner */}
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-2 relative z-10">
-                  <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                    <ScanLine className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
-                    <span>VISION OCR IA • SCAN EN DIRECT</span>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-black ${
-                    ocrSuccess 
-                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40' 
-                      : 'bg-teal-950 text-teal-300 border border-teal-500/40'
-                  }`}>
-                    {ocrSuccess ? 'CONFORME ✓' : 'ANALYSE ACTIVE'}
-                  </span>
-                </div>
-
-                {/* Zone de l'image avec LIGNE LASER ANIMÉE */}
-                <div className="relative w-full h-48 bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 shadow-inner">
-                  
-                  {/* Coins HUD haute technologie */}
-                  <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-emerald-400 z-20" />
-                  <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-emerald-400 z-20" />
-                  <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-emerald-400 z-20" />
-                  <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-emerald-400 z-20" />
-
-                  {/* Image du Reçu */}
-                  {previewUrl ? (
-                    <img
-                      src={previewUrl}
-                      alt="Reçu sous analyse"
-                      className="w-full h-full object-contain filter contrast-105 brightness-95"
-                    />
-                  ) : (
-                    <div className="text-slate-500 text-xs">Reçu en cours d'analyse...</div>
-                  )}
-
-                  {/* Voile de balayage laser */}
-                  {!ocrSuccess && (
-                    <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none animate-laser-pulse" />
-                  )}
-
-                  {/* LIGNE HORIZONTALE LASER (Balayage continu 2s loop) */}
-                  {!receiptError && (
-                    <div 
-                      className={`absolute left-0 right-0 h-0.5 z-30 transition-all duration-300 ${
-                        ocrSuccess 
-                          ? 'bg-emerald-400 shadow-[0_0_20px_#10b981,0_0_35px_#059669]' 
-                          : 'bg-emerald-400 shadow-[0_0_18px_#34d399,0_0_30px_#059669] animate-laser-scan'
-                      }`}
-                      style={ocrSuccess ? { top: '50%' } : {}}
-                    />
-                  )}
-
-                  {/* Badge flottant "Paiement Confirmé !" lors de la validation */}
-                  {ocrSuccess && (
-                    <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center z-40 animate-in zoom-in-95">
-                      <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mb-2 shadow-[0_0_30px_#10b981]">
-                        <CheckCircle2 className="w-7 h-7" />
-                      </div>
-                      <span className="text-sm font-black text-emerald-300 tracking-wide uppercase">
-                        Recharge Confirmée !
-                      </span>
-                      <span className="text-[11px] text-slate-300 font-medium mt-0.5">
-                        Crédit immédiat de votre solde Dokya Wallet...
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* VOYANTS DYNAMIQUES DE DÉTECTION PROGRESSIVE */}
-                <div className="mt-3 space-y-1.5 font-mono text-[11px]">
-                  
-                  {/* 1. Voyant Destinataire */}
-                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/80 border border-slate-800">
-                    <div className="flex items-center gap-2 truncate pr-1">
-                      <span className="text-emerald-400">🔍</span>
-                      <span className="text-slate-300 truncate">
-                        Destinataire : <strong className="text-white">NGOUALA LAVOISIER...</strong>
-                      </span>
-                    </div>
-                    <span className={`text-[10px] font-bold shrink-0 ${
-                      scanCheckRecipient === 'success' ? 'text-emerald-400' : 'text-emerald-400 flex items-center gap-1'
-                    }`}>
-                      {scanCheckRecipient === 'success' ? '✓ Reconnu' : <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                    </span>
-                  </div>
-
-                  {/* 2. Voyant Montant */}
-                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/80 border border-slate-800">
-                    <div className="flex items-center gap-2">
-                      <span className="text-amber-400">💰</span>
-                      <span className="text-slate-300">
-                        Montant recharge : <strong className="text-white">{(finalAmount || 0).toLocaleString('fr-FR')} FCFA</strong>
-                      </span>
-                    </div>
-                    <span className={`text-[10px] font-bold shrink-0 ${
-                      scanCheckAmount === 'success' ? 'text-emerald-400' : 'text-amber-400 flex items-center gap-1'
-                    }`}>
-                      {scanCheckAmount === 'success' ? '✓ Conforme' : <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                    </span>
-                  </div>
-
-                  {/* 3. Voyant Horodatage Récent (< 30 min) */}
-                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/80 border border-slate-800">
-                    <div className="flex items-center gap-2">
-                      <span className="text-purple-400">⏱️</span>
-                      <span className="text-slate-300">Horodatage (&lt; 30 min)</span>
-                    </div>
-                    <span className={`text-[10px] font-bold shrink-0 ${
-                      scanCheckTimestamp === 'success'
-                        ? 'text-emerald-400'
-                        : scanCheckTimestamp === 'failed'
-                          ? 'text-rose-400'
-                          : 'text-purple-400 flex items-center gap-1'
-                    }`}>
-                      {scanCheckTimestamp === 'success'
-                        ? '✓ Récent (< 30 min)'
-                        : scanCheckTimestamp === 'failed'
-                          ? '✕ Expiré (> 30 min)'
-                          : <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                    </span>
-                  </div>
-
-                  {/* 4. Voyant Unicité */}
-                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/80 border border-slate-800">
-                    <div className="flex items-center gap-2">
-                      <span className="text-indigo-400">🛡️</span>
-                      <span className="text-slate-300">Contrôle d'unicité (Anti-Rejeu)</span>
-                    </div>
-                    <span className={`text-[10px] font-bold shrink-0 ${
-                      scanCheckUniqueness === 'success' 
-                        ? 'text-emerald-400' 
-                        : scanCheckUniqueness === 'failed'
-                          ? 'text-rose-400'
-                          : 'text-indigo-400 flex items-center gap-1'
-                    }`}>
-                      {scanCheckUniqueness === 'success' 
-                        ? '✓ TxID Unique' 
-                        : scanCheckUniqueness === 'failed'
-                          ? '✕ Déjà utilisé'
-                          : <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                    </span>
-                  </div>
-
-                </div>
-
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMessage}</span>
               </div>
+            )}
 
-              {/* Gestion d'erreur & Réessai */}
-              {receiptError && (
-                <div className="space-y-2">
-                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>{receiptError}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={resetReceipt}
-                    className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Importer un autre reçu</span>
-                  </button>
-                </div>
-              )}
+            {/* Dual Action Buttons : Instant AI Scan OR Manual Submit */}
+            <div className="space-y-2.5 pt-1">
+              {/* Button A: Instant AI Scan */}
+              <button
+                type="button"
+                disabled={isAiScanning || isProcessing || !selectedFile}
+                onClick={handleAiScanValidation}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                {isAiScanning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Analyse Scanner IA en cours (3 sec)...</span>
+                  </>
+                ) : (
+                  <>
+                    <ScanLine className="w-4 h-4" />
+                    <span>Valider & Créditer Instantanément par Scanner IA (3 sec)</span>
+                  </>
+                )}
+              </button>
 
-              {!receiptError && !ocrSuccess && (
-                <p className="text-[11px] text-center text-slate-500 font-medium">
-                  Examen automatique du reçu par l'IA en cours (-10s)...
-                </p>
-              )}
+              {/* Button B: Submit for Manual Validation (Pending) */}
+              <button
+                type="button"
+                disabled={isProcessing || isAiScanning}
+                onClick={handleSubmitForManualValidation}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Transmission de la recharge...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Transmettre pour Validation Manuelle (5-15 min)</span>
+                  </>
+                )}
+              </button>
             </div>
-          )}
 
-          {/* ========================================================================= */}
-          {/* FOOTER SÉCURITÉ COMPACT                                                   */}
-          {/* ========================================================================= */}
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
-            <div className="flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Paiement 100% sécurisé</span>
+            {/* WhatsApp Quick Help */}
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={openWhatsAppSupport}
+                className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>Assistance WhatsApp & Validation Express Directe (+221 78 961 90 88)</span>
+              </button>
             </div>
-            <div className="flex items-center gap-1 font-bold text-slate-500">
-              <Zap className="w-3 h-3 text-amber-500" />
-              <span>Crédit IA instantané</span>
-            </div>
+
           </div>
-
-        </div>
+        )}
 
       </div>
     </div>

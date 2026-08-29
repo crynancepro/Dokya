@@ -1870,10 +1870,237 @@ Retourne UNIQUEMENT un objet JSON valide avec cette structure exacte :
   }
 });
 
+// ==========================================
+// SUBSCRIPTION PAYMENT SUBMISSION (PENDING VALIDATION)
+// ==========================================
+app.post('/api/subscription/submit-payment', (req, res) => {
+  try {
+    const {
+      userId,
+      userEmail,
+      userName,
+      planId = 'monthly',
+      planTitle = 'Pass VIP Mensuel',
+      amount = 5000,
+      paymentMethod = 'wave',
+      senderPhone = '',
+      transactionReference = '',
+      receiptImage = ''
+    } = req.body || {};
+
+    const priceNum = Number(amount) || 5000;
+    const txId = `TX-SUB-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const nowIso = new Date().toISOString();
+
+    const pendingTx = {
+      id: txId,
+      transactionId: transactionReference || `REF-${Date.now().toString().slice(-6)}`,
+      userId: userId || 'guest',
+      userEmail: userEmail || 'candidat@dokya.sn',
+      userName: userName || 'Candidat Dokya',
+      type: 'subscription_purchase' as const,
+      amount: -priceNum,
+      expectedAmount: priceNum,
+      extractedAmount: priceNum,
+      currency: 'XOF',
+      description: `Souscription ${planTitle} (${paymentMethod === 'wave' ? 'Wave' : paymentMethod === 'orange_money' ? 'Orange Money' : paymentMethod === 'card' ? 'Carte Bancaire' : 'Mobile Money'} - En attente de validation)`,
+      status: 'pending' as const,
+      aiStatus: 'PENDING' as const,
+      paymentMethod,
+      senderPhone,
+      receiptImage: receiptImage && receiptImage.length < 350000 ? receiptImage : undefined,
+      createdAt: nowIso,
+      purpose: 'subscription_purchase',
+      planId,
+      planTitle
+    };
+
+    adminStore.transactions.unshift(pendingTx);
+
+    // Update user record if exists in memory
+    const userIndex = adminStore.users.findIndex(u => u.uid === userId || (userEmail && u.email.toLowerCase() === userEmail.toLowerCase()));
+    if (userIndex !== -1) {
+      (adminStore.users[userIndex] as any).subscription = {
+        planId,
+        planName: planTitle,
+        status: 'pending',
+        pricePaid: priceNum,
+        paymentMethod,
+        senderPhone,
+        transactionReference: transactionReference || txId,
+        submittedAt: nowIso
+      };
+      adminStore.users[userIndex].updatedAt = nowIso;
+    }
+
+    recordAuditLog(
+      'payment',
+      'SUBSCRIPTION_PAYMENT_SUBMITTED',
+      userEmail || 'candidat@dokya.sn',
+      `Demande de souscription soumise pour ${planTitle} (${priceNum.toLocaleString('fr-FR')} FCFA via ${paymentMethod}). En attente de validation administrative.`,
+      { txId, planId, planTitle, amount: priceNum, paymentMethod, senderPhone, transactionReference },
+      userEmail,
+      userId,
+      'warning'
+    );
+
+    return res.json({
+      success: true,
+      transactionId: txId,
+      status: 'pending',
+      message: `Votre demande de souscription pour le ${planTitle} a été transmise avec succès ! Notre équipe vérifie votre paiement sous 5 à 15 minutes.`
+    });
+  } catch (err: any) {
+    console.error('[Submit Subscription Payment Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Erreur lors de la transmission de la demande de souscription.'
+    });
+  }
+});
+
 
 // ==========================================
-// USER WALLET / SOLDE DEBIT API ENDPOINT
+// RECHARGE PAYMENT SUBMISSION (PENDING VALIDATION)
 // ==========================================
+app.post('/api/recharge/submit-payment', (req, res) => {
+  try {
+    const {
+      userId,
+      userEmail,
+      userName,
+      amount = 3000,
+      paymentMethod = 'wave',
+      senderPhone = '',
+      transactionReference = '',
+      receiptImage = ''
+    } = req.body || {};
+
+    const amountNum = Number(amount) || 3000;
+    const txId = `TX-REC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const nowIso = new Date().toISOString();
+
+    const pendingTx = {
+      id: txId,
+      transactionId: transactionReference || `REF-${Date.now().toString().slice(-6)}`,
+      userId: userId || 'guest',
+      userEmail: userEmail || 'candidat@dokya.sn',
+      userName: userName || 'Candidat Dokya',
+      type: 'recharge' as const,
+      amount: amountNum,
+      expectedAmount: amountNum,
+      extractedAmount: amountNum,
+      currency: 'XOF',
+      description: `Recharge Solde Wallet (${amountNum.toLocaleString('fr-FR')} FCFA via ${paymentMethod === 'wave' ? 'Wave' : paymentMethod === 'orange_money' ? 'Orange Money' : 'Mobile Money'} - En attente de validation)`,
+      status: 'pending' as const,
+      aiStatus: 'PENDING' as const,
+      paymentMethod,
+      senderPhone,
+      receiptImage: receiptImage && receiptImage.length < 350000 ? receiptImage : undefined,
+      createdAt: nowIso,
+      purpose: 'wallet_recharge'
+    };
+
+    adminStore.transactions.unshift(pendingTx);
+
+    recordAuditLog(
+      'payment',
+      'WALLET_RECHARGE_SUBMITTED',
+      userEmail || 'candidat@dokya.sn',
+      `Demande de recharge de solde soumise : ${amountNum.toLocaleString('fr-FR')} FCFA via ${paymentMethod}. En attente de validation administrative.`,
+      { txId, amount: amountNum, paymentMethod, senderPhone, transactionReference },
+      userEmail,
+      userId,
+      'warning'
+    );
+
+    return res.json({
+      success: true,
+      transactionId: txId,
+      status: 'pending',
+      message: `Votre demande de recharge de ${amountNum.toLocaleString('fr-FR')} FCFA a été transmise avec succès ! Notre équipe crédite votre solde sous 5 à 15 minutes.`
+    });
+  } catch (err: any) {
+    console.error('[Submit Recharge Payment Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Erreur lors de la transmission de la recharge.'
+    });
+  }
+});
+
+// ==========================================
+// DOCUMENT PURCHASE PAYMENT SUBMISSION (PENDING VALIDATION)
+// ==========================================
+app.post('/api/documents/submit-payment', (req, res) => {
+  try {
+    const {
+      userId,
+      userEmail,
+      userName,
+      documentTitle = 'Document Dokya AI',
+      documentTypeLabel = 'Document Professionnel',
+      amount = 1000,
+      paymentMethod = 'wave',
+      senderPhone = '',
+      transactionReference = '',
+      receiptImage = ''
+    } = req.body || {};
+
+    const amountNum = Number(amount) || 1000;
+    const txId = `TX-DOC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const nowIso = new Date().toISOString();
+
+    const pendingTx = {
+      id: txId,
+      transactionId: transactionReference || `REF-${Date.now().toString().slice(-6)}`,
+      userId: userId || 'guest',
+      userEmail: userEmail || 'candidat@dokya.sn',
+      userName: userName || 'Candidat Dokya',
+      type: 'document_purchase' as const,
+      amount: -amountNum,
+      expectedAmount: amountNum,
+      extractedAmount: amountNum,
+      currency: 'XOF',
+      description: `Achat ${documentTypeLabel} : ${documentTitle} (${paymentMethod === 'wave' ? 'Wave' : paymentMethod === 'orange_money' ? 'Orange Money' : 'Mobile Money'} - En attente)`,
+      status: 'pending' as const,
+      aiStatus: 'PENDING' as const,
+      paymentMethod,
+      senderPhone,
+      receiptImage: receiptImage && receiptImage.length < 350000 ? receiptImage : undefined,
+      createdAt: nowIso,
+      purpose: 'document_purchase',
+      documentTitle
+    };
+
+    adminStore.transactions.unshift(pendingTx);
+
+    recordAuditLog(
+      'payment',
+      'DOCUMENT_PAYMENT_SUBMITTED',
+      userEmail || 'candidat@dokya.sn',
+      `Demande d'achat de document soumise pour "${documentTitle}" (${amountNum.toLocaleString('fr-FR')} FCFA via ${paymentMethod}). En attente de validation administrative.`,
+      { txId, documentTitle, amount: amountNum, paymentMethod, senderPhone, transactionReference },
+      userEmail,
+      userId,
+      'warning'
+    );
+
+    return res.json({
+      success: true,
+      transactionId: txId,
+      status: 'pending',
+      message: `Votre preuve de paiement pour "${documentTitle}" a été transmise ! Validation et déblocage sous 5 à 15 minutes.`
+    });
+  } catch (err: any) {
+    console.error('[Submit Document Payment Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Erreur lors de la transmission du paiement.'
+    });
+  }
+});
+
 app.all(['/api/wallet', '/api/wallet/debit'], async (req, res) => {
   try {
     if (req.method === 'GET') {
@@ -3413,6 +3640,8 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
     // Si c'était une recharge rejetée et que l'admin valide manuellement, créditer le compte
     const targetAmount = (tx as any).expectedAmount || Math.abs(tx.amount);
     let credited = false;
+    let subscriptionActivated = false;
+
     if (tx.type === 'recharge' || (tx as any).purpose === 'wallet_recharge') {
       const userIndex = adminStore.users.findIndex(u => u.uid === tx.userId || ((tx as any).userEmail && u.email.toLowerCase() === (tx as any).userEmail.toLowerCase()));
       if (userIndex !== -1) {
@@ -3420,14 +3649,37 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
         adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
         credited = true;
       }
+    } else if (tx.type === 'subscription_purchase' || (tx as any).purpose === 'subscription_purchase' || ((tx as any).description && (tx as any).description.toLowerCase().includes('souscription'))) {
+      const userIndex = adminStore.users.findIndex(u => u.uid === tx.userId || ((tx as any).userEmail && u.email.toLowerCase() === (tx as any).userEmail.toLowerCase()));
+      const planId = (tx as any).planId || 'monthly';
+      const planTitle = (tx as any).planTitle || 'Pass VIP Mensuel';
+      const days = planId === 'weekly' ? 7 : planId === 'annual' ? 365 : 30;
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+
+      if (userIndex !== -1) {
+        adminStore.users[userIndex].subscriptionStatus = 'unlimited';
+        (adminStore.users[userIndex] as any).subscription = {
+          planId,
+          planName: planTitle,
+          status: 'active',
+          startedAt: now.toISOString(),
+          expiresAt,
+          pricePaid: targetAmount,
+          paymentMethod: tx.paymentMethod || 'mobile_money',
+          adminValidationNote: note
+        };
+        adminStore.users[userIndex].updatedAt = now.toISOString();
+        subscriptionActivated = true;
+      }
     }
 
     recordAuditLog(
       'payment',
       'TRANSACTION_MANUALLY_VALIDATED',
       adminEmail,
-      `Validation manuelle de la transaction ${tx.id} (${(tx as any).transactionId || 'Sans Ref'}) pour ${(tx as any).userEmail || tx.userId} - Montant: ${targetAmount.toLocaleString('fr-FR')} FCFA. Note: ${note}`,
-      { transactionId: tx.id, rawTxId: (tx as any).transactionId, amount: targetAmount, credited },
+      `Validation manuelle de la transaction ${tx.id} (${(tx as any).transactionId || 'Sans Ref'}) pour ${(tx as any).userEmail || tx.userId} - Montant: ${targetAmount.toLocaleString('fr-FR')} FCFA.${subscriptionActivated ? ' Pass VIP activé.' : ''} Note: ${note}`,
+      { transactionId: tx.id, rawTxId: (tx as any).transactionId, amount: targetAmount, credited, subscriptionActivated },
       (tx as any).userEmail,
       tx.userId,
       'success'
@@ -3437,7 +3689,8 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
       success: true,
       transaction: tx,
       credited,
-      message: `Transaction ${tx.id} validée manuellement avec succès.${credited ? ' Le solde utilisateur a été crédité.' : ''}`
+      subscriptionActivated,
+      message: `Transaction ${tx.id} validée manuellement avec succès.${credited ? ' Le solde utilisateur a été crédité.' : ''}${subscriptionActivated ? ' Le Pass VIP a été activé pour l\'utilisateur.' : ''}`
     });
   } catch (err: any) {
     console.error('[Admin Validate Transaction Error]:', err);

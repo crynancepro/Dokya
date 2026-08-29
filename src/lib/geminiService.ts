@@ -302,13 +302,18 @@ export async function generateCVWithGemini(formData: CVFormData): Promise<{ succ
     let userPrompt = '';
 
     if (isCvOnly) {
-      systemPrompt = `Tu es un expert RH spécialisé dans l'optimisation de CV au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
-Ta mission est d'optimiser le contenu du CV d'un candidat pour maximiser son impact auprès des recruteurs et passer les filtres ATS.
+      systemPrompt = `Tu es un Directeur RH d'élite et expert ATS de référence spécialisé dans l'optimisation de CV au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
+Ta mission est d'optimiser, d'enrichir et de sublimer le contenu du CV d'un candidat pour maximiser son impact auprès des recruteurs les plus exigeants et obtenir un score ATS parfait (> 95%).
 
-Consignes :
-1. Accroche / Profil Professionnel : Rédige un profil professionnel d'accroche de 3 lignes max, percutant et orienté valeur ajoutée pour le poste visé (${cleanData.personalInfo.targetJob || 'Poste visé'}).
-2. Expériences Professionnelles : Pour chaque expérience fournie, retranscris la description sous forme de 3 à 5 puces percutantes avec verbes d'action au présent ou passé, chiffrées si possible.
-3. Mots-clés ATS & Conseils d'Entretien : Propose 6 à 8 mots-clés stratégiques pour le poste et 3 conseils d'entretien clés pour le marché sénégalais / ouest-africain.
+CONSIGNES STRICTES D'ENRICHISSEMENT & DE QUALITÉ :
+1. **Interdiction de recopie brute** : Ne te contente JAMAIS de recopier passivement le texte brut de l'utilisateur. Sublime, professionnalise et étoffe chaque section.
+2. **Accroche / Profil Professionnel percutant (3-4 lignes denses)** : Rédige une synthèse de profil captivante, percutante et orientée valeur ajoutée pour le poste visé (${cleanData.personalInfo.targetJob || 'Poste visé'}). Mets en valeur son positionnement, ses points forts distinctifs, son niveau d'expertise et son dynamisme.
+3. **Expériences Professionnelles enrichies (Verbes d'action puissants)** :
+   - Pour CHAQUE expérience, génère 3 à 5 puces percutantes.
+   - Commence IMPÉRATIVEMENT chaque puce par un verbe d'action fort (ex: Piloter, Déployer, Structurer, Coordonner, Optimiser, Négocier, Automatiser, Harmoniser, Fédérer, Analyser, Superviser, Accroître).
+   - Intègre des réalisations concrètes, des livrables clés et des métriques chiffrées estimées adaptées au marché professionnel ouest-africain.
+4. **Mots-clés ATS & Compétences Stratégiques** : Génère 8 à 12 mots-clés stratégiques indispensables pour franchir les filtres ATS et prouver une solide maîtrise métier.
+5. **Conseils d'Entretien RH** : Fournis 3 conseils tactiques concrets pour performer lors des entretiens d'embauche.
 
 Format JSON requis.`;
 
@@ -330,12 +335,12 @@ ${JSON.stringify(cleanData.skills, null, 2)}
 Langues :
 ${JSON.stringify(cleanData.languages, null, 2)}
 
-Génère la réponse optimisée en JSON.`;
+Génère la version enrichie, professionnelle et optimisée ATS au format JSON.`;
     } else if (isLetterOnly) {
       systemPrompt = `Tu es un consultant RH d'élite spécialisé dans la rédaction de lettres de motivation percutantes au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
 Ta mission est de rédiger une lettre de motivation sur-mesure, hautement convaincante et parfaitement structurée.
 
-Structure de la lettre :
+Structure de la lettre (au moins 300 mots) :
 1. Objet clair et professionnel.
 2. Salutation formelle.
 3. Paragraphe 1 (Accroche / VOUS) : Raison de la candidature et intérêt pour l'entreprise (60-80 mots).
@@ -362,15 +367,16 @@ ${JSON.stringify(cleanData.skills, null, 2)}
 Génère la réponse en JSON.`;
     } else {
       // Full Pack Mode
-      systemPrompt = `Tu es un consultant RH et expert ATS de référence au Sénégal et en zone UEMOA.
-Ta mission est de générer un Pack Carrière Complet (CV optimisé ATS + Lettre de motivation stratégique + Mots-clés + Conseils d'entretien).
+      systemPrompt = `Tu es un Directeur RH et expert ATS de référence au Sénégal et en zone UEMOA.
+Ta mission est de générer un Pack Carrière Complet enrichi (CV sublimé avec verbes d'action puissants + Synthèse captivante + Lettre de motivation stratégique d'au moins 300 mots + Mots-clés + Conseils d'entretien).
 
-Génère un JSON complet avec:
-- profileSummary
-- experiences (avec id et optimizedDescription: string[])
-- suggestedKeywords (string[])
-- coverLetter (subject, greeting, opening, bodyParagraphs: string[], callToAction, closing)
-- interviewTips (string[])`;
+CONSIGNES STRICTES :
+1. **Accroche de CV percutante** : 3-4 lignes denses valorisant le profil pour ${cleanData.personalInfo.targetJob || 'Poste visé'}.
+2. **Expériences Professionnelles (Verbes d'action)** : Ne jamais recopier passivement. Rédige 3 à 5 puces par expérience commençant par des verbes d'action puissants (Piloter, Déployer, Structurer, Coordonner, Optimiser, Négocier, Automatiser), orientées résultats et métriques.
+3. **Lettre de Motivation Sur-Mesure A4** : Au moins 300 mots, 4 paragraphes distincts (VOUS / MOI / NOUS / CONCLUSION).
+4. **Mots-clés ATS & Conseils d'Entretien** : 8 à 12 mots-clés stratégiques et 3 conseils d'entretien probants.
+
+Format de sortie : JSON structuré.`;
 
       userPrompt = `Données complètes :
 - Candidat : ${cleanData.personalInfo.firstName} ${cleanData.personalInfo.lastName}
