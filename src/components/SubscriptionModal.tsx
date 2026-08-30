@@ -21,7 +21,9 @@ import {
   HelpCircle,
   ArrowLeft,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Globe,
+  Phone
 } from 'lucide-react';
 import { UserSubscription, TransactionRecord } from '../types';
 import { verifyReceiptImage } from '../services/receiptPaymentService';
@@ -40,6 +42,21 @@ interface SubscriptionModalProps {
   onOpenRecharge: () => void;
 }
 
+const SUPPORTED_COUNTRIES = [
+  { code: 'SN', name: 'Sénégal', flag: '🇸🇳', phonePrefix: '+221', methods: ['wave', 'orange_money', 'card'] },
+  { code: 'CI', name: "Côte d'Ivoire", flag: '🇨🇮', phonePrefix: '+225', methods: ['wave', 'orange_money', 'card'] },
+  { code: 'ML', name: 'Mali', flag: '🇲🇱', phonePrefix: '+223', methods: ['orange_money', 'wave', 'card'] },
+  { code: 'BF', name: 'Burkina Faso', flag: '🇧🇫', phonePrefix: '+226', methods: ['orange_money', 'card'] },
+  { code: 'GN', name: 'Guinée', flag: '🇬🇳', phonePrefix: '+224', methods: ['orange_money', 'card'] },
+  { code: 'BJ', name: 'Bénin', flag: '🇧🇯', phonePrefix: '+229', methods: ['card', 'wave'] },
+  { code: 'TG', name: 'Togo', flag: '🇹🇬', phonePrefix: '+228', methods: ['card'] },
+  { code: 'CM', name: 'Cameroun', flag: '🇨🇲', phonePrefix: '+237', methods: ['orange_money', 'card'] },
+  { code: 'GA', name: 'Gabon', flag: '🇬🇦', phonePrefix: '+241', methods: ['card'] },
+  { code: 'CG', name: 'Congo', flag: '🇨🇬', phonePrefix: '+242', methods: ['card'] },
+  { code: 'CD', name: 'RDC', flag: '🇨🇩', phonePrefix: '+243', methods: ['orange_money', 'card'] },
+  { code: 'FR', name: 'France / Diaspora', flag: '🇫🇷', phonePrefix: '+33', methods: ['card', 'wave'] }
+];
+
 export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   isOpen,
   onClose,
@@ -53,8 +70,9 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   onSuccess,
   onOpenRecharge
 }) => {
-  // Stepper: 1 = Choix du moyen, 2 = Procédure de transfert & Preuve, 3 = Confirmation / Validation
+  // Stepper: 1 = Choix du moyen & Pays, 2 = Procédure de transfert & Preuve, 3 = Confirmation / Validation
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [selectedCountry, setSelectedCountry] = useState<string>('SN');
   const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'wave' | 'orange_money' | 'card'>('wave');
   const [senderPhone, setSenderPhone] = useState<string>('');
   const [transactionRef, setTransactionRef] = useState<string>('');
@@ -79,6 +97,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     txId?: string;
     message?: string;
     senderPhone?: string;
+    countryName?: string;
   }>({});
 
   // Cleanup object URL
@@ -235,6 +254,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         });
       }
 
+      const currentCountryObj = SUPPORTED_COUNTRIES.find(c => c.code === selectedCountry);
       const res = await fetch('/api/subscription/submit-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -247,6 +267,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           amount: price,
           paymentMethod: selectedMethod,
           senderPhone,
+          countryCode: selectedCountry,
+          countryName: currentCountryObj?.name || 'Sénégal',
           transactionReference: transactionRef,
           receiptImage: receiptBase64.slice(0, 300000)
         })
@@ -265,6 +287,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         paymentMethod: selectedMethod,
         documentsGeneratedCount: 0,
         senderPhone: senderPhone || undefined,
+        countryCode: selectedCountry,
+        countryName: currentCountryObj?.name || 'Sénégal',
         transactionReference: transactionRef || generatedTxId,
         submittedAt: now.toISOString(),
         receiptImage: previewUrl || undefined
@@ -274,7 +298,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       setValidationDetails({
         txId: generatedTxId,
         message: data.message || "Votre demande de souscription a été enregistrée avec succès.",
-        senderPhone
+        senderPhone,
+        countryName: currentCountryObj?.name
       });
 
       onSuccess(pendingSub, 'mobile_money');
@@ -454,87 +479,123 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               </div>
             </div>
 
-            {/* Select Payment Method */}
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-                Choisissez votre moyen de paiement :
-              </label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* 1. Wave Mobile Money */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedMethod('wave')}
-                  className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                    selectedMethod === 'wave'
-                      ? 'bg-blue-600/20 border-blue-500 text-white shadow-md ring-1 ring-blue-500'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <Smartphone className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs font-black text-white flex items-center gap-1.5">
-                      <span>Wave Mobile Money</span>
-                      <span className="text-[9px] bg-blue-500 text-slate-950 font-bold px-1.5 py-0.2 rounded-full">Recommandé</span>
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Sans frais • Validation instantanée</p>
+            {/* Country Selector & Method Section */}
+            <div className="space-y-4">
+              {/* Select Country */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                    Votre Pays / Zone de paiement :
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-bold">12 Pays UEMOA & Diaspora ✓</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedCountry}
+                    onChange={(e) => {
+                      setSelectedCountry(e.target.value);
+                      const country = SUPPORTED_COUNTRIES.find(c => c.code === e.target.value);
+                      if (country && !country.methods.includes(selectedMethod)) {
+                        setSelectedMethod((country.methods[0] as any) || 'wave');
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:outline-hidden focus:border-indigo-500 appearance-none cursor-pointer"
+                  >
+                    {SUPPORTED_COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code} className="bg-slate-900 text-white">
+                        {c.flag} {c.name} ({c.phonePrefix})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 text-xs">
+                    ▼
                   </div>
-                </button>
+                </div>
+              </div>
 
-                {/* 2. Orange Money */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedMethod('orange_money')}
-                  className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                    selectedMethod === 'orange_money'
-                      ? 'bg-orange-600/20 border-orange-500 text-white shadow-md ring-1 ring-orange-500'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <Smartphone className="w-5 h-5 text-orange-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs font-black text-white">Orange Money Sénégal</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Transfert #144# ou App Max It</p>
-                  </div>
-                </button>
+              {/* Select Payment Method */}
+              <div className="space-y-2.5">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                  Choisissez votre moyen de paiement :
+                </label>
 
-                {/* 3. Solde Dokya Wallet */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedMethod('wallet')}
-                  className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                    selectedMethod === 'wallet'
-                      ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md ring-1 ring-indigo-500'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <Wallet className={`w-5 h-5 mt-0.5 shrink-0 ${hasEnoughBalance ? 'text-emerald-400' : 'text-slate-500'}`} />
-                  <div className="min-w-0">
-                    <p className="text-xs font-black text-white">Solde Dokya Wallet</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Solde : <span className={hasEnoughBalance ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
-                        {userBalance.toLocaleString('fr-FR')} F
-                      </span>
-                    </p>
-                  </div>
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* 1. Wave Mobile Money */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('wave')}
+                    className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                      selectedMethod === 'wave'
+                        ? 'bg-blue-600/20 border-blue-500 text-white shadow-md ring-1 ring-blue-500'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <Smartphone className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-black text-white flex items-center gap-1.5">
+                        <span>Wave Mobile Money</span>
+                        <span className="text-[9px] bg-blue-500 text-slate-950 font-bold px-1.5 py-0.2 rounded-full">Recommandé</span>
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">0% de frais • Validation instantanée</p>
+                    </div>
+                  </button>
 
-                {/* 4. Carte Bancaire */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedMethod('card')}
-                  className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                    selectedMethod === 'card'
-                      ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <CreditCard className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs font-black text-white">Carte Bancaire / Autres</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Visa, Mastercard, Free Money</p>
-                  </div>
-                </button>
+                  {/* 2. Orange Money */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('orange_money')}
+                    className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                      selectedMethod === 'orange_money'
+                        ? 'bg-orange-600/20 border-orange-500 text-white shadow-md ring-1 ring-orange-500'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <Smartphone className="w-5 h-5 text-orange-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-black text-white">Orange Money</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Transfert #144# ou App Max It</p>
+                    </div>
+                  </button>
+
+                  {/* 3. Solde Dokya Wallet */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('wallet')}
+                    className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                      selectedMethod === 'wallet'
+                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md ring-1 ring-indigo-500'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <Wallet className={`w-5 h-5 mt-0.5 shrink-0 ${hasEnoughBalance ? 'text-emerald-400' : 'text-slate-500'}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-white">Solde Dokya Wallet</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Solde : <span className={hasEnoughBalance ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                          {userBalance.toLocaleString('fr-FR')} F
+                        </span>
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* 4. Carte Bancaire */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMethod('card')}
+                    className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                      selectedMethod === 'card'
+                        ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <CreditCard className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-black text-white">Carte Bancaire / Autres</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Visa, Mastercard, Free Money</p>
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
 

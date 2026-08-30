@@ -1027,7 +1027,7 @@ export async function exportEbookToDocx(ebookData: EbookData) {
       spacing: { after: 400 },
       children: [
         new TextRun({
-          text: "Dokya AI Publishing • Auto-Édition Standard 6x9",
+          text: "Édition Broché & Numérique • Format Standard 6x9",
           size: 18,
           color: '64748B',
         }),
@@ -1401,7 +1401,7 @@ export async function exportEbookToDocx(ebookData: EbookData) {
       spacing: { before: 600 },
       children: [
         new TextRun({
-          text: `Dokya AI Publishing • ISBN ${backProposal?.isbnNumber || '978-2-84000-123-4'}`,
+          text: `ISBN ${backProposal?.isbnNumber || '978-2-84000-123-4'} • Édition Standard`,
           size: 16,
           color: '94A3B8',
         }),

@@ -5,6 +5,8 @@ import {
   Target, Send, GraduationCap, RotateCcw, UserCheck, 
   Wand2, FileText, CheckCircle2, MessageSquare, Zap, Loader2, ArrowRight
 } from 'lucide-react';
+import { AIFormValidationBanner } from './AIFormValidationBanner';
+import { validateLetterForm } from '../lib/formValidationUtils';
 
 interface LetterEditorFormProps {
   formData: CVFormData;
@@ -148,7 +150,15 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
       </div>
 
       <div className="p-5 sm:p-6 space-y-6">
-      {/* Header & Quick Action */}
+        {/* Real-Time Form Validation Banner */}
+        <AIFormValidationBanner
+          report={validateLetterForm(formData)}
+          onEnrichAI={onGenerate}
+          enrichButtonLabel="Rédiger & Compléter la lettre avec l'IA"
+          isGenerating={isLoading}
+        />
+
+        {/* Header & Quick Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
         <div>
           <div className="flex items-center gap-2">
@@ -239,7 +249,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
                 placeholder="Ex: Wave Sénégal, Sonatel, Orange..."
                 value={formData.targetCompany || ''}
                 onChange={(e) => onChange({ ...formData, targetCompany: e.target.value })}
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
               />
             </div>
           </div>
@@ -255,7 +265,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
                 placeholder="Ex: Développeur Full-Stack, Comptable..."
                 value={personalInfo.targetJob}
                 onChange={(e) => updatePersonalInfo('targetJob', e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
               />
             </div>
           </div>
@@ -277,7 +287,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
               placeholder="Moussa"
               value={personalInfo.firstName}
               onChange={(e) => updatePersonalInfo('firstName', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 outline-none"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
             />
           </div>
 
@@ -288,7 +298,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
               placeholder="Diop"
               value={personalInfo.lastName}
               onChange={(e) => updatePersonalInfo('lastName', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 outline-none"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
             />
           </div>
 
@@ -299,7 +309,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
               placeholder="moussa.diop@email.sn"
               value={personalInfo.email}
               onChange={(e) => updatePersonalInfo('email', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 outline-none"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
             />
           </div>
 
@@ -310,7 +320,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
               placeholder="+221 77 123 45 67"
               value={personalInfo.phone}
               onChange={(e) => updatePersonalInfo('phone', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 outline-none"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
             />
           </div>
 
@@ -321,7 +331,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
               placeholder="Dakar"
               value={personalInfo.city}
               onChange={(e) => updatePersonalInfo('city', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 outline-none"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
             />
           </div>
 
@@ -332,7 +342,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
               placeholder="Almadies, Dakar"
               value={personalInfo.address}
               onChange={(e) => updatePersonalInfo('address', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 outline-none"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
             />
           </div>
         </div>
@@ -361,7 +371,7 @@ export const LetterEditorForm: React.FC<LetterEditorFormProps> = ({
             letterInstructions: e.target.value,
             highlightsSummary: e.target.value 
           })}
-          className="w-full p-3.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none leading-relaxed placeholder:text-slate-400"
+          className="w-full p-3.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none leading-relaxed"
         />
       </div>
 

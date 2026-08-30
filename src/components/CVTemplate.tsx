@@ -59,6 +59,18 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
   const profileSummary = aiData?.profileSummary || 
     `Professionnel qualifié et motivé disposant d'une solide expérience sur le poste de ${personalInfo.targetJob || 'spécialiste'}. Rigoureux, autonome et orienté résultats, engagé à apporter une réelle valeur ajoutée aux projets d'entreprise.`;
 
+  // Effective Hobbies (User input or AI auto-enriched default)
+  const effectiveHobbies: string[] = (formData?.hobbies && formData.hobbies.length > 0)
+    ? formData.hobbies
+    : (aiData?.hobbies && aiData.hobbies.length > 0)
+    ? aiData.hobbies
+    : [
+        "Veille technologique & Innovation continue",
+        "Lecture stratégique & Analyse économique",
+        "Pratique sportive régulière (Course à pied / Trail)",
+        "Engagement associatif & Mentorat de jeunes talents"
+      ];
+
   // Helper for updating nested personal info fields directly
   const updatePersonalInfo = (field: keyof typeof personalInfo, value: string) => {
     if (!onFormDataChange) return;
@@ -2371,6 +2383,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
         renderCustomSections={renderCustomSections}
         renderFreeTextBlocks={renderFreeTextBlocks}
         aiData={aiData}
+        effectiveHobbies={effectiveHobbies}
       />
 
       {/* ------------------------------------------------------------- */}
@@ -2394,6 +2407,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
         renderCustomSections={renderCustomSections}
         renderFreeTextBlocks={renderFreeTextBlocks}
         aiData={aiData}
+        effectiveHobbies={effectiveHobbies}
       />
 
       </div>

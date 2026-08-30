@@ -11,6 +11,11 @@ export interface VerifyReceiptParams {
   documentTitle?: string;
   userId?: string;
   userEmail?: string;
+  userName?: string;
+  senderPhone?: string;
+  countryCode?: string;
+  countryName?: string;
+  transactionRef?: string;
   purpose?: 'document_unlock' | 'wallet_recharge' | 'pack_purchase' | string;
 }
 
@@ -65,6 +70,11 @@ export async function verifyReceiptImage(params: VerifyReceiptParams): Promise<R
         documentTitle: params.documentTitle || 'Document Professionnel Dokya',
         userId: params.userId || 'guest-user',
         userEmail: params.userEmail || 'candidat@dokya.sn',
+        userName: params.userName,
+        senderPhone: params.senderPhone,
+        countryCode: params.countryCode,
+        countryName: params.countryName,
+        transactionRef: params.transactionRef,
         purpose: params.purpose || 'document_unlock'
       })
     });

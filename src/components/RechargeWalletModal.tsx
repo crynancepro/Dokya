@@ -18,7 +18,9 @@ import {
   CreditCard,
   MessageCircle,
   Clock,
-  Check
+  Check,
+  Globe,
+  Phone
 } from 'lucide-react';
 import { verifyReceiptImage } from '../services/receiptPaymentService';
 import { TransactionRecord } from '../types';
@@ -35,6 +37,21 @@ interface RechargeWalletModalProps {
   onSuccess?: (addedAmount: number, transaction?: TransactionRecord) => void;
 }
 
+const SUPPORTED_COUNTRIES = [
+  { code: 'SN', name: 'Sénégal', flag: '🇸🇳', phonePrefix: '+221', methods: ['wave', 'orange_money', 'card'] },
+  { code: 'CI', name: "Côte d'Ivoire", flag: '🇨🇮', phonePrefix: '+225', methods: ['wave', 'orange_money', 'card'] },
+  { code: 'ML', name: 'Mali', flag: '🇲🇱', phonePrefix: '+223', methods: ['orange_money', 'wave', 'card'] },
+  { code: 'BF', name: 'Burkina Faso', flag: '🇧🇫', phonePrefix: '+226', methods: ['orange_money', 'card'] },
+  { code: 'GN', name: 'Guinée', flag: '🇬🇳', phonePrefix: '+224', methods: ['orange_money', 'card'] },
+  { code: 'BJ', name: 'Bénin', flag: '🇧🇯', phonePrefix: '+229', methods: ['card', 'wave'] },
+  { code: 'TG', name: 'Togo', flag: '🇹🇬', phonePrefix: '+228', methods: ['card'] },
+  { code: 'CM', name: 'Cameroun', flag: '🇨🇲', phonePrefix: '+237', methods: ['orange_money', 'card'] },
+  { code: 'GA', name: 'Gabon', flag: '🇬🇦', phonePrefix: '+241', methods: ['card'] },
+  { code: 'CG', name: 'Congo', flag: '🇨🇬', phonePrefix: '+242', methods: ['card'] },
+  { code: 'CD', name: 'RDC', flag: '🇨🇩', phonePrefix: '+243', methods: ['orange_money', 'card'] },
+  { code: 'FR', name: 'France / Diaspora', flag: '🇫🇷', phonePrefix: '+33', methods: ['card', 'wave'] }
+];
+
 export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
   isOpen,
   onClose,
@@ -50,6 +67,7 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
 
   // Stepper: 1 = Montant & Opérateur, 2 = Coordonnées & Preuve, 3 = Résultat (Active / Pending)
   const [step, setStep] = useState<1 | 2>(1);
+  const [selectedCountry, setSelectedCountry] = useState<string>('SN');
   const [selectedAmount, setSelectedAmount] = useState<number>(3000);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [isCustom, setIsCustom] = useState<boolean>(false);
@@ -79,6 +97,7 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
     senderPhone?: string;
     addedAmount?: number;
     newBalance?: number;
+    countryName?: string;
   }>({});
 
   useEffect(() => {
@@ -212,6 +231,7 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
         });
       }
 
+      const currentCountryObj = SUPPORTED_COUNTRIES.find(c => c.code === selectedCountry);
       const res = await fetch('/api/recharge/submit-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -222,6 +242,8 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
           amount: effectiveAmount,
           paymentMethod: selectedMethod,
           senderPhone,
+          countryCode: selectedCountry,
+          countryName: currentCountryObj?.name || 'Sénégal',
           transactionReference: transactionRef,
           receiptImage: receiptBase64.slice(0, 300000)
         })
@@ -244,6 +266,8 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
         createdAt: new Date().toISOString(),
         paymentMethod: selectedMethod,
         senderPhone: senderPhone || undefined,
+        countryCode: selectedCountry,
+        countryName: currentCountryObj?.name || 'Sénégal',
         transactionReference: transactionRef || generatedTxId,
         receiptImage: previewUrl || undefined
       };
@@ -253,7 +277,8 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
         txId: generatedTxId,
         message: data.message || "Votre demande de recharge a été transmise avec succès.",
         senderPhone,
-        addedAmount: effectiveAmount
+        addedAmount: effectiveAmount,
+        countryName: currentCountryObj?.name
       });
 
       if (onRechargeSuccess) onRechargeSuccess(0, pendingTx);
@@ -486,6 +511,39 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
               </div>
             </div>
 
+            {/* Select Country */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                  Votre Pays / Zone de paiement :
+                </span>
+                <span className="text-[10px] text-emerald-400 font-bold">12 Pays UEMOA & Diaspora ✓</span>
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedCountry}
+                  onChange={(e) => {
+                    setSelectedCountry(e.target.value);
+                    const country = SUPPORTED_COUNTRIES.find(c => c.code === e.target.value);
+                    if (country && !country.methods.includes(selectedMethod)) {
+                      setSelectedMethod((country.methods[0] as any) || 'wave');
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:outline-hidden focus:border-indigo-500 appearance-none cursor-pointer"
+                >
+                  {SUPPORTED_COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code} className="bg-slate-900 text-white">
+                      {c.flag} {c.name} ({c.phonePrefix})
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 text-xs">
+                  ▼
+                </div>
+              </div>
+            </div>
+
             {/* Select Payment Operator */}
             <div className="space-y-3">
               <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
@@ -505,7 +563,7 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
                 >
                   <Smartphone className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-xs font-black text-white">Wave Sénégal</p>
+                    <p className="text-xs font-black text-white">Wave Direct</p>
                     <p className="text-[10px] text-slate-400">Sans frais • 0%</p>
                   </div>
                 </button>

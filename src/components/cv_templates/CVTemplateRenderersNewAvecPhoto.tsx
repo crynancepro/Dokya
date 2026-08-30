@@ -16,6 +16,7 @@ export const CVTemplateRenderersNewAvecPhoto: React.FC<CVTemplateInternalProps> 
   renderCustomSections,
   renderFreeTextBlocks,
   aiData,
+  effectiveHobbies = [],
 }) => {
   // -------------------------------------------------------------
   // STYLE 36: PHOTO ART DIRECTOR

@@ -16,6 +16,7 @@ export const CVTemplateRenderersNewSansPhoto: React.FC<CVTemplateInternalProps> 
   renderCustomSections,
   renderFreeTextBlocks,
   aiData,
+  effectiveHobbies = [],
 }) => {
   // -------------------------------------------------------------
   // STYLE 11 (21): SWISS GRID DESIGN

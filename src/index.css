@@ -1,5 +1,49 @@
 @import "tailwindcss";
 
+/* ========================================================================= */
+/* ACCESSIBILITY & HIGH CONTRAST INPUT / TEXTAREA / SELECT STYLES            */
+/* ========================================================================= */
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]),
+  textarea,
+  select {
+    color: #0f172a !important; /* slate-900 text on light backgrounds */
+    border-color: #cbd5e1; /* slate-300 crisp border */
+    font-weight: 500;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"])::placeholder,
+  textarea::placeholder {
+    color: #64748b !important; /* slate-500 medium gray for visible placeholder */
+    opacity: 1 !important;
+    font-weight: 400;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]):focus,
+  textarea:focus,
+  select:focus {
+    color: #0f172a !important;
+    border-color: #3b82f6 !important; /* blue-500 */
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important; /* soft blue focus ring */
+  }
+
+  /* Specific handling for dark-mode containers to avoid white-on-dark clashes if any */
+  .bg-slate-900 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .bg-slate-950 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .bg-black input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .dark-input {
+    color: #f8fafc !important;
+    border-color: #334155 !important;
+  }
+  .bg-slate-900 input::placeholder,
+  .bg-slate-950 input::placeholder,
+  .bg-black input::placeholder,
+  .dark-input::placeholder {
+    color: #94a3b8 !important;
+  }
+}
+
 @layer utilities {
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(6px); }

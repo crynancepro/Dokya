@@ -307,6 +307,8 @@ export interface AIOptimizedData {
     optimizedDescription: string[];
   }[];
   suggestedKeywords: string[];
+  hobbies?: string[]; // 3-4 smart, prestigious hobbies tailored to the role
+  enrichedSkills?: SkillCategory[];
   coverLetter: {
     subject: string;
     greeting: string;
@@ -452,6 +454,8 @@ export interface TransactionRecord {
   rejectionCode?: string;
   receiptImage?: string;
   senderPhone?: string;
+  countryCode?: string;
+  countryName?: string;
   extractedData?: {
     recipient_phone?: string;
     recipient_name?: string;

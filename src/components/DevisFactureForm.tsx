@@ -10,6 +10,8 @@ import { BusinessDocData, BusinessDocItem } from '../types';
 import { SECTOR_PRESETS, INDIVIDUAL_SERVICES_CATALOG } from '../data/businessPresets';
 import { numberToFrenchWords } from '../utils/numberToWords';
 import { generateBusinessDocWithGemini } from '../lib/geminiService';
+import { AIFormValidationBanner } from './AIFormValidationBanner';
+import { validateBusinessDoc } from '../lib/formValidationUtils';
 
 interface DevisFactureFormProps {
   data: BusinessDocData;
@@ -287,7 +289,15 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
       </div>
 
       <div className="p-4 sm:p-5 space-y-4">
-      {/* 1. COMPACT HEADER BAR: MODE SWITCHER, CURRENCY SELECTOR & QUICK CONVERT */}
+        {/* Real-Time Form Validation Banner */}
+        <AIFormValidationBanner
+          report={validateBusinessDoc(data)}
+          onEnrichAI={handleAiPolish}
+          enrichButtonLabel="Optimiser et Enrichir avec l'IA"
+          isGenerating={isAiPolishing}
+        />
+
+        {/* 1. COMPACT HEADER BAR: MODE SWITCHER, CURRENCY SELECTOR & QUICK CONVERT */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
         {/* Toggle Devis / Facture & Devise Selector */}
         <div className="flex flex-wrap items-center gap-2">

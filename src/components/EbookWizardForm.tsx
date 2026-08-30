@@ -6,6 +6,8 @@ import {
   buildPollinationsImageUrl, generateContextualEbookProposals
 } from '../data/sampleEbookData';
 import { generateEbookCoversWithGemini, generateEbookContentWithGemini } from '../lib/geminiService';
+import { AIFormValidationBanner } from './AIFormValidationBanner';
+import { validateEbookForm } from '../lib/formValidationUtils';
 import { 
   BookOpen, Sparkles, RefreshCw, Upload, Image as ImageIcon, 
   Check, ArrowRight, ArrowLeft, Layers, PenTool, Layout, 
@@ -54,7 +56,7 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
         targetAudience: data.targetAudience,
         tone: data.tone,
         summaryOrPrompt: data.summaryOrPrompt,
-        customPrompt: activeCoverTab === 'front' ? customFrontPrompt : customBackPrompt
+        customPrompt: customFrontPrompt || customBackPrompt || undefined
       });
 
       if (res.success && res.frontProposals?.length) {
@@ -165,7 +167,7 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
         targetAudience: data.targetAudience,
         tone: data.tone,
         summaryOrPrompt: data.summaryOrPrompt,
-        customPrompt: activeCoverTab === 'front' ? customFrontPrompt : customBackPrompt
+        customPrompt: customFrontPrompt || customBackPrompt || undefined
       });
 
       if (res.success && res.frontProposals?.length) {
@@ -512,6 +514,25 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
       {activeStep === 1 && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6 animate-in fade-in duration-150">
           
+          {/* Real-Time Ebook Validation Banner */}
+          <AIFormValidationBanner
+            report={validateEbookForm(data)}
+            onEnrichAI={async () => {
+              if (!data.title) {
+                setData(prev => ({
+                  ...prev,
+                  title: prev.title || 'Guide Stratégique de Réussite Professionnelle',
+                  author: prev.author || 'Dr. Amadou Diallo',
+                  summaryOrPrompt: prev.summaryOrPrompt || 'Méthodologie concrète, études de cas et plans d\'action étape par étape pour accélérer sa carrière et son leadership en Afrique et à l\'international.',
+                  genre: prev.genre || 'Business & Entrepreneuriat',
+                  targetAudience: prev.targetAudience || 'Professionnels & Entrepreneurs'
+                }));
+              }
+            }}
+            enrichButtonLabel="Compléter avec des suggestions IA"
+            isGenerating={isGeneratingCovers || isGeneratingContent}
+          />
+
           <div className="pb-4 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-800 text-xs font-black uppercase tracking-wider">
@@ -806,13 +827,14 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
       )}
 
       {/* ------------------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------------- */}
       {/* VIEW ÉTAPE 2 : DESIGN DES COUVERTURES (AVANT & FERMETURE)                 */}
       {/* ------------------------------------------------------------------------- */}
       {activeStep === 2 && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6 animate-in fade-in duration-150">
           
-          {/* Header & Sub-Navigation Tabs */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-800 text-xs font-black uppercase tracking-wider">
@@ -822,229 +844,360 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
               </div>
               <h2 className="text-base sm:text-xl font-black text-slate-900 mt-1 flex items-center gap-2">
                 <Palette className="w-5 h-5 text-indigo-600" />
-                <span>Design des Couvertures (Avant et Fermeture)</span>
+                <span>Design des Couvertures (Façade Avant & Façade Arrière)</span>
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Personnalisez la première de couverture et la quatrième de couverture (dos du livre).
+                Visualisez et personnalisez simultanément la première de couverture et la quatrième de couverture.
               </p>
             </div>
 
-            {/* 2 Sub-Tabs: [1. Couverture Avant] | [2. Quatrième de Couverture] | [Vue Dépliée] */}
-            <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setActiveCoverTab('front')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeCoverTab === 'front'
-                    ? 'bg-white text-indigo-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                <span>1. Couverture Avant</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveCoverTab('back')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeCoverTab === 'back'
-                    ? 'bg-white text-indigo-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Award className="w-3.5 h-3.5 text-indigo-600" />
-                <span>2. Quatrième de Couverture</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveCoverTab('spread')}
-                className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeCoverTab === 'spread'
-                    ? 'bg-white text-indigo-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                <span>📖 Vue Jaquette</span>
-              </button>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200">
+                <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                <span>Format Standard 6×9 po (KDP)</span>
+              </span>
             </div>
           </div>
 
-          {/* SUB-TAB 1 : COUVERTURE AVANT (FRONT COVER) */}
-          {activeCoverTab === 'front' && (
-            <div className="space-y-6">
-              
-              {/* Unique Front Cover Render */}
-              <div className="flex flex-col items-center justify-center py-2">
-                {frontProposal ? (
-                  <div className="w-full max-w-sm sm:max-w-md mx-auto">
-                    <div
-                      className="group relative rounded-3xl cursor-pointer transition-all duration-300 flex flex-col justify-between overflow-hidden bg-slate-950 aspect-[1/1.5] shadow-2xl ring-2 ring-indigo-500/50 hover:shadow-indigo-500/20"
-                    >
-                      {/* Background Image Layer */}
-                      {(data.frontCover.mode === 'uploaded' && data.frontCover.customImageUrl) ? (
-                        <div 
-                          className="absolute inset-0 bg-cover bg-center"
-                          style={{ backgroundImage: `url(${data.frontCover.customImageUrl})` }}
-                        />
-                      ) : frontProposal.artImageUrl ? (
-                        <div 
-                          className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                          style={{ backgroundImage: `url(${frontProposal.artImageUrl})` }}
-                        />
-                      ) : null}
+          {/* 1. DUAL SIDE-BY-SIDE MOCKUP CARDS */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-stretch">
+            
+            {/* CARTE 1 (GAUCHE) : PREMIÈRE DE COUVERTURE */}
+            <div className="flex flex-col space-y-3">
+              {/* Card Top Sub-Header */}
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Carte 1 : Première de Couverture</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setZoomModal({ 
+                      type: 'front', 
+                      url: (data.frontCover.mode === 'uploaded' && data.frontCover.customImageUrl) 
+                        ? data.frontCover.customImageUrl 
+                        : (frontProposal?.artImageUrl || '') 
+                    })}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer border border-slate-200"
+                    title="Agrandir en HD"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Zoom HD</span>
+                  </button>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                    ✓ Actif
+                  </span>
+                </div>
+              </div>
 
-                      {/* Gradient Overlay for Guaranteed Contrast */}
-                      <div className={`absolute inset-0 bg-gradient-to-t ${frontProposal.bgGradient || 'from-slate-950 via-slate-950/75 to-slate-900/80'} ${frontProposal.artImageUrl || data.frontCover.customImageUrl ? 'opacity-85' : 'opacity-100'} pointer-events-none z-0`} />
+              {/* Card 1 Visual Container */}
+              <div className="w-full flex-1 flex flex-col justify-center">
+                <div className="group relative rounded-3xl cursor-pointer transition-all duration-300 flex flex-col justify-between overflow-hidden bg-slate-950 aspect-[1/1.5] min-h-[500px] shadow-2xl ring-2 ring-indigo-500/40 hover:shadow-indigo-500/20">
+                  {/* Background Image Layer */}
+                  {(data.frontCover.mode === 'uploaded' && data.frontCover.customImageUrl) ? (
+                    <div 
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${data.frontCover.customImageUrl})` }}
+                    />
+                  ) : frontProposal?.artImageUrl ? (
+                    <div 
+                      className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                      style={{ backgroundImage: `url(${frontProposal.artImageUrl})` }}
+                    />
+                  ) : null}
 
-                      {/* Realistic 3D Spine Highlight on Left Edge */}
-                      <div className="absolute left-0 top-0 bottom-0 w-4 sm:w-5 bg-gradient-to-r from-black/85 via-black/40 to-transparent pointer-events-none z-20" />
-                      <div className="absolute left-4 sm:left-5 top-0 bottom-0 w-[1px] bg-white/25 pointer-events-none z-20" />
+                  {/* Gradient Overlay */}
+                  <div className={`absolute inset-0 bg-gradient-to-t ${frontProposal?.bgGradient || 'from-slate-950 via-slate-950/75 to-slate-900/80'} ${frontProposal?.artImageUrl || data.frontCover.customImageUrl ? 'opacity-85' : 'opacity-100'} pointer-events-none z-0`} />
 
-                      {/* Gold Decorative Inner Frame */}
-                      <div className="absolute inset-3 sm:inset-4 border border-amber-400/35 rounded-2xl pointer-events-none z-10" />
+                  {/* Realistic 3D Spine Highlight on Left Edge */}
+                  <div className="absolute left-0 top-0 bottom-0 w-4 sm:w-5 bg-gradient-to-r from-black/85 via-black/40 to-transparent pointer-events-none z-20" />
+                  <div className="absolute left-4 sm:left-5 top-0 bottom-0 w-[1px] bg-white/25 pointer-events-none z-20" />
 
-                      {/* Top Content: Genre Badge & Art Style */}
-                      <div className="relative z-10 p-5 pb-0 flex flex-col gap-2 text-white">
-                        <div className="flex items-center justify-between">
-                          <span 
-                            className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border border-amber-400/40 bg-black/75 shadow-xs backdrop-blur-xs text-amber-300 flex items-center gap-1.5"
-                          >
-                            <Sparkles className="w-3 h-3 text-amber-400" />
-                            <span>{frontProposal.artStyleLabel || 'Design Unique'}</span>
-                          </span>
+                  {/* Gold Decorative Inner Frame */}
+                  <div className="absolute inset-3 sm:inset-4 border border-amber-400/35 rounded-2xl pointer-events-none z-10" />
 
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setZoomModal({ type: 'front', url: (data.frontCover.mode === 'uploaded' && data.frontCover.customImageUrl) ? data.frontCover.customImageUrl : (frontProposal.artImageUrl || '') })}
-                              className="p-1.5 rounded-lg bg-black/60 hover:bg-black/85 text-white/80 hover:text-white border border-white/20 transition-all text-xs flex items-center gap-1"
-                              title="Agrandir en HD"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span className="text-[10px] hidden sm:inline">Zoom HD</span>
-                            </button>
+                  {/* Top Content inside Front Card */}
+                  <div className="relative z-10 p-5 pb-0 flex flex-col gap-2 text-white">
+                    <div className="flex items-center justify-between">
+                      <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border border-amber-400/40 bg-black/75 shadow-xs backdrop-blur-xs text-amber-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                        <span>{frontProposal?.artStyleLabel || 'Design Unique'}</span>
+                      </span>
+                      <span className="text-[10px] font-bold text-amber-300/90 drop-shadow-xs">
+                        {frontProposal?.genreBadge || data.genre || 'Édition Premium'}
+                      </span>
+                    </div>
+                  </div>
 
-                            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/90 text-white flex items-center gap-1 shadow-md font-black text-[10px] uppercase tracking-wider">
-                              <Check className="w-3 h-3 stroke-[3]" />
-                              <span>Actif</span>
-                            </span>
+                  {/* Center Content: Title + Subtitle Box */}
+                  <div className="relative z-10 px-6 py-4 text-center my-auto space-y-2.5">
+                    <div className="inline-block px-5 py-4 rounded-2xl bg-black/60 backdrop-blur-xs border border-white/15 w-full shadow-2xl">
+                      <h3 
+                        className="text-base sm:text-xl font-black leading-tight line-clamp-3 drop-shadow-md text-white"
+                        style={{ color: frontProposal?.textColor || '#ffffff' }}
+                      >
+                        {data.title || frontProposal?.title || 'Titre du Livre'}
+                      </h3>
+                      
+                      <div className="w-12 h-0.5 bg-amber-400 mx-auto my-2.5 rounded-full opacity-80" />
+
+                      <p 
+                        className="text-xs font-medium line-clamp-2 leading-relaxed text-slate-200 drop-shadow-xs"
+                        style={{ color: frontProposal?.subtitleColor || '#e2e8f0' }}
+                      >
+                        {data.subtitle || frontProposal?.subtitle || 'Sous-titre descriptif de l\'ouvrage'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Bottom Footer: Author & Publisher */}
+                  <div className="relative z-10 p-5 pt-2 text-white flex flex-col gap-2">
+                    <div className="pt-2.5 border-t border-white/15 flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-1.5 truncate max-w-[170px]">
+                        <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span className="font-bold truncate drop-shadow-xs text-white">
+                          {data.author || frontProposal?.author || 'Auteur'}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[9px] bg-black/70 px-2 py-0.5 rounded text-amber-300 border border-amber-400/20 font-bold">
+                        Format 6×9 po
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CARTE 2 (DROITE) : QUATRIÈME DE COUVERTURE */}
+            <div className="flex flex-col space-y-3">
+              {/* Card Top Sub-Header */}
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-xs">
+                    <Award className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Carte 2 : Quatrième de Couverture</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setZoomModal({ 
+                      type: 'back', 
+                      url: (data.backCover.mode === 'uploaded' && data.backCover.customImageUrl) 
+                        ? data.backCover.customImageUrl 
+                        : (backProposal?.artImageUrl || '') 
+                    })}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer border border-slate-200"
+                    title="Agrandir en HD"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Zoom HD</span>
+                  </button>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                    ✓ Actif
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 2 Visual Container */}
+              <div className="w-full flex-1 flex flex-col justify-center">
+                <div className="group relative rounded-3xl transition-all duration-300 flex flex-col justify-between overflow-hidden bg-slate-950 aspect-[1/1.5] min-h-[500px] shadow-2xl ring-2 ring-indigo-500/40 p-5 sm:p-6">
+                  {/* Background Image Layer */}
+                  {(data.backCover.mode === 'uploaded' && data.backCover.customImageUrl) ? (
+                    <div 
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${data.backCover.customImageUrl})` }}
+                    />
+                  ) : backProposal?.artImageUrl ? (
+                    <div 
+                      className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                      style={{ backgroundImage: `url(${backProposal.artImageUrl})` }}
+                    />
+                  ) : null}
+
+                  {/* Dark gradient layer */}
+                  <div className={`absolute inset-0 bg-gradient-to-br ${backProposal?.bgGradient || 'from-slate-950 via-slate-900 to-black'} ${backProposal?.artImageUrl || data.backCover.customImageUrl ? 'opacity-90' : 'opacity-100'} pointer-events-none z-0`} />
+
+                  {/* Realistic 3D Spine Highlight on RIGHT Edge */}
+                  <div className="absolute right-0 top-0 bottom-0 w-4 sm:w-5 bg-gradient-to-l from-black/85 via-black/40 to-transparent pointer-events-none z-20" />
+                  <div className="absolute right-4 sm:right-5 top-0 bottom-0 w-[1px] bg-white/20 pointer-events-none z-20" />
+
+                  {/* Decorative Frame */}
+                  <div className="absolute inset-3 sm:inset-4 border border-white/20 rounded-2xl pointer-events-none z-10" />
+
+                  {/* Top Bar inside Back Card */}
+                  <div className="relative z-10 flex items-center justify-between text-white mb-2">
+                    <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border border-amber-400/40 bg-black/75 shadow-xs backdrop-blur-xs text-amber-300 flex items-center gap-1.5">
+                      <Award className="w-3 h-3 text-amber-400" />
+                      <span>{backProposal?.artStyleLabel || 'Fermeture Pro'}</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-amber-300 font-bold bg-black/60 px-2 py-0.5 rounded border border-amber-400/20">
+                      Dos KDP 6×9
+                    </span>
+                  </div>
+
+                  {/* Synopsis Box & Key Takeaways */}
+                  <div className="relative z-10 space-y-3 text-white my-auto">
+                    {/* Official Summary Box */}
+                    <div className="p-3.5 sm:p-4 rounded-xl bg-black/60 border border-white/20 backdrop-blur-xs space-y-1.5 shadow-md">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5 text-amber-400" />
+                        <span>RÉSUMÉ OFFICIEL DU LIVRE</span>
+                      </span>
+                      <p className="text-xs leading-relaxed text-slate-100 line-clamp-4 drop-shadow-xs font-normal">
+                        {backProposal?.synopsis || 'Ce guide complet offre des clés concrètes pour maîtriser votre sujet pas à pas avec des méthodologies éprouvées et applicables immédiatement.'}
+                      </p>
+                    </div>
+
+                    {/* Key Takeaways */}
+                    {backProposal?.keyTakeaways && backProposal.keyTakeaways.length > 0 && (
+                      <div className="space-y-1.5 bg-black/40 p-3 sm:p-3.5 rounded-xl border border-white/10 backdrop-blur-xs">
+                        <span className="text-[10px] font-black text-amber-300 uppercase tracking-wider block">
+                          Ce que vous allez apprendre :
+                        </span>
+                        {backProposal.keyTakeaways.slice(0, 3).map((pt, pIdx) => (
+                          <div key={pIdx} className="text-[11px] text-slate-200 flex items-center gap-1.5 drop-shadow-xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span className="truncate">{pt}</span>
                           </div>
-                        </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                        <div className="flex items-center justify-between text-[10px] text-amber-300/90 font-bold drop-shadow-xs">
-                          <span>{frontProposal.genreBadge || data.genre || 'Édition Premium'}</span>
-                          <span className="text-[9px] text-slate-300">{frontProposal.paletteName}</span>
-                        </div>
+                  {/* Bottom Bar: Barcode, Quote & ISBN */}
+                  <div className="relative z-10 mt-2 pt-2.5 border-t border-white/20 flex items-center justify-between gap-2 text-[10px] text-slate-300">
+                    {/* Quote */}
+                    <div className="italic truncate max-w-[170px] text-amber-200/90 text-[10px]">
+                      "{backProposal?.quoteOrCallToAction || 'Le savoir qui transforme votre avenir.'}"
+                    </div>
+
+                    {/* Realistic EAN-13 Barcode */}
+                    <div className="flex items-center gap-2 bg-white text-slate-900 px-2.5 py-1 rounded-lg shadow-md shrink-0 border border-slate-200">
+                      <div className="flex items-end gap-[1.5px] h-5">
+                        <div className="w-[1.5px] h-5 bg-black" />
+                        <div className="w-[1px] h-5 bg-black" />
+                        <div className="w-[2px] h-5 bg-black" />
+                        <div className="w-[1px] h-5 bg-black" />
+                        <div className="w-[3px] h-5 bg-black" />
+                        <div className="w-[1px] h-5 bg-black" />
+                        <div className="w-[2px] h-5 bg-black" />
+                        <div className="w-[1px] h-5 bg-black" />
+                        <div className="w-[1.5px] h-5 bg-black" />
                       </div>
 
-                      {/* Center: Real Book Typography (Title + Subtitle) */}
-                      <div className="relative z-10 px-6 py-4 text-center my-auto space-y-2.5">
-                        <div className="inline-block px-4 py-3 rounded-2xl bg-black/50 backdrop-blur-xs border border-white/15 w-full shadow-lg">
-                          <h3 
-                            className="text-base sm:text-lg font-black leading-tight line-clamp-3 drop-shadow-md text-white"
-                            style={{ color: frontProposal.textColor || '#ffffff' }}
-                          >
-                            {data.title || frontProposal.title}
-                          </h3>
-                          
-                          <div className="w-12 h-0.5 bg-amber-400 mx-auto my-2 rounded-full opacity-80" />
-
-                          <p 
-                            className="text-xs font-medium line-clamp-2 leading-tight text-slate-200 drop-shadow-xs"
-                            style={{ color: frontProposal.subtitleColor || '#e2e8f0' }}
-                          >
-                            {data.subtitle || frontProposal.subtitle}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Bottom Footer: Author & Publishing Seal */}
-                      <div className="relative z-10 p-5 pt-2 text-white flex flex-col gap-2">
-                        <div className="pt-2.5 border-t border-white/15 flex items-center justify-between text-[10px]">
-                          <div className="flex items-center gap-1.5 truncate max-w-[160px]">
-                            <User className="w-3 h-3 text-amber-400 shrink-0" />
-                            <span className="font-bold truncate drop-shadow-xs text-white">
-                              {data.author || frontProposal.author}
-                            </span>
-                          </div>
-                          <span className="font-mono text-[9px] bg-black/60 px-2 py-0.5 rounded text-amber-300 border border-amber-400/20">
-                            Dokya AI • 6×9
-                          </span>
-                        </div>
+                      <div className="flex flex-col text-[7.5px] font-mono leading-none">
+                        <span className="font-bold">{backProposal?.isbnNumber || '978-2-84000-01-9'}</span>
+                        <span className="text-[6.5px] text-slate-500 font-bold mt-0.5">1 500 FCFA</span>
                       </div>
                     </div>
                   </div>
-                ) : null}
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* 2. BARRE D'ACTION ET PERSONNALISATION (MODULES 1, 2, 3) */}
+          <div className="pt-6 border-t border-slate-100 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <span>Barre d'Action et Personnalisation des Couvertures</span>
+              </h3>
+              <span className="text-[11px] text-slate-500 font-medium">
+                Les modifications sont immédiatement répercutées sur les 2 façades ci-dessus.
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              {/* Module 1: Régénérer le pitch/design */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-3">
+                <div>
+                  <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
+                    <RefreshCw className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>1. Régénérer le pitch & design</span>
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Génère automatiquement un nouveau visuel avant et un pitch arrière adapté au livre avec l'IA.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRegenerateCovers}
+                  disabled={isGeneratingCovers}
+                  className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-95 disabled:opacity-50 transition-all"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingCovers ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingCovers ? 'Génération IA...' : '🔄 Régénérer les 2 Couvertures'}</span>
+                </button>
               </div>
 
-              {/* 3 Actions: Regenerate / Custom Prompt / Upload Image */}
-              <div className="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
-                
-                {/* 1. Regenerate Action */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-3">
-                  <div>
-                    <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
-                      <RefreshCw className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>1. Régénérer un design</span>
-                    </label>
-                    <p className="text-[11px] text-slate-500">
-                      Génère un nouveau visuel adapté automatiquement au sujet du livre.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRegenerateCovers}
-                    disabled={isGeneratingCovers}
-                    className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingCovers ? 'animate-spin' : ''}`} />
-                    <span>{isGeneratingCovers ? 'Génération...' : '🔄 Nouveau Design IA'}</span>
-                  </button>
+              {/* Module 2: Prompt personnalisé */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 flex flex-col justify-between">
+                <div>
+                  <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
+                    <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>2. Prompt visuel personnalisé</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={customFrontPrompt}
+                    onChange={(e) => {
+                      setCustomFrontPrompt(e.target.value);
+                      setCustomBackPrompt(e.target.value);
+                    }}
+                    placeholder="ex: Design minimaliste, doré et sombre..."
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
                 </div>
-
-                {/* 2. Custom Prompt Input */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 flex flex-col justify-between">
-                  <div>
-                    <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
-                      <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>2. Prompt visuel personnalisé</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={customFrontPrompt}
-                      onChange={(e) => setCustomFrontPrompt(e.target.value)}
-                      placeholder="ex: Montagne dorée au lever du soleil..."
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
                     onClick={() => handleGenerateDirectAiArtwork('front')}
-                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+                    className="w-full py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-[11px] flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-xs transition-all"
+                    title="Générer et appliquer à la première de couverture"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Générer le visuel</span>
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>✨ Visuel Avant</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateDirectAiArtwork('back')}
+                    className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-[11px] flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-xs transition-all"
+                    title="Générer et appliquer à la quatrième de couverture"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>✨ Visuel Arrière</span>
                   </button>
                 </div>
+              </div>
 
-                {/* 3. Image Upload */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 flex flex-col justify-between">
-                  <div>
-                    <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
-                      <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>3. Importer une image</span>
-                    </label>
-                    <p className="text-[11px] text-slate-500">
-                      Importez votre propre fichier (JPG, PNG) depuis votre appareil.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs cursor-pointer shadow-2xs">
-                      <ImageIcon className="w-4 h-4 text-slate-500" />
-                      <span className="truncate">{data.frontCover.mode === 'uploaded' ? '✓ Image importée' : 'Choisir une image'}</span>
+              {/* Module 3: Importer une image */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 flex flex-col justify-between">
+                <div>
+                  <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
+                    <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>3. Importer une image</span>
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Téléversez vos propres fichiers d'image (JPG, PNG) depuis votre appareil.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  {/* Front upload */}
+                  <div className="flex items-center gap-1.5">
+                    <label className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:border-slate-400 text-slate-700 font-bold text-[11px] cursor-pointer shadow-2xs">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                        <span className="truncate">{data.frontCover.mode === 'uploaded' ? '✓ Avant importé' : 'Image Avant'}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-mono font-bold">Fichier</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -1052,213 +1205,26 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
                         className="hidden"
                       />
                     </label>
-
                     {data.frontCover.mode === 'uploaded' && data.frontCover.customImageUrl && (
                       <button
                         type="button"
                         onClick={() => setData(prev => ({ ...prev, frontCover: { ...prev.frontCover, mode: 'proposal', customImageUrl: '' } }))}
-                        className="p-2 rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-bold cursor-pointer"
-                        title="Supprimer l'image importée"
+                        className="p-1.5 rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-bold cursor-pointer shrink-0"
+                        title="Supprimer l'image avant importée"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
-                </div>
 
-              </div>
-
-            </div>
-          )}
-
-          {/* SUB-TAB 2 : QUATRIÈME DE COUVERTURE (BACK COVER) */}
-          {activeCoverTab === 'back' && (
-            <div className="space-y-6">
-              
-              {/* Unique Back Cover Render */}
-              <div className="flex flex-col items-center justify-center py-2">
-                {backProposal ? (
-                  <div className="w-full max-w-sm sm:max-w-md mx-auto">
-                    <div
-                      className="group relative rounded-3xl p-6 sm:p-7 transition-all duration-300 flex flex-col justify-between min-h-[420px] overflow-hidden bg-slate-950 shadow-2xl ring-2 ring-indigo-500/50"
-                    >
-                      {/* Background Image Layer */}
-                      {(data.backCover.mode === 'uploaded' && data.backCover.customImageUrl) ? (
-                        <div 
-                          className="absolute inset-0 bg-cover bg-center"
-                          style={{ backgroundImage: `url(${data.backCover.customImageUrl})` }}
-                        />
-                      ) : backProposal.artImageUrl ? (
-                        <div 
-                          className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                          style={{ backgroundImage: `url(${backProposal.artImageUrl})` }}
-                        />
-                      ) : null}
-
-                      {/* Dark gradient layer */}
-                      <div className={`absolute inset-0 bg-gradient-to-br ${backProposal.bgGradient || 'from-slate-950 via-slate-900 to-black'} ${backProposal.artImageUrl || data.backCover.customImageUrl ? 'opacity-90' : 'opacity-100'} pointer-events-none z-0`} />
-
-                      {/* Realistic 3D Spine Highlight on RIGHT Edge */}
-                      <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-black/85 via-black/40 to-transparent pointer-events-none z-20" />
-                      <div className="absolute right-4 top-0 bottom-0 w-[1px] bg-white/20 pointer-events-none z-20" />
-
-                      {/* Decorative Frame */}
-                      <div className="absolute inset-3 sm:inset-4 border border-white/15 rounded-2xl pointer-events-none z-10" />
-
-                      {/* Top Bar: Proposal Badge + Zoom */}
-                      <div className="relative z-10 flex items-center justify-between text-white mb-3">
-                        <span 
-                          className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border border-amber-400/40 bg-black/75 shadow-xs backdrop-blur-xs text-amber-300 flex items-center gap-1.5"
-                        >
-                          <Award className="w-3 h-3 text-amber-400" />
-                          <span>{backProposal.artStyleLabel || 'Fermeture Pro'}</span>
-                        </span>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setZoomModal({ type: 'back', url: (data.backCover.mode === 'uploaded' && data.backCover.customImageUrl) ? data.backCover.customImageUrl : (backProposal.artImageUrl || '') })}
-                            className="p-1.5 rounded-lg bg-black/60 hover:bg-black/85 text-white/80 hover:text-white border border-white/20 transition-all text-xs flex items-center gap-1"
-                            title="Agrandir en HD"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span className="text-[10px] hidden sm:inline">Zoom HD</span>
-                          </button>
-
-                          <span className="px-2.5 py-1 rounded-lg bg-emerald-500/90 text-white flex items-center gap-1 shadow-md font-black text-[10px] uppercase tracking-wider">
-                            <Check className="w-3 h-3 stroke-[3]" />
-                            <span>Actif</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Synopsis Box with Rich Contrast */}
-                      <div className="relative z-10 space-y-3.5 text-white my-auto">
-                        <div className="p-4 rounded-xl bg-black/60 border border-white/20 backdrop-blur-xs space-y-2 shadow-md">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                            <Award className="w-3.5 h-3.5 text-amber-400" />
-                            <span>RÉSUMÉ OFFICIEL DU LIVRE</span>
-                          </span>
-                          <p className="text-xs leading-relaxed text-slate-100 line-clamp-4 drop-shadow-xs font-normal">
-                            {backProposal.synopsis}
-                          </p>
-                        </div>
-
-                        {/* Key Takeaways */}
-                        {backProposal.keyTakeaways && backProposal.keyTakeaways.length > 0 && (
-                          <div className="space-y-1.5 bg-black/40 p-3.5 rounded-xl border border-white/10 backdrop-blur-xs">
-                            <span className="text-[10px] font-black text-amber-300 uppercase tracking-wider block">
-                              Ce que vous allez apprendre :
-                            </span>
-                            {backProposal.keyTakeaways.slice(0, 3).map((pt, pIdx) => (
-                              <div key={pIdx} className="text-[11px] text-slate-200 flex items-center gap-1.5 drop-shadow-xs">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                <span className="truncate">{pt}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Bottom Bar: Barcode, Quote & ISBN */}
-                      <div className="relative z-10 mt-3 pt-3 border-t border-white/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] text-slate-300">
-                        
-                        {/* Quote */}
-                        <div className="italic truncate max-w-[200px] text-amber-200/90 text-[11px]">
-                          "{backProposal.quoteOrCallToAction || 'Le savoir qui transforme votre avenir.'}"
-                        </div>
-
-                        {/* Realistic EAN-13 Barcode */}
-                        <div className="flex items-center gap-2 bg-white text-slate-900 px-3 py-1.5 rounded-lg shadow-md shrink-0 border border-slate-200">
-                          <div className="flex items-end gap-[1.5px] h-6">
-                            <div className="w-[1.5px] h-6 bg-black" />
-                            <div className="w-[1px] h-6 bg-black" />
-                            <div className="w-[2px] h-6 bg-black" />
-                            <div className="w-[1px] h-6 bg-black" />
-                            <div className="w-[3px] h-6 bg-black" />
-                            <div className="w-[1px] h-6 bg-black" />
-                            <div className="w-[2px] h-6 bg-black" />
-                            <div className="w-[1px] h-6 bg-black" />
-                            <div className="w-[1.5px] h-6 bg-black" />
-                          </div>
-
-                          <div className="flex flex-col text-[8px] font-mono leading-none">
-                            <span className="font-bold">{backProposal.isbnNumber || '978-2-84000-01-9'}</span>
-                            <span className="text-[7px] text-slate-500 font-bold mt-0.5">PRIX : 1 500 FCFA</span>
-                          </div>
-                        </div>
-
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* 3 Actions: Regenerate / Custom Prompt / Upload Image */}
-              <div className="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
-                
-                {/* 1. Regenerate Action */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-3">
-                  <div>
-                    <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
-                      <RefreshCw className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>1. Régénérer le pitch</span>
-                    </label>
-                    <p className="text-[11px] text-slate-500">
-                      Génère un nouveau résumé et des points d'apprentissage adaptés.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRegenerateCovers}
-                    disabled={isGeneratingCovers}
-                    className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingCovers ? 'animate-spin' : ''}`} />
-                    <span>{isGeneratingCovers ? 'Génération...' : '🔄 Nouveau Résumé IA'}</span>
-                  </button>
-                </div>
-
-                {/* 2. Custom Prompt Input */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 flex flex-col justify-between">
-                  <div>
-                    <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
-                      <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>2. Prompt / Ambiance personnalisée</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={customBackPrompt}
-                      onChange={(e) => setCustomBackPrompt(e.target.value)}
-                      placeholder="ex: Accentuer l'aspect pratique et les résultats concrets..."
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleGenerateDirectAiArtwork('back')}
-                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Actualiser le visuel</span>
-                  </button>
-                </div>
-
-                {/* 3. Image Upload */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 flex flex-col justify-between">
-                  <div>
-                    <label className="block text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
-                      <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>3. Importer un arrière-plan</span>
-                    </label>
-                    <p className="text-[11px] text-slate-500">
-                      Téléversez une image de fond personnalisée pour la 4e de couverture.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs cursor-pointer shadow-2xs">
-                      <ImageIcon className="w-4 h-4 text-slate-500" />
-                      <span className="truncate">{data.backCover.mode === 'uploaded' ? '✓ Image arrière importée' : 'Choisir une image'}</span>
+                  {/* Back upload */}
+                  <div className="flex items-center gap-1.5">
+                    <label className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:border-slate-400 text-slate-700 font-bold text-[11px] cursor-pointer shadow-2xs">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                        <span className="truncate">{data.backCover.mode === 'uploaded' ? '✓ Arrière importé' : 'Image Arrière'}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-mono font-bold">Fichier</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -1266,120 +1232,22 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
                         className="hidden"
                       />
                     </label>
-
                     {data.backCover.mode === 'uploaded' && data.backCover.customImageUrl && (
                       <button
                         type="button"
                         onClick={() => setData(prev => ({ ...prev, backCover: { ...prev.backCover, mode: 'proposal', customImageUrl: '' } }))}
-                        className="p-2 rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-bold cursor-pointer"
-                        title="Supprimer l'image importée"
+                        className="p-1.5 rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-bold cursor-pointer shrink-0"
+                        title="Supprimer l'image arrière importée"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
                 </div>
-
               </div>
 
             </div>
-          )}
-
-          {/* SUB-TAB 3 : VUE JAQUETTE DÉPLIÉE (SPREAD VIEW) */}
-          {activeCoverTab === 'spread' && (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 text-white space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-black text-amber-300 flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-amber-400" />
-                    <span>Vue Jaquette Complète Dépliée (Amazon KDP & Imprimeur)</span>
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Voici l'apparence physique continue de votre livre : Quatrième de couverture (gauche) + Tranche de reliure (centre) + Première de couverture (droite).
-                  </p>
-                </div>
-                <span className="text-[10px] font-mono bg-black/60 px-2.5 py-1 rounded-lg text-emerald-400 border border-emerald-500/30 shrink-0">
-                  ✓ Format d'Impression KDP 6×9 Prêt
-                </span>
-              </div>
-
-              {/* Spread Layout Box */}
-              <div className="flex flex-col md:flex-row items-stretch justify-center gap-0 max-w-4xl mx-auto rounded-2xl overflow-hidden border-2 border-amber-400/40 shadow-2xl bg-black">
-                
-                {/* 1. Back Cover (Left Side) */}
-                <div className="flex-1 p-5 bg-slate-950 flex flex-col justify-between min-h-[360px] relative border-r border-white/10">
-                  <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-black opacity-95 pointer-events-none" />
-                  <div className="absolute right-0 top-0 bottom-0 w-3 bg-gradient-to-l from-black/80 to-transparent pointer-events-none" />
-                  <div className="absolute inset-2 border border-white/10 rounded-xl pointer-events-none" />
-
-                  <div className="relative z-10 space-y-3">
-                    <span className="text-[9px] font-black uppercase text-amber-400 tracking-wider bg-black/60 px-2 py-0.5 rounded border border-amber-400/30 inline-block">
-                      Quatrième de Couverture (Dos)
-                    </span>
-                    <h4 className="text-xs font-black text-white line-clamp-1">{data.title}</h4>
-                    <p className="text-[11px] leading-relaxed text-slate-300 line-clamp-4">
-                      {backProposal?.synopsis || "Ce guide complet offre des clés concrètes pour maîtriser votre sujet pas à pas avec des méthodologies éprouvées et applicables immédiatement."}
-                    </p>
-                  </div>
-
-                  <div className="relative z-10 pt-3 border-t border-white/10 flex items-center justify-between text-[9px] text-slate-400">
-                    <span className="italic truncate max-w-[130px]">{data.author}</span>
-                    <span className="font-mono text-amber-400 font-bold bg-black/60 px-1.5 py-0.5 rounded">
-                      ISBN: 978-2-84000-01
-                    </span>
-                  </div>
-                </div>
-
-                {/* 2. Central Book Spine (Tranche de Reliure) */}
-                <div className="w-full md:w-12 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-y md:border-y-0 md:border-x border-amber-400/40 p-2 flex md:flex-col items-center justify-between text-center relative shrink-0">
-                  <span className="text-[8px] font-bold text-amber-400 uppercase tracking-widest hidden md:inline">
-                    6×9
-                  </span>
-                  <div className="my-auto md:[writing-mode:vertical-rl] md:rotate-180 text-center font-black text-xs text-white tracking-wider truncate max-w-[200px] md:max-h-[220px] drop-shadow-xs">
-                    {data.title} — {data.author}
-                  </div>
-                  <span className="text-[8px] font-mono text-slate-400 hidden md:inline">
-                    DOKYA
-                  </span>
-                </div>
-
-                {/* 3. Front Cover (Right Side) */}
-                <div className="flex-1 p-5 bg-slate-950 flex flex-col justify-between min-h-[360px] relative">
-                  {frontProposal?.artImageUrl && (
-                    <div 
-                      className="absolute inset-0 bg-cover bg-center opacity-40"
-                      style={{ backgroundImage: `url(${frontProposal.artImageUrl})` }}
-                    />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-black opacity-90 pointer-events-none" />
-                  <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-black/80 to-transparent pointer-events-none" />
-                  <div className="absolute inset-2 border border-amber-400/30 rounded-xl pointer-events-none" />
-
-                  <div className="relative z-10 flex items-center justify-between">
-                    <span className="text-[9px] font-black uppercase text-amber-400 tracking-wider bg-black/60 px-2 py-0.5 rounded border border-amber-400/30">
-                      Première de Couverture
-                    </span>
-                    <span className="text-[9px] font-bold text-slate-300">{frontProposal?.genreBadge || 'Bestseller'}</span>
-                  </div>
-
-                  <div className="relative z-10 my-auto text-center space-y-2 py-4">
-                    <h3 className="text-sm font-black text-white leading-snug drop-shadow-md">
-                      {data.title}
-                    </h3>
-                    <p className="text-[11px] text-slate-300 font-medium leading-tight">
-                      {data.subtitle}
-                    </p>
-                  </div>
-
-                  <div className="relative z-10 pt-3 border-t border-white/10 flex items-center justify-between text-[9px] text-slate-300">
-                    <span className="font-black text-white">{data.author}</span>
-                    <span className="text-amber-400 font-bold">Dokya Éditions</span>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
+          </div>
 
           {/* Action Buttons: Back to Step 1 or Validate Step 2 */}
           <div className="pt-4 border-t border-slate-100 flex items-center justify-between">

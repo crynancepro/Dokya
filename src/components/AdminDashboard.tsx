@@ -6,7 +6,8 @@ import {
   Sparkles, Layers, TrendingUp, Calendar, CreditCard, Wallet,
   Sliders, UserCheck, Eye, Edit3, X, HelpCircle, Tag, ShieldAlert,
   Percent, Clock, Trash2, Ban, Unlock, Check, AlertTriangle, ArrowRight,
-  Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch
+  Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
+  Phone, Globe
 } from 'lucide-react';
 import { 
   auth, 
@@ -309,6 +310,96 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return true;
     });
   }, [transactionsList, txSearch, txStatusFilter, txMethodFilter]);
+
+  // Financial Analytics & Metrics (Aujourd'hui, Cette Semaine, Ce Mois, Global)
+  const financialStats = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    // Calcul début de semaine (Lundi)
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfWeek = new Date(now.setDate(diff));
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    // Calcul début de mois
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    let todayRevenue = 0;
+    let weekRevenue = 0;
+    let monthRevenue = 0;
+    let totalRevenue = 0;
+
+    let validatedCount = 0;
+    let rejectedCount = 0;
+    let pendingCount = 0;
+
+    transactionsList.forEach((tx) => {
+      const isValidated = tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED' || tx.status === 'MANUALLY_VALIDATED';
+      const isRejected = tx.status === 'REJECTED_BY_AI' || tx.status === 'REJECTED_BY_ADMIN' || tx.status === 'failed' || tx.status === 'cancel';
+      const isPending = tx.status === 'pending' || tx.status === 'PENDING_ADMIN_VALIDATION';
+
+      if (isValidated) validatedCount++;
+      else if (isRejected) rejectedCount++;
+      else if (isPending) pendingCount++;
+
+      if (isValidated) {
+        const amt = tx.extractedAmount || tx.expectedAmount || Math.abs(tx.amount) || 0;
+        totalRevenue += amt;
+
+        try {
+          const txDate = new Date(tx.createdAt);
+          if (txDate.toISOString().split('T')[0] === todayStr) {
+            todayRevenue += amt;
+          }
+          if (txDate >= startOfWeek) {
+            weekRevenue += amt;
+          }
+          if (txDate >= startOfMonth) {
+            monthRevenue += amt;
+          }
+        } catch (_e) {}
+      }
+    });
+
+    if (kpis?.totalRevenue && totalRevenue === 0) {
+      totalRevenue = kpis.totalRevenue;
+    }
+
+    return {
+      todayRevenue,
+      weekRevenue,
+      monthRevenue,
+      totalRevenue,
+      validatedCount,
+      rejectedCount,
+      pendingCount,
+      successRate: (validatedCount + rejectedCount) > 0 ? Math.round((validatedCount / (validatedCount + rejectedCount)) * 100) : 99
+    };
+  }, [transactionsList, kpis]);
+
+  // Helper Drapeau & Pays
+  const getCountryInfo = (tx: TransactionRecord) => {
+    const code = (tx.countryCode || '').toUpperCase();
+    const flags: Record<string, { flag: string; name: string }> = {
+      SN: { flag: '🇸🇳', name: 'Sénégal' },
+      CI: { flag: '🇨🇮', name: "Côte d'Ivoire" },
+      ML: { flag: '🇲🇱', name: 'Mali' },
+      BF: { flag: '🇧🇫', name: 'Burkina Faso' },
+      GN: { flag: '🇬🇳', name: 'Guinée' },
+      BJ: { flag: '🇧🇯', name: 'Bénin' },
+      TG: { flag: '🇹🇬', name: 'Togo' },
+      NE: { flag: '🇳🇪', name: 'Niger' },
+      CM: { flag: '🇨🇲', name: 'Cameroun' },
+      GA: { flag: '🇬🇦', name: 'Gabon' },
+      CG: { flag: '🇨🇬', name: 'Congo' },
+      CD: { flag: '🇨🇩', name: 'RDC' },
+      FR: { flag: '🇫🇷', name: 'France' }
+    };
+    if (flags[code]) return flags[code];
+    if (tx.countryName) return { flag: '🌍', name: tx.countryName };
+    return { flag: '🇸🇳', name: 'Sénégal' };
+  };
 
   // Filtered Audit Logs
   const filteredAuditLogs = useMemo(() => {
@@ -1175,7 +1266,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* KPI Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               
-              {/* Card 1: Chiffre d'Affaires */}
+              {/* Card 1: Chiffre d'Affaires Global */}
               <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg relative overflow-hidden group hover:border-emerald-500/30 transition-all">
                 <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-all"></div>
                 <div className="flex items-center justify-between">
@@ -1186,11 +1277,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div className="mt-3">
                   <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    {(kpis?.totalRevenue || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-emerald-400">FCFA</span>
+                    {(financialStats.totalRevenue || kpis?.totalRevenue || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-emerald-400">FCFA</span>
                   </div>
                   <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                     <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400 font-semibold">+18.4%</span> vs mois précédent
+                    <span className="text-emerald-400 font-semibold">{financialStats.successRate}%</span> validation IA & Mobile Money
                   </p>
                 </div>
               </div>
@@ -1208,7 +1299,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                     {(kpis?.totalCVsGenerated || 0).toLocaleString('fr-FR')}
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">CV ATS, Lettres, Devis & Factures</p>
+                  <p className="text-xs text-slate-400 mt-1">CV ATS, Lettres, Devis & Ebooks</p>
                 </div>
               </div>
 
@@ -1246,6 +1337,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
+            </div>
+
+            {/* Financial Performance Breakdown Widget (Jour, Semaine, Mois, Total) */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-900/90 to-emerald-950/30 border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                <div>
+                  <h2 className="text-base font-black text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <span>Statistiques Financières & Encaissements Réels</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Données vérifiées par l'IA Vision OCR et la passerelle Mobile Money Wave / Orange Money.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('transactions')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all cursor-pointer self-start sm:self-auto"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Voir le Journal des Paiements</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Aujourd'hui</div>
+                  <div className="text-lg sm:text-xl font-black text-emerald-400 mt-1">
+                    {financialStats.todayRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Encaissements du jour</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cette Semaine</div>
+                  <div className="text-lg sm:text-xl font-black text-white mt-1">
+                    {financialStats.weekRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">7 derniers jours</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ce Mois-ci</div>
+                  <div className="text-lg sm:text-xl font-black text-white mt-1">
+                    {financialStats.monthRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Mois en cours</div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30">
+                  <div className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">Taux de Succès IA</div>
+                  <div className="text-lg sm:text-xl font-black text-emerald-300 mt-1">
+                    {financialStats.successRate}%
+                  </div>
+                  <div className="text-[10px] text-emerald-400/80 mt-0.5">{financialStats.validatedCount} paiements validés</div>
+                </div>
+              </div>
             </div>
 
             {/* Performance Grid: Services & Trend */}
@@ -2213,15 +2361,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-950/80 border-b border-slate-800/80 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                     <tr>
-                      <th className="py-4 px-4 sm:px-5">Date & Heure d'envoi</th>
-                      <th className="py-4 px-3">Utilisateur</th>
+                      <th className="py-4 px-4 sm:px-5">Date & Heure</th>
+                      <th className="py-4 px-3">Client</th>
+                      <th className="py-4 px-3">Téléphone & Pays</th>
+                      <th className="py-4 px-3">Service / Document</th>
+                      <th className="py-4 px-3">Montant Attendu / Extrait</th>
                       <th className="py-4 px-3">Méthode</th>
-                      <th className="py-4 px-3">Montant Attendu vs Extrait</th>
-                      <th className="py-4 px-3">TxID Extrait</th>
-                      <th className="py-4 px-3">Horodatage Reçu IA</th>
-                      <th className="py-4 px-3">Statut de Vérification</th>
-                      <th className="py-4 px-3">Motif du Rejet</th>
-                      <th className="py-4 px-4 sm:px-5 text-right">Actions</th>
+                      <th className="py-4 px-3">Statut Vérification</th>
+                      <th className="py-4 px-3 text-center">Preuve / Reçu</th>
+                      <th className="py-4 px-4 sm:px-5 text-right">Actions Rapides</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
@@ -2240,10 +2388,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const isAiRejected = tx.status === 'REJECTED_BY_AI';
                         const isManualValidated = tx.status === 'MANUALLY_VALIDATED';
                         const isManualRejected = tx.status === 'REJECTED_BY_ADMIN';
+                        const isPending = tx.status === 'pending' || tx.status === 'PENDING_ADMIN_VALIDATION';
                         
                         const expectedAmt = tx.expectedAmount || Math.abs(tx.amount);
                         const extractedAmt = tx.extractedAmount || (tx.extractedData?.amount) || (isAiValidated ? expectedAmt : undefined);
                         const isAmountMismatch = extractedAmt !== undefined && extractedAmt < expectedAmt;
+
+                        const countryInfo = getCountryInfo(tx);
+                        const senderPhoneNumber = tx.senderPhone || (tx as any).phone || (tx.extractedData?.sender_phone) || 'Non renseigné';
+                        const txReference = tx.transactionReference || (tx as any).transactionId || tx.id;
 
                         return (
                           <tr 
@@ -2252,26 +2405,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             className="hover:bg-slate-800/50 transition-all cursor-pointer group"
                           >
                             
-                            {/* 1. Date & Heure d'envoi */}
+                            {/* 1. Date & Heure */}
                             <td className="py-3.5 px-4 sm:px-5">
-                              <div className="font-mono font-bold text-white text-xs">{tx.id}</div>
+                              <div className="font-mono font-bold text-white text-xs">{tx.id.substring(0, 14)}</div>
                               <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
                                 <Clock className="w-3 h-3 text-slate-500" />
-                                <span>{new Date(tx.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>{new Date(tx.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                               </div>
                             </td>
 
-                            {/* 2. Utilisateur (Email / Nom) */}
+                            {/* 2. Client (Email / Nom) */}
                             <td className="py-3.5 px-3">
-                              <div className="font-bold text-slate-200 text-xs truncate max-w-[170px]">
-                                {(tx as any).userName || (tx as any).userEmail?.split('@')[0] || 'Candidat'}
+                              <div className="font-bold text-slate-200 text-xs truncate max-w-[150px]">
+                                {(tx as any).userName || (tx as any).userEmail?.split('@')[0] || 'Candidat Dokya'}
                               </div>
-                              <div className="text-[11px] text-slate-400 truncate max-w-[170px]">
+                              <div className="text-[11px] text-slate-400 truncate max-w-[150px]">
                                 {(tx as any).userEmail || tx.userId}
                               </div>
                             </td>
 
-                            {/* 3. Méthode */}
+                            {/* 3. Téléphone & Pays */}
+                            <td className="py-3.5 px-3">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-base" title={countryInfo.name}>{countryInfo.flag}</span>
+                                <span className="font-mono text-xs text-emerald-400 font-semibold truncate max-w-[130px]">
+                                  {senderPhoneNumber}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                {countryInfo.name}
+                              </div>
+                            </td>
+
+                            {/* 4. Service / Document */}
+                            <td className="py-3.5 px-3">
+                              <div className="font-semibold text-slate-200 text-xs truncate max-w-[160px]">
+                                {tx.description || 'Pack CV + Lettre'}
+                              </div>
+                              {txReference && (
+                                <div className="font-mono text-[10px] text-amber-400/90 truncate max-w-[160px]">
+                                  Réf: {txReference}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* 5. Montant Attendu vs Extrait */}
+                            <td className="py-3.5 px-3">
+                              <div className="flex flex-col text-xs font-mono">
+                                <span className="text-slate-300 font-bold">
+                                  {expectedAmt.toLocaleString('fr-FR')} FCFA
+                                </span>
+                                {extractedAmt !== undefined && extractedAmt !== expectedAmt ? (
+                                  <span className={`text-[10px] font-bold ${
+                                    isAmountMismatch ? 'text-rose-400' : 'text-emerald-400'
+                                  }`}>
+                                    Extrait : {extractedAmt.toLocaleString('fr-FR')} FCFA
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+
+                            {/* 6. Méthode */}
                             <td className="py-3.5 px-3">
                               {tx.paymentMethod === 'wave' ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-sky-500/15 text-sky-300 border border-sky-500/30">
@@ -2292,113 +2486,95 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </td>
 
-                            {/* 4. Montant attendu vs Montant extrait */}
-                            <td className="py-3.5 px-3">
-                              <div className="flex flex-col text-xs font-mono">
-                                <span className="text-slate-300 font-bold">
-                                  Attendu : {expectedAmt.toLocaleString('fr-FR')} FCFA
-                                </span>
-                                {extractedAmt !== undefined ? (
-                                  <span className={`text-[11px] font-bold ${
-                                    isAmountMismatch ? 'text-rose-400 underline decoration-rose-500' : 'text-emerald-400'
-                                  }`}>
-                                    Extrait : {extractedAmt.toLocaleString('fr-FR')} FCFA
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-slate-500 italic">Non extrait</span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* 5. ID Transaction (TxID extrait) */}
-                            <td className="py-3.5 px-3">
-                              {(tx as any).transactionId ? (
-                                <div className="font-mono font-bold text-xs text-amber-300 bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/20 inline-block">
-                                  {(tx as any).transactionId}
-                                </div>
-                              ) : (
-                                <span className="text-[11px] text-slate-500 italic">—</span>
-                              )}
-                            </td>
-
-                            {/* 6. Horodatage du reçu (Date, Heure, Minute extraites) */}
-                            <td className="py-3.5 px-3">
-                              {(tx as any).receiptTimestamp ? (
-                                <div className="text-xs font-semibold text-slate-200 flex items-center gap-1">
-                                  <Calendar className="w-3 h-3 text-slate-400" />
-                                  <span>{(tx as any).receiptTimestamp}</span>
-                                </div>
-                              ) : (
-                                <span className="text-[11px] text-slate-500 italic">Non détecté</span>
-                              )}
-                            </td>
-
                             {/* 7. Statut de vérification */}
                             <td className="py-3.5 px-3">
                               {isAiValidated ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
                                   <Sparkles className="w-3 h-3 text-emerald-400" />
-                                  <span>[VALIDÉ PAR IA]</span>
+                                  <span>VALIDÉ IA</span>
                                 </span>
                               ) : isAiRejected ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
                                   <AlertTriangle className="w-3 h-3 text-rose-400" />
-                                  <span>[REJETÉ PAR IA]</span>
+                                  <span>REJETÉ IA</span>
                                 </span>
                               ) : isManualValidated ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/30 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/30 whitespace-nowrap">
                                   <ShieldCheck className="w-3 h-3 text-sky-400" />
-                                  <span>[VALIDÉ MANUELLEMENT]</span>
+                                  <span>VALIDÉ MANUEL</span>
                                 </span>
                               ) : isManualRejected ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-slate-800 text-rose-300 border border-rose-500/30 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-800 text-rose-300 border border-rose-500/30 whitespace-nowrap">
                                   <Ban className="w-3 h-3 text-rose-400" />
-                                  <span>[REJETÉ PAR ADMIN]</span>
+                                  <span>REJETÉ ADMIN</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
-                                  <span>{tx.status}</span>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                                  <Clock className="w-3 h-3 text-amber-400" />
+                                  <span>EN ATTENTE</span>
                                 </span>
                               )}
                             </td>
 
-                            {/* 8. Motif du rejet (si applicable) */}
-                            <td className="py-3.5 px-3 text-xs max-w-[200px]">
-                              {tx.rejectionReason ? (
-                                <div className="text-rose-300 font-semibold line-clamp-2 bg-rose-500/10 p-1.5 rounded-lg border border-rose-500/20 text-[11px]">
-                                  {tx.rejectionReason}
+                            {/* 8. Reçu / Preuve (Vignette) */}
+                            <td className="py-3.5 px-3 text-center">
+                              {tx.receiptImage ? (
+                                <div 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedTxForInspection(tx);
+                                  }}
+                                  className="w-10 h-10 mx-auto rounded-lg overflow-hidden border border-emerald-500/30 hover:border-emerald-400 transition-all bg-slate-950 flex items-center justify-center cursor-pointer group/thumb shadow-sm"
+                                  title="Cliquez pour zoomer le reçu"
+                                >
+                                  <img 
+                                    src={tx.receiptImage} 
+                                    alt="Reçu" 
+                                    className="w-full h-full object-cover group-hover/thumb:scale-110 transition-transform"
+                                  />
                                 </div>
                               ) : (
-                                <div className="text-slate-400 text-xs truncate">
-                                  {tx.description}
+                                <div className="w-8 h-8 mx-auto rounded-lg bg-slate-800/80 border border-slate-700/80 flex items-center justify-center text-slate-500">
+                                  <Receipt className="w-4 h-4" />
                                 </div>
                               )}
                             </td>
 
-                            {/* 9. Actions */}
+                            {/* 9. Actions Rapides */}
                             <td className="py-3.5 px-4 sm:px-5 text-right">
                               <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   type="button"
                                   onClick={() => setSelectedTxForInspection(tx)}
                                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-                                  title="Inspecter le reçu et rapport IA"
+                                  title="Inspecter le reçu et rapport complet"
                                 >
                                   <Eye className="w-4 h-4 text-emerald-400" />
                                 </button>
 
-                                {(isAiRejected || isManualRejected) && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      disabled={isValidatingTx}
-                                      onClick={() => handleValidateTransaction(tx)}
-                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black transition-all cursor-pointer shadow-sm"
-                                      title="Valider manuellement"
-                                    >
-                                      Valider
-                                    </button>
-                                  </>
+                                {(!isAiValidated && !isManualValidated) && (
+                                  <button
+                                    type="button"
+                                    disabled={isValidatingTx}
+                                    onClick={() => handleValidateTransaction(tx)}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black transition-all cursor-pointer shadow-sm flex items-center gap-1"
+                                    title="Valider la transaction en 1 clic"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    <span>Valider</span>
+                                  </button>
+                                )}
+
+                                {(isPending || (!isManualRejected && !isAiRejected)) && (
+                                  <button
+                                    type="button"
+                                    disabled={isRejectingTx}
+                                    onClick={() => handleRejectTransaction(tx)}
+                                    className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all cursor-pointer"
+                                    title="Rejeter la transaction"
+                                  >
+                                    <Ban className="w-3 h-3" />
+                                  </button>
                                 )}
                               </div>
                             </td>
@@ -2957,9 +3133,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Candidat : <strong className="text-white">{(selectedTxForInspection as any).userName || 'Candidat'}</strong> ({(selectedTxForInspection as any).userEmail || selectedTxForInspection.userId})
-                </p>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className="text-xs text-slate-300">
+                    Candidat : <strong className="text-white">{(selectedTxForInspection as any).userName || 'Candidat Dokya'}</strong> ({(selectedTxForInspection as any).userEmail || selectedTxForInspection.userId})
+                  </span>
+                  {selectedTxForInspection.senderPhone && (
+                    <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-lg bg-emerald-950/60 text-emerald-300 border border-emerald-500/30">
+                      <Phone className="w-3 h-3 text-emerald-400" />
+                      <span>{selectedTxForInspection.senderPhone}</span>
+                      {selectedTxForInspection.countryName && (
+                        <span className="text-slate-400">({selectedTxForInspection.countryName})</span>
+                      )}
+                    </span>
+                  )}
+                  {selectedTxForInspection.transactionReference && (
+                    <span className="font-mono text-xs px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                      Réf: {selectedTxForInspection.transactionReference}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <button 

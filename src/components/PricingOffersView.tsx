@@ -192,7 +192,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
     },
     {
       q: 'Quels sont les moyens de paiement acceptés au Sénégal et dans la zone UEMOA ?',
-      a: 'Vous pouvez payer directement avec votre solde Dokya Wallet, par Wave (+221 77 654 32 10), Orange Money (+221 78 500 11 22), Free Money ou par Carte Bancaire (Visa / Mastercard) via notre passerelle sécurisée.'
+      a: 'Vous pouvez payer directement avec votre solde Dokya Wallet, par Wave Direct (+221 78 961 90 88), Orange Money (#144# / Max It vers le +221 78 961 90 88), ou par Carte Bancaire (Visa / Mastercard) dans 12 pays d\'Afrique de l\'Ouest et la diaspora.'
     },
     {
       q: 'Puis-je modifier mes documents après achat ?',

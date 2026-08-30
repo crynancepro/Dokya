@@ -104,34 +104,8 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
         {/* Decorative Gold / Minimalist Border Frame for 6x9 standard books */}
         <div className="absolute inset-4 sm:inset-6 border border-amber-400/30 rounded-xl pointer-events-none -z-0" />
 
-        {/* Top Header: Badge & Page Indicator */}
-        <div className="relative z-10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span 
-              className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-widest shadow-md border"
-              style={{ 
-                backgroundColor: 'rgba(0, 0, 0, 0.6)', 
-                color: currentFrontProposal.accentColor || '#fbbf24',
-                borderColor: `${currentFrontProposal.accentColor || '#fbbf24'}40`
-              }}
-            >
-              {currentFrontProposal.genreBadge || data.genre || "Édition Officielle"}
-            </span>
-
-            {currentFrontProposal.artStyleLabel && (
-              <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white/15 text-slate-200 border border-white/20 backdrop-blur-xs">
-                {currentFrontProposal.artStyleLabel}
-              </span>
-            )}
-          </div>
-
-          <span className="text-[11px] font-bold tracking-wider uppercase text-slate-300/90 bg-black/40 px-2 py-0.5 rounded border border-white/10">
-            Page 1 sur {totalExactPages}
-          </span>
-        </div>
-
         {/* Middle Body: Main Title & Subtitle */}
-        <div className="relative z-10 text-center my-auto py-6 space-y-4">
+        <div className="relative z-10 text-center my-auto py-8 space-y-4">
           
           {/* Main Title */}
           <h1 
@@ -162,23 +136,18 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
           )}
         </div>
 
-        {/* Bottom Footer: Author & Publishing Seal */}
-        <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-white/20">
-          <div className="flex items-center gap-2.5 text-left">
+        {/* Bottom Footer: Author */}
+        <div className="relative z-10 flex items-center justify-center pt-6 border-t border-white/20">
+          <div className="flex items-center gap-2.5 text-center">
             <div className="w-8 h-8 rounded-full bg-black/50 border border-white/30 flex items-center justify-center text-amber-300">
               <User className="w-4 h-4" />
             </div>
-            <div>
+            <div className="text-left">
               <span className="text-[10px] uppercase font-bold tracking-widest text-slate-300 block">Auteur</span>
               <span className="text-sm sm:text-base font-black tracking-wide text-white drop-shadow-xs">
                 {data.author || currentFrontProposal.author}
               </span>
             </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 text-xs font-black text-amber-300 bg-black/60 px-3 py-1 rounded-lg border border-amber-400/40 backdrop-blur-xs">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Dokya AI Publishing</span>
           </div>
         </div>
       </div>
@@ -554,7 +523,7 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
 
           {/* ISBN & Category Text */}
           <div className="text-right text-[10px] text-slate-400 space-y-0.5">
-            <span className="block font-bold text-white">Dokya AI Publishing</span>
+            <span className="block font-bold text-white">Édition Broché & Numérique</span>
             <span>ISBN : {currentBackProposal.isbnNumber || '978-2-84000-123-4'}</span>
             <span className="block text-amber-400 font-bold">Prix : 1 500 FCFA</span>
           </div>

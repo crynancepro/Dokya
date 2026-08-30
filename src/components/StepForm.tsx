@@ -7,8 +7,17 @@ import {
   Settings, Globe, FileText, Mail, Building2, 
   UserCheck, RotateCcw, Target, Send,
   Upload, Camera, X, MapPin, Phone, Linkedin, 
-  Wand2, Info, ArrowRight, ArrowLeft, Star
+  Wand2, Info, ArrowRight, ArrowLeft, Star, Heart
 } from 'lucide-react';
+import { AIFormValidationBanner } from './AIFormValidationBanner';
+import { validateCVForm, validateLetterForm } from '../lib/formValidationUtils';
+import { 
+  generateSmartHobbiesForJob, 
+  getEnrichedExperiences, 
+  getEnrichedSkills, 
+  getEnrichedEducation, 
+  getEnrichedProfileSummary 
+} from '../lib/cvEnrichmentUtils';
 
 interface StepFormProps {
   formData: CVFormData;
@@ -45,6 +54,46 @@ export const StepForm: React.FC<StepFormProps> = ({
   const [templateFilter, setTemplateFilter] = useState<'all' | 'no_photo' | 'photo'>('all');
   const activeMode: GenerationMode = forceMode || formData.generationMode || 'cv_only';
   const activeLetterType: CoverLetterType = formData.letterType || 'spontanee';
+
+  // Real-time AI validation report
+  const validationReport = activeMode === 'letter_only'
+    ? validateLetterForm(formData)
+    : validateCVForm(formData);
+
+  // Auto-fill smart hobbies for current job title
+  const handleAutoFillSmartHobbies = () => {
+    const job = formData?.personalInfo?.targetJob || 'Cadre & Spécialiste';
+    const smart = generateSmartHobbiesForJob(job);
+    onChange({
+      ...formData,
+      hobbies: smart
+    });
+  };
+
+  // One-click intelligent enrichment for entire CV
+  const handleSmartAutoEnrich = () => {
+    const currentJob = formData?.personalInfo?.targetJob || 'Spécialiste & Manager';
+    const enrichedExperiences = getEnrichedExperiences(formData);
+    const enrichedSkills = getEnrichedSkills(formData);
+    const enrichedEducation = getEnrichedEducation(formData);
+    const smartHobbies = (formData.hobbies && formData.hobbies.length > 0)
+      ? formData.hobbies
+      : generateSmartHobbiesForJob(currentJob);
+
+    onChange({
+      ...formData,
+      personalInfo: {
+        ...formData.personalInfo,
+        targetJob: formData.personalInfo?.targetJob || currentJob,
+        city: formData.personalInfo?.city || 'Dakar',
+        country: formData.personalInfo?.country || 'Sénégal',
+      },
+      experiences: enrichedExperiences,
+      skills: enrichedSkills,
+      education: enrichedEducation,
+      hobbies: smartHobbies
+    });
+  };
 
   // Find active template metadata
   const selectedTemplateMeta = ALL_CV_TEMPLATES.find(t => t.id === formData.templateStyle) || ALL_CV_TEMPLATES[0];
@@ -560,7 +609,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                     placeholder="Moussa"
                     value={personalInfo.firstName}
                     onChange={(e) => updatePersonalInfo('firstName', e.target.value)}
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -574,7 +623,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                     placeholder="Diop"
                     value={personalInfo.lastName}
                     onChange={(e) => updatePersonalInfo('lastName', e.target.value)}
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -588,7 +637,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                     placeholder="moussa.diop@email.sn"
                     value={personalInfo.email}
                     onChange={(e) => updatePersonalInfo('email', e.target.value)}
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -602,7 +651,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                     placeholder="+221 77 123 45 67"
                     value={personalInfo.phone}
                     onChange={(e) => updatePersonalInfo('phone', e.target.value)}
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -624,7 +673,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                   placeholder="ex: Responsable Commercial / Développeur Web"
                   value={personalInfo.targetJob}
                   onChange={(e) => updatePersonalInfo('targetJob', e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                 />
               </div>
 
@@ -635,7 +684,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                   placeholder="ex: Sonatel, Wave, Orange, Baobab..."
                   value={formData.targetCompany || ''}
                   onChange={(e) => onChange({ ...formData, targetCompany: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                 />
               </div>
 
@@ -644,7 +693,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                 <select
                   value={formData.letterTone || 'Convaincante'}
                   onChange={(e) => onChange({ ...formData, letterTone: e.target.value as any })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all cursor-pointer"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
                 >
                   <option value="Convaincante">Convaincante & Percutante (Recommandé)</option>
                   <option value="Formelle">Formelle & Institutionnelle</option>
@@ -660,7 +709,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                   placeholder="Dakar, Thiès..."
                   value={personalInfo.city}
                   onChange={(e) => updatePersonalInfo('city', e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                 />
               </div>
             </div>
@@ -686,7 +735,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                   letterInstructions: e.target.value,
                   highlightsSummary: e.target.value 
                 })}
-                className="w-full p-3.5 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all font-sans leading-relaxed placeholder:text-slate-400"
+                className="w-full p-3.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-sans leading-relaxed"
               />
             </div>
           </div>
@@ -834,6 +883,16 @@ export const StepForm: React.FC<StepFormProps> = ({
           {/* ========================================================= */}
           <div className="p-5 sm:p-8">
             
+            {/* Intelligent Real-Time Form Validation Banner */}
+            <div className="mb-6">
+              <AIFormValidationBanner
+                report={validationReport}
+                onEnrichAI={handleSmartAutoEnrich}
+                enrichButtonLabel="Optimiser & Enrichir tout le document avec l'IA"
+                isGenerating={isLoading}
+              />
+            </div>
+
             {/* Step Subheader with helper buttons */}
             <div className="mb-6 pb-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -905,7 +964,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="Moussa"
                           value={personalInfo.firstName}
                           onChange={(e) => updatePersonalInfo('firstName', e.target.value)}
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -921,7 +980,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="Diop"
                           value={personalInfo.lastName}
                           onChange={(e) => updatePersonalInfo('lastName', e.target.value)}
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -942,7 +1001,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                         placeholder="ex: Développeur Full-Stack Senior, Responsable Commercial..."
                         value={personalInfo.targetJob}
                         onChange={(e) => updatePersonalInfo('targetJob', e.target.value)}
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-bold text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-bold text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                       />
                     </div>
 
@@ -989,7 +1048,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="moussa.diop@email.sn"
                           value={personalInfo.email}
                           onChange={(e) => updatePersonalInfo('email', e.target.value)}
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -1005,7 +1064,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="+221 77 123 45 67"
                           value={personalInfo.phone}
                           onChange={(e) => updatePersonalInfo('phone', e.target.value)}
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -1021,7 +1080,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="Dakar, Sénégal"
                           value={personalInfo.city}
                           onChange={(e) => updatePersonalInfo('city', e.target.value)}
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -1037,7 +1096,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="Sonatel, Wave, Orange..."
                           value={formData.targetCompany || ''}
                           onChange={(e) => onChange({ ...formData, targetCompany: e.target.value })}
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -1140,7 +1199,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="linkedin.com/in/mon-profil"
                           value={personalInfo.linkedin || ''}
                           onChange={(e) => updatePersonalInfo('linkedin', e.target.value)}
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -1154,7 +1213,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="mon-portfolio.sn"
                           value={personalInfo.portfolio || ''}
                           onChange={(e) => updatePersonalInfo('portfolio', e.target.value)}
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white text-sm font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-100 outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -1228,7 +1287,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: Développeur Web"
                           value={exp.position}
                           onChange={(e) => updateExperience(exp.id, 'position', e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                         />
                       </div>
                       <div>
@@ -1238,7 +1297,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: Sonatel"
                           value={exp.company}
                           onChange={(e) => updateExperience(exp.id, 'company', e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                         />
                       </div>
                     </div>
@@ -1251,7 +1310,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: Janv 2022"
                           value={exp.startDate}
                           onChange={(e) => updateExperience(exp.id, 'startDate', e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                         />
                       </div>
                       <div>
@@ -1261,7 +1320,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: Présent ou Déc 2023"
                           value={exp.endDate}
                           onChange={(e) => updateExperience(exp.id, 'endDate', e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                         />
                       </div>
                     </div>
@@ -1275,7 +1334,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                         placeholder="ex: Développé des APIs REST, géré la base de données, augmenté le trafic web de 30%..."
                         value={exp.description}
                         onChange={(e) => updateExperience(exp.id, 'description', e.target.value)}
-                        className="w-full border border-slate-200 rounded-xl p-3 text-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                        className="w-full border border-slate-300 rounded-xl p-3 text-xs text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                       />
                     </div>
                   </div>
@@ -1332,7 +1391,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: Licence Informatique"
                           value={edu.degree}
                           onChange={(e) => updateEducation(edu.id, 'degree', e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                         />
                       </div>
                       <div>
@@ -1342,7 +1401,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: ESP Dakar / UCAD / BEM"
                           value={edu.institution}
                           onChange={(e) => updateEducation(edu.id, 'institution', e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                         />
                       </div>
                     </div>
@@ -1355,7 +1414,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: Génie Logiciel"
                           value={edu.fieldOfStudy}
                           onChange={(e) => updateEducation(edu.id, 'fieldOfStudy', e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                         />
                       </div>
                       <div>
@@ -1365,7 +1424,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: 2020 - 2023"
                           value={edu.startDate}
                           onChange={(e) => updateEducation(edu.id, 'startDate', e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white outline-none"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none"
                         />
                       </div>
                     </div>
@@ -1404,7 +1463,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                           type="text"
                           value={cat.category}
                           onChange={(e) => updateSkillCategoryName(idx, e.target.value)}
-                          className="font-bold text-xs bg-transparent border-b border-slate-300 focus:border-indigo-500 outline-none text-slate-900"
+                          className="font-bold text-xs bg-transparent border-b border-slate-300 focus:border-blue-500 outline-none text-slate-900 placeholder:text-slate-500"
                         />
                         {formData.skills.length > 1 && (
                           <button type="button" onClick={() => removeSkillCategory(idx)} className="text-slate-400 hover:text-rose-600">
@@ -1417,7 +1476,7 @@ export const StepForm: React.FC<StepFormProps> = ({
                         placeholder="Séparez les compétences par des virgules (ex: React, Node.js, Vente B2B)"
                         value={cat.skills.join(', ')}
                         onChange={(e) => updateSkillsString(idx, e.target.value)}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none font-medium text-slate-800"
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none font-medium text-slate-900 placeholder:text-slate-500"
                       />
                     </div>
                   ))}
@@ -1448,12 +1507,12 @@ export const StepForm: React.FC<StepFormProps> = ({
                           placeholder="ex: Français, Wolof, Anglais"
                           value={lang.name}
                           onChange={(e) => updateLanguage(idx, 'name', e.target.value)}
-                          className="w-1/2 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white outline-none font-semibold text-slate-800"
+                          className="w-1/2 border border-slate-300 rounded-lg px-3 py-2 text-xs bg-white outline-none font-semibold text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                         <select
                           value={lang.level}
                           onChange={(e) => updateLanguage(idx, 'level', e.target.value as any)}
-                          className="w-1/2 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white outline-none font-semibold text-slate-800 cursor-pointer"
+                          className="w-1/2 border border-slate-300 rounded-lg px-2.5 py-2 text-xs bg-white outline-none font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 cursor-pointer"
                         >
                           <option value="Débutant">Débutant</option>
                           <option value="Intermédiaire">Intermédiaire</option>
@@ -1468,6 +1527,118 @@ export const StepForm: React.FC<StepFormProps> = ({
                         )}
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                {/* Centres d'intérêt & Loisirs (Intégration Systématique & Boost ATS) */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-5 space-y-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Heart className="w-4 h-4 text-rose-500" />
+                        <h3 className="font-black text-sm text-slate-900">Centres d'Intérêt & Loisirs</h3>
+                        <span className="text-[10px] font-extrabold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-100">
+                          Systématique sur les 50 modèles
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Valorisez votre personnalité, esprit d'équipe et centres de curiosité extra-professionnels.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAutoFillSmartHobbies}
+                      className="text-xs text-indigo-700 font-bold bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-indigo-100"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Suggestions IA ({personalInfo.targetJob || 'Métier'})</span>
+                    </button>
+                  </div>
+
+                  {/* Saisie rapide */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Vos loisirs (séparés par des virgules) :
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="ex: Veille technologique, Échecs, Course à pied (Semi-Marathon), Bénévolat associatif..."
+                      value={(formData.hobbies || []).join(', ')}
+                      onChange={(e) => {
+                        const list = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                        onChange({ ...formData, hobbies: list });
+                      }}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none font-medium text-slate-900 placeholder:text-slate-500"
+                    />
+                  </div>
+
+                  {/* Tags interactifs existants */}
+                  {formData.hobbies && formData.hobbies.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {formData.hobbies.map((h, hIdx) => (
+                        <span
+                          key={hIdx}
+                          className="inline-flex items-center gap-1.5 bg-indigo-50/90 text-indigo-950 text-xs font-semibold px-3 py-1 rounded-xl border border-indigo-100 shadow-2xs"
+                        >
+                          <span>{h}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = (formData.hobbies || []).filter((_, idx) => idx !== hIdx);
+                              onChange({ ...formData, hobbies: updated });
+                            }}
+                            className="text-indigo-400 hover:text-rose-600 cursor-pointer ml-1"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Suggestions rapides en 1 clic */}
+                  <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                    <span className="text-[11px] font-bold text-slate-600 block">
+                      💡 Ajouter en 1 clic :
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "Veille technologique & Innovation",
+                        "Échecs & Pensée stratégique",
+                        "Football & Esprit d'équipe",
+                        "Bénévolat & Action associative",
+                        "Course à pied & Trail",
+                        "Lecture économique & Géopolitique",
+                        "Photographie & Création de contenu",
+                        "Voyages & Découverte culturelle"
+                      ].map((presetHobby, pIdx) => {
+                        const isSelected = (formData.hobbies || []).includes(presetHobby);
+                        return (
+                          <button
+                            key={pIdx}
+                            type="button"
+                            onClick={() => {
+                              const current = formData.hobbies || [];
+                              if (isSelected) {
+                                onChange({ ...formData, hobbies: current.filter(h => h !== presetHobby) });
+                              } else {
+                                onChange({ ...formData, hobbies: [...current, presetHobby] });
+                              }
+                            }}
+                            className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-semibold'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50'
+                            }`}
+                          >
+                            {isSelected ? `✓ ${presetHobby}` : `+ ${presetHobby}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic pt-1">
+                      ✨ Astuce : Si vous laissez cette section vide, l'IA générera automatiquement 3 à 4 loisirs prestigieux et adaptés à votre métier lors de la création du document.
+                    </p>
                   </div>
                 </div>
 

@@ -9,6 +9,7 @@ export interface CVTemplateInternalProps {
   skills: SkillCategory[];
   languages: Language[];
   customSections?: CustomSection[];
+  effectiveHobbies: string[];
   profileSummary: string;
   themeHex: string;
   activeStyle: string;
