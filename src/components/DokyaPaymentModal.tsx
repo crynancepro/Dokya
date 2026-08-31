@@ -451,8 +451,12 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
             unlockedTitle: planTitle,
             senderPhone: fullPhone
           });
-          if (onSubscriptionSuccess) onSubscriptionSuccess(activeSub, 'wallet');
-          if (onPaymentSuccess) onPaymentSuccess('wallet');
+          try {
+            if (onSubscriptionSuccess) onSubscriptionSuccess(activeSub, 'wallet');
+            if (onPaymentSuccess) onPaymentSuccess('wallet');
+          } catch (cbErr) {
+            console.warn('[Wallet Sub Callback Warn]:', cbErr);
+          }
         }, 800);
 
       } else {
@@ -499,7 +503,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
             unlockedTitle: documentTitle,
             senderPhone: fullPhone
           });
-          if (onPaymentSuccess) onPaymentSuccess('wallet', tx);
+          try {
+            if (onPaymentSuccess) onPaymentSuccess('wallet', tx);
+          } catch (cbErr) {
+            console.warn('[Wallet Doc Callback Warn]:', cbErr);
+          }
         }, 800);
       }
     } catch (e: any) {
@@ -543,21 +551,25 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         message: `Déblocage gratuit accordé grâce au code promo "${appliedPromo?.code}".`,
         unlockedTitle: activeMode === 'subscription' ? planTitle : documentTitle
       });
-      if (activeMode === 'subscription' && onSubscriptionSuccess) {
-        const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
-        const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
-        onSubscriptionSuccess({
-          status: 'active',
-          planId: effectivePlanId,
-          planName: planTitle || 'Pass VIP Mensuel',
-          startedAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString(),
-          pricePaid: 0,
-          paymentMethod: 'free',
-          documentsGeneratedCount: 0
-        }, 'wallet');
+      try {
+        if (activeMode === 'subscription' && onSubscriptionSuccess) {
+          const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
+          const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
+          onSubscriptionSuccess({
+            status: 'active',
+            planId: effectivePlanId,
+            planName: planTitle || 'Pass VIP Mensuel',
+            startedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString(),
+            pricePaid: 0,
+            paymentMethod: 'free',
+            documentsGeneratedCount: 0
+          }, 'wallet');
+        }
+        if (onPaymentSuccess) onPaymentSuccess('free', freeTx);
+      } catch (cbErr) {
+        console.warn('[Free Promo Callback Warn]:', cbErr);
       }
-      if (onPaymentSuccess) onPaymentSuccess('free', freeTx);
     }, 600);
   };
 
@@ -646,24 +658,28 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
             newBalance: result.newBalance
           });
 
-          // Fire appropriate domain callbacks
-          if (activeMode === 'recharge' && onRechargeSuccess) {
-            onRechargeSuccess(payablePrice, tx);
-          } else if (activeMode === 'subscription' && onSubscriptionSuccess) {
-            const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
-            const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
-            onSubscriptionSuccess({
-              status: 'active',
-              planId: effectivePlanId,
-              planName: planTitle || 'Pass VIP Mensuel',
-              startedAt: new Date().toISOString(),
-              expiresAt: new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString(),
-              pricePaid: payablePrice,
-              paymentMethod: result.method === 'orange_money' ? 'orange_money' : 'wave',
-              documentsGeneratedCount: 0
-            }, 'mobile_money');
+          // Fire appropriate domain callbacks safely
+          try {
+            if (activeMode === 'recharge' && onRechargeSuccess) {
+              onRechargeSuccess(payablePrice, tx);
+            } else if (activeMode === 'subscription' && onSubscriptionSuccess) {
+              const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
+              const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
+              onSubscriptionSuccess({
+                status: 'active',
+                planId: effectivePlanId,
+                planName: planTitle || 'Pass VIP Mensuel',
+                startedAt: new Date().toISOString(),
+                expiresAt: new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString(),
+                pricePaid: payablePrice,
+                paymentMethod: result.method === 'orange_money' ? 'orange_money' : 'wave',
+                documentsGeneratedCount: 0
+              }, 'mobile_money');
+            }
+            if (onPaymentSuccess) onPaymentSuccess('mobile_money', tx);
+          } catch (callbackErr) {
+            console.warn('[Payment Modal Callback Warn]:', callbackErr);
           }
-          if (onPaymentSuccess) onPaymentSuccess('mobile_money', tx);
         }, 800);
       } else {
         setIsAiScanning(false);
@@ -763,28 +779,32 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         unlockedTitle: activeMode === 'subscription' ? planTitle : documentTitle
       });
 
-      if (activeMode === 'recharge' && onRechargeSuccess) {
-        onRechargeSuccess(0, pendingTx);
-      } else if (activeMode === 'subscription' && onSubscriptionSuccess) {
-        const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
-        onSubscriptionSuccess({
-          status: 'pending',
-          planId: effectivePlanId,
-          planName: planTitle || 'Pass VIP Mensuel',
-          startedAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          pricePaid: payablePrice,
-          paymentMethod: selectedMethod,
-          documentsGeneratedCount: 0,
-          senderPhone: fullPhone,
-          countryCode: selectedCountry.dialCode,
-          countryName: selectedCountry.name,
-          transactionReference: transactionRef.trim() || generatedTxId,
-          submittedAt: new Date().toISOString(),
-          receiptImage: previewUrl || undefined
-        }, 'mobile_money');
+      try {
+        if (activeMode === 'recharge' && onRechargeSuccess) {
+          onRechargeSuccess(0, pendingTx);
+        } else if (activeMode === 'subscription' && onSubscriptionSuccess) {
+          const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
+          onSubscriptionSuccess({
+            status: 'pending',
+            planId: effectivePlanId,
+            planName: planTitle || 'Pass VIP Mensuel',
+            startedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            pricePaid: payablePrice,
+            paymentMethod: selectedMethod,
+            documentsGeneratedCount: 0,
+            senderPhone: fullPhone,
+            countryCode: selectedCountry.dialCode,
+            countryName: selectedCountry.name,
+            transactionReference: transactionRef.trim() || generatedTxId,
+            submittedAt: new Date().toISOString(),
+            receiptImage: previewUrl || undefined
+          }, 'mobile_money');
+        }
+        if (onPaymentSuccess) onPaymentSuccess('mobile_money', pendingTx);
+      } catch (cbErr) {
+        console.warn('[Manual Validation Callback Warn]:', cbErr);
       }
-      if (onPaymentSuccess) onPaymentSuccess('mobile_money', pendingTx);
     } catch (e: any) {
       setIsAiScanning(false);
       setErrorMessage(e.message || "Erreur lors de la transmission de la demande.");
@@ -1524,85 +1544,139 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
               {/* SUCCESS OUTCOME */}
               {!isAiScanning && validationOutcome === 'success' && (
-                <div className="p-6 rounded-3xl bg-emerald-950/40 border border-emerald-500/40 text-center space-y-4 animate-in zoom-in-95 duration-200">
-                  <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20">
-                    <CheckCircle className="w-9 h-9" />
+                <div className="p-6 rounded-3xl bg-emerald-950/40 border border-emerald-500/40 text-center space-y-5 animate-in zoom-in-95 duration-200">
+                  {/* Celebratory Icon */}
+                  <div className="relative w-20 h-20 mx-auto">
+                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-emerald-600 to-teal-400 p-0.5 shadow-xl shadow-emerald-500/30 flex items-center justify-center">
+                      <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center text-emerald-400">
+                        <CheckCircle2 className="w-10 h-10 animate-bounce" />
+                      </div>
+                    </div>
+                    <div className="absolute -top-1.5 -right-1.5 text-xl select-none animate-pulse">
+                      🎉
+                    </div>
                   </div>
 
                   <div>
-                    <h4 className="text-base font-black text-white">
-                      {activeMode === 'subscription' 
-                        ? 'Pass VIP Activé avec Succès !' 
-                        : activeMode === 'recharge' 
-                          ? 'Solde Rechargé avec Succès !' 
-                          : 'Paiement Validé & Document Débloqué !'}
+                    <h4 className="text-lg font-black text-white flex items-center justify-center gap-2">
+                      <span>Paiement validé avec succès !</span>
                     </h4>
-                    <p className="text-xs text-slate-300 mt-1">
-                      {validationDetails.message}
+                    <p className="text-sm font-semibold text-emerald-300/90 mt-1">
+                      {activeMode === 'recharge' 
+                        ? 'Votre solde Dokya Wallet a été débloqué et crédité !'
+                        : activeMode === 'subscription'
+                          ? 'Votre Pass VIP a été activé avec succès !'
+                          : 'Paiement validé avec succès ! Votre document a été débloqué.'}
                     </p>
+                    {validationDetails.message && (
+                      <p className="text-xs text-slate-400 mt-1.5 max-w-md mx-auto">
+                        {validationDetails.message}
+                      </p>
+                    )}
                   </div>
 
                   {/* Summary Box */}
-                  <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 text-xs space-y-1.5 text-left">
+                  <div className="p-4 bg-slate-950/90 rounded-2xl border border-emerald-500/20 text-xs space-y-2 text-left shadow-inner">
                     {validationDetails.txId && (
                       <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Réf Transaction :</span>
+                        <span className="text-slate-400">Référence Transaction :</span>
                         <span className="font-mono font-bold text-amber-400">{validationDetails.txId}</span>
                       </div>
                     )}
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Statut :</span>
-                      <span className="font-bold text-emerald-400 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" /> Validé par IA Dokya
+                      <span className="text-slate-400">Statut de Certification :</span>
+                      <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" /> Validé & Débloqué par IA Dokya
                       </span>
                     </div>
+                    {validationDetails.amount !== undefined && (
+                      <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
+                        <span className="text-slate-400">Montant Réglé :</span>
+                        <span className="font-bold text-slate-200">
+                          {validationDetails.amount === 0 ? 'Gratuit (Code Promo)' : `${validationDetails.amount.toLocaleString('fr-FR')} FCFA`}
+                        </span>
+                      </div>
+                    )}
                     {validationDetails.newBalance !== undefined && (
-                      <div className="flex items-center justify-between border-t border-slate-800 pt-1.5">
-                        <span className="text-slate-400">Nouveau Solde :</span>
+                      <div className="flex items-center justify-between border-t border-slate-800/80 pt-2">
+                        <span className="text-slate-400">Nouveau Solde Disponible :</span>
                         <span className="font-mono font-bold text-emerald-400">{validationDetails.newBalance.toLocaleString('fr-FR')} FCFA</span>
                       </div>
                     )}
                   </div>
 
-                  {/* Direct Download or Close actions */}
-                  <div className="space-y-2 pt-2">
-                    {activeMode === 'document' && (onDownloadPDF || onDownloadDocx) && (
-                      <div className="grid grid-cols-2 gap-2">
-                        {onDownloadPDF && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onDownloadPDF();
-                              onClose();
-                            }}
-                            className="py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
-                          >
-                            <Download className="w-4 h-4" />
-                            <span>Télécharger PDF</span>
-                          </button>
-                        )}
-                        {onDownloadDocx && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onDownloadDocx();
-                              onClose();
-                            }}
-                            className="py-3 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
-                          >
-                            <Download className="w-4 h-4" />
-                            <span>Télécharger Word</span>
-                          </button>
-                        )}
+                  {/* Action Buttons: 1. Primary Action (Download or Solde), 2. Discrete Close */}
+                  <div className="space-y-2.5 pt-1">
+                    {activeMode === 'document' && (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {onDownloadPDF ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                try { onDownloadPDF(); } catch (e) { console.error(e); }
+                              }}
+                              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/25 transition-all transform active:scale-95"
+                            >
+                              <Download className="w-4 h-4 text-slate-950" />
+                              <span>📥 Télécharger mon PDF</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={onClose}
+                              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/25 transition-all"
+                            >
+                              <FileCheck className="w-4 h-4 text-slate-950" />
+                              <span>📥 Accéder à mon document</span>
+                            </button>
+                          )}
+
+                          {onDownloadDocx && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                try { onDownloadDocx(); } catch (e) { console.error(e); }
+                              }}
+                              className="w-full py-3.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-600/20 transition-all transform active:scale-95"
+                            >
+                              <Download className="w-4 h-4" />
+                              <span>📄 Télécharger en Word (.docx)</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
 
+                    {activeMode === 'recharge' && (
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/25 transition-all transform active:scale-95"
+                      >
+                        <Wallet className="w-4 h-4 text-slate-950" />
+                        <span>💳 Consulter mon Solde & Continuer</span>
+                      </button>
+                    )}
+
+                    {activeMode === 'subscription' && (
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/25 transition-all transform active:scale-95"
+                      >
+                        <Crown className="w-4 h-4 text-slate-950" />
+                        <span>👑 Accéder à mes avantages VIP</span>
+                      </button>
+                    )}
+
+                    {/* Discrete Close Button */}
                     <button
                       type="button"
                       onClick={onClose}
-                      className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
+                      className="w-full py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-white font-semibold text-xs transition-colors cursor-pointer border border-slate-700/50"
                     >
-                      Terminer & Accéder à l'espace
+                      Fermer
                     </button>
                   </div>
                 </div>

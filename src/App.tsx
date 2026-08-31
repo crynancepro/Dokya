@@ -424,37 +424,56 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     setIsPaymentModalOpen(true);
   };
 
-  // Handle successful payment
+  // Handle successful payment safely without any redirect or crash
   const handlePaymentSuccess = (method: 'wallet' | 'mobile_money' | 'free', tx?: any) => {
-    setIsCurrentDocPaid(true);
+    try {
+      setIsCurrentDocPaid(true);
 
-    if (method === 'wallet' && tx) {
-      if (typeof tx.newBalance === 'number') {
-        setUserBalance(tx.newBalance);
-      } else {
-        setUserBalance(prev => Math.max(0, prev - paymentPrice));
+      if (method === 'wallet' && tx) {
+        if (typeof tx.newBalance === 'number') {
+          setUserBalance(tx.newBalance);
+        } else {
+          setUserBalance(prev => Math.max(0, prev - paymentPrice));
+        }
+
+        try {
+          const savedProfileStr = localStorage.getItem('senegal_cv_user_profile');
+          let profileObj: any = {};
+          if (savedProfileStr) {
+            try { profileObj = JSON.parse(savedProfileStr); } catch (e) {}
+          }
+          profileObj.balance = typeof tx.newBalance === 'number' ? tx.newBalance : Math.max(0, userBalance - paymentPrice);
+          localStorage.setItem('senegal_cv_user_profile', JSON.stringify(profileObj));
+        } catch (e) {
+          console.warn('[Profile LocalStorage Warn]:', e);
+        }
+
+        try {
+          const savedTxList = localStorage.getItem('senegal_cv_transactions');
+          let txs: any[] = [];
+          if (savedTxList) {
+            try { txs = JSON.parse(savedTxList); } catch (e) {}
+          }
+          txs.unshift(tx);
+          localStorage.setItem('senegal_cv_transactions', JSON.stringify(txs));
+        } catch (e) {
+          console.warn('[Tx LocalStorage Warn]:', e);
+        }
+
+        try {
+          saveTransactionRecord(tx).catch(err => console.warn('[Firestore Tx Warn]:', err));
+        } catch (e) {
+          console.warn('[SaveTx Error]:', e);
+        }
       }
 
-      const savedProfileStr = localStorage.getItem('senegal_cv_user_profile');
-      let profileObj: any = {};
-      if (savedProfileStr) {
-        try { profileObj = JSON.parse(savedProfileStr); } catch (e) {}
-      }
-      profileObj.balance = typeof tx.newBalance === 'number' ? tx.newBalance : Math.max(0, userBalance - paymentPrice);
-      localStorage.setItem('senegal_cv_user_profile', JSON.stringify(profileObj));
-
-      const savedTxList = localStorage.getItem('senegal_cv_transactions');
-      let txs: any[] = [];
-      if (savedTxList) {
-        try { txs = JSON.parse(savedTxList); } catch (e) {}
-      }
-      txs.unshift(tx);
-      localStorage.setItem('senegal_cv_transactions', JSON.stringify(txs));
-      saveTransactionRecord(tx);
+      setSuccessMessage(`Document débloqué avec succès ! Vous pouvez maintenant le télécharger au format Word (.docx) et PDF (.pdf).`);
+      setTimeout(() => setSuccessMessage(null), 6000);
+    } catch (err) {
+      console.error('[Payment Handler Error]:', err);
+      // Guarantee the document is unlocked even if logging fails
+      setIsCurrentDocPaid(true);
     }
-
-    setSuccessMessage(`Document débloqué avec succès ! Vous pouvez maintenant le télécharger au format Word (.docx) et PDF (.pdf).`);
-    setTimeout(() => setSuccessMessage(null), 6000);
   };
 
   // Reset entire form states and payment status to create a brand new document

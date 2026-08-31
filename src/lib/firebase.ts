@@ -431,7 +431,7 @@ export async function recordTransactionEverywhere(tx: TransactionRecord): Promis
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-admin-email': 'admin1@gmail.com',
+        'x-admin-email': 'peter25ngouala@gmail.com',
         'x-user-role': 'admin'
       },
       body: JSON.stringify({ transaction: tx })

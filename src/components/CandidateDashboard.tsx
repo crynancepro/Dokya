@@ -251,75 +251,107 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Handle wallet recharge completion
+  // Handle wallet recharge completion safely
   const handleRechargeSuccess = async (addedAmount: number, tx: TransactionRecord) => {
-    const newBalance = (profile.balance ?? 0) + addedAmount;
-    const updatedProfile: CandidateProfile = {
-      ...profile,
-      balance: newBalance,
-      updatedAt: new Date().toISOString()
-    };
-    setProfile(updatedProfile);
-    localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updatedProfile));
+    try {
+      const newBalance = (profile.balance ?? 0) + addedAmount;
+      const updatedProfile: CandidateProfile = {
+        ...profile,
+        balance: newBalance,
+        updatedAt: new Date().toISOString()
+      };
+      setProfile(updatedProfile);
+      try {
+        localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updatedProfile));
+      } catch (_e) {}
 
-    const updatedTxs = [tx, ...transactions];
-    setTransactions(updatedTxs);
-    localStorage.setItem('senegal_cv_transactions', JSON.stringify(updatedTxs));
+      const updatedTxs = [tx, ...transactions];
+      setTransactions(updatedTxs);
+      try {
+        localStorage.setItem('senegal_cv_transactions', JSON.stringify(updatedTxs));
+      } catch (_e) {}
 
-    if (user) {
-      await saveCandidateProfile(updatedProfile);
-      await saveTransactionRecord(tx);
+      if (user) {
+        try {
+          await saveCandidateProfile(updatedProfile);
+        } catch (e) {
+          console.warn('[Save Candidate Profile Warn]:', e);
+        }
+        try {
+          await saveTransactionRecord(tx);
+        } catch (e) {
+          console.warn('[Save Tx Record Warn]:', e);
+        }
+      }
+    } catch (err) {
+      console.error('[handleRechargeSuccess Error]:', err);
     }
   };
 
-  // Handle subscription activation
+  // Handle subscription activation safely
   const handleSubscriptionSuccess = async (newSub: UserSubscription, method: 'wallet' | 'mobile_money' | 'card') => {
-    let newBal = profile.balance ?? 0;
-    if (method === 'wallet' && newSub.pricePaid) {
-      newBal = Math.max(0, newBal - newSub.pricePaid);
+    try {
+      let newBal = profile.balance ?? 0;
+      if (method === 'wallet' && newSub.pricePaid) {
+        newBal = Math.max(0, newBal - newSub.pricePaid);
+      }
+
+      const isPending = newSub.status === 'pending';
+
+      const updatedProfile: CandidateProfile = {
+        ...profile,
+        balance: newBal,
+        subscriptionStatus: isPending ? 'pending' : 'unlimited',
+        subscription: newSub,
+        updatedAt: new Date().toISOString()
+      };
+
+      setProfile(updatedProfile);
+      try {
+        localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updatedProfile));
+      } catch (_e) {}
+
+      const tx: TransactionRecord = {
+        id: newSub.transactionReference || `TX-SUB-${Date.now()}`,
+        userId: user?.uid || 'guest',
+        userEmail: user?.email || profile.email,
+        userName: `${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim() || undefined,
+        type: 'subscription_purchase',
+        amount: -(newSub.pricePaid || 0),
+        currency: 'XOF',
+        description: `Souscription ${newSub.planName}${isPending ? ' (En attente de validation)' : ''}`,
+        status: isPending ? 'pending' : 'VALIDATED_BY_AI',
+        aiStatus: isPending ? 'PENDING' : 'VALIDATED_BY_AI',
+        createdAt: new Date().toISOString(),
+        paymentMethod: (newSub.paymentMethod as any) || (method === 'wallet' ? 'wallet' : 'wave'),
+        newBalance: newBal,
+        senderPhone: newSub.senderPhone,
+        receiptImage: newSub.receiptImage
+      };
+
+      const updatedTxs = [tx, ...transactions];
+      setTransactions(updatedTxs);
+      try {
+        localStorage.setItem('senegal_cv_transactions', JSON.stringify(updatedTxs));
+      } catch (_e) {}
+
+      if (user) {
+        try {
+          await saveCandidateProfile(updatedProfile);
+        } catch (e) {
+          console.warn('[Save Sub Profile Warn]:', e);
+        }
+        try {
+          await saveTransactionRecord(tx);
+        } catch (e) {
+          console.warn('[Save Sub Tx Warn]:', e);
+        }
+      }
+
+      setActiveSidebarTab('subscription');
+    } catch (err) {
+      console.error('[handleSubscriptionSuccess Error]:', err);
     }
-
-    const isPending = newSub.status === 'pending';
-
-    const updatedProfile: CandidateProfile = {
-      ...profile,
-      balance: newBal,
-      subscriptionStatus: isPending ? 'pending' : 'unlimited',
-      subscription: newSub,
-      updatedAt: new Date().toISOString()
-    };
-
-    setProfile(updatedProfile);
-    localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updatedProfile));
-
-    const tx: TransactionRecord = {
-      id: newSub.transactionReference || `TX-SUB-${Date.now()}`,
-      userId: user?.uid || 'guest',
-      userEmail: user?.email || profile.email,
-      userName: `${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim() || undefined,
-      type: 'subscription_purchase',
-      amount: -(newSub.pricePaid || 0),
-      currency: 'XOF',
-      description: `Souscription ${newSub.planName}${isPending ? ' (En attente de validation)' : ''}`,
-      status: isPending ? 'pending' : 'VALIDATED_BY_AI',
-      aiStatus: isPending ? 'PENDING' : 'VALIDATED_BY_AI',
-      createdAt: new Date().toISOString(),
-      paymentMethod: (newSub.paymentMethod as any) || (method === 'wallet' ? 'wallet' : 'wave'),
-      newBalance: newBal,
-      senderPhone: newSub.senderPhone,
-      receiptImage: newSub.receiptImage
-    };
-
-    const updatedTxs = [tx, ...transactions];
-    setTransactions(updatedTxs);
-    localStorage.setItem('senegal_cv_transactions', JSON.stringify(updatedTxs));
-
-    if (user) {
-      await saveCandidateProfile(updatedProfile);
-      await saveTransactionRecord(tx);
-    }
-
-    setActiveSidebarTab('subscription');
   };
 
   // Save Candidate Profile

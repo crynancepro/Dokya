@@ -1647,7 +1647,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ) : (
                       paginatedUsers.map((user) => {
                         const isSuspended = user.status === 'suspended';
-                        const isSuperAdmin = user.email === 'admin1@gmail.com' || user.email === 'admin1@gamil.com';
+                        const isSuperAdmin = isAdminEmail(user.email);
 
                         return (
                           <tr key={user.uid} className={`hover:bg-slate-800/40 transition-all ${isSuspended ? 'bg-rose-950/20' : ''}`}>

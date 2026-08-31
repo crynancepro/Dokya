@@ -194,7 +194,7 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
   // 3. Update Pricing Method (Unconstrained numbers, instantly updates Firestore, API, and local state)
   const updatePricing = async (
     newPricing: Partial<PlatformPricingConfig>, 
-    adminEmail: string = 'admin1@gmail.com'
+    adminEmail: string = 'peter25ngouala@gmail.com'
   ): Promise<{ success: boolean; message?: string; error?: string }> => {
     try {
       const mergedPricing: PlatformPricingConfig = {
@@ -403,7 +403,7 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
   // 5. Save Promo Code
   const savePromoCode = async (
     promoData: Partial<PromoCode>, 
-    adminEmail: string = 'admin1@gmail.com'
+    adminEmail: string = 'peter25ngouala@gmail.com'
   ): Promise<{ success: boolean; promoCode?: PromoCode; message?: string; error?: string }> => {
     try {
       const cleanCode = (promoData.code || '').trim().toUpperCase();
@@ -480,7 +480,7 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const deletePromoCode = async (
     id: string, 
     code: string, 
-    adminEmail: string = 'admin1@gmail.com'
+    adminEmail: string = 'peter25ngouala@gmail.com'
   ): Promise<{ success: boolean; message?: string; error?: string }> => {
     try {
       const cleanCode = code.trim().toUpperCase();
@@ -525,7 +525,7 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     id: string, 
     code: string, 
     currentActive: boolean, 
-    adminEmail: string = 'admin1@gmail.com'
+    adminEmail: string = 'peter25ngouala@gmail.com'
   ): Promise<{ success: boolean; message?: string; error?: string }> => {
     try {
       const newActive = !currentActive;

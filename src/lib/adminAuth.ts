@@ -1,12 +1,10 @@
 import { User as FirebaseUser } from 'firebase/auth';
 import { auth } from './firebase';
 
-export const PRIMARY_ADMIN_EMAIL = 'admin1@gmail.com';
+export const PRIMARY_ADMIN_EMAIL = 'peter25ngouala@gmail.com';
 
-// List of authorized admin emails
+// List of authorized admin emails (sole primary administrator)
 export const AUTHORIZED_ADMIN_EMAILS: string[] = [
-  'admin1@gmail.com',
-  'admin1@gamil.com',
   'peter25ngouala@gmail.com'
 ];
 
@@ -16,14 +14,7 @@ export const AUTHORIZED_ADMIN_EMAILS: string[] = [
 export function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;
   const normalized = email.trim().toLowerCase();
-  if (AUTHORIZED_ADMIN_EMAILS.some(adminEmail => adminEmail.toLowerCase() === normalized)) {
-    return true;
-  }
-  // Check if starts with admin or contains admin
-  if (normalized.startsWith('admin') && normalized.includes('@')) {
-    return true;
-  }
-  return false;
+  return AUTHORIZED_ADMIN_EMAILS.some(adminEmail => adminEmail.toLowerCase() === normalized);
 }
 
 /**

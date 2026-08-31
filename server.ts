@@ -2251,11 +2251,9 @@ app.post('/api/payment/verify', async (req, res) => {
 
 // ==========================================
 // ADMIN DASHBOARD & MANAGEMENT API ENDPOINTS
-// Security: Restricts access to authorized administrators
+// Security: Restricts access to authorized administrator (peter25ngouala@gmail.com)
 // ==========================================
 const DEFAULT_ADMIN_EMAILS = [
-  'admin1@gmail.com',
-  'admin1@gamil.com',
   'peter25ngouala@gmail.com'
 ];
 
@@ -2275,11 +2273,6 @@ function isAuthorizedAdmin(email?: string | null): boolean {
     if (envList.includes(normalized)) {
       return true;
     }
-  }
-
-  // Check if starts with admin
-  if (normalized.startsWith('admin') && normalized.includes('@')) {
-    return true;
   }
 
   return false;
@@ -2401,7 +2394,7 @@ const adminStore: {
     },
     {
       uid: 'USR-005',
-      email: 'admin1@gmail.com',
+      email: 'peter25ngouala@gmail.com',
       firstName: 'Super',
       lastName: 'Admin',
       phone: '+221 77 000 00 00',
@@ -2433,7 +2426,7 @@ const adminStore: {
     recruiterSearchPrice: 10000,
     currency: 'FCFA',
     updatedAt: new Date().toISOString(),
-    updatedBy: 'admin1@gmail.com'
+    updatedBy: 'peter25ngouala@gmail.com'
   },
   promoCodes: [
     {
@@ -2447,7 +2440,7 @@ const adminStore: {
       active: true,
       description: '20% de réduction sur tous les documents',
       createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
-      createdBy: 'admin1@gmail.com'
+      createdBy: 'peter25ngouala@gmail.com'
     },
     {
       id: 'PRM-002',
@@ -2460,7 +2453,7 @@ const adminStore: {
       active: true,
       description: '500 FCFA offerts sur la première commande',
       createdAt: new Date(Date.now() - 25 * 86400000).toISOString(),
-      createdBy: 'admin1@gmail.com'
+      createdBy: 'peter25ngouala@gmail.com'
     },
     {
       id: 'PRM-003',
@@ -2473,7 +2466,7 @@ const adminStore: {
       active: true,
       description: '30% de remise spéciale promotionnelle',
       createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-      createdBy: 'admin1@gmail.com'
+      createdBy: 'peter25ngouala@gmail.com'
     },
     {
       id: 'PRM-004',
@@ -2486,7 +2479,7 @@ const adminStore: {
       active: true,
       description: '50% de réduction exceptionnelle',
       createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-      createdBy: 'admin1@gmail.com'
+      createdBy: 'peter25ngouala@gmail.com'
     },
     {
       id: 'PRM-005',
@@ -2499,7 +2492,7 @@ const adminStore: {
       active: true,
       description: '100% de réduction (Déblocage gratuit & immédiat)',
       createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-      createdBy: 'admin1@gmail.com'
+      createdBy: 'peter25ngouala@gmail.com'
     },
     {
       id: 'PRM-006',
@@ -2512,7 +2505,7 @@ const adminStore: {
       active: true,
       description: 'Code spécial LIL : 90% de réduction immédiate',
       createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-      createdBy: 'admin1@gmail.com'
+      createdBy: 'peter25ngouala@gmail.com'
     },
     {
       id: 'PRM-007',
@@ -2525,7 +2518,7 @@ const adminStore: {
       active: true,
       description: 'Accès VIP Admin PETER (100% de réduction)',
       createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-      createdBy: 'admin1@gmail.com'
+      createdBy: 'peter25ngouala@gmail.com'
     },
     {
       id: 'PRM-008',
@@ -2538,7 +2531,7 @@ const adminStore: {
       active: true,
       description: 'Code Privilège VIP : 100% de réduction',
       createdAt: new Date().toISOString(),
-      createdBy: 'admin1@gmail.com'
+      createdBy: 'peter25ngouala@gmail.com'
     }
   ],
   auditLogs: [
@@ -2547,7 +2540,7 @@ const adminStore: {
       timestamp: new Date(Date.now() - 10 * 60000).toISOString(),
       category: 'admin_action' as const,
       action: 'ADMIN_LOGIN',
-      actorEmail: 'admin1@gmail.com',
+      actorEmail: 'peter25ngouala@gmail.com',
       actorRole: 'admin' as const,
       details: 'Connexion sécurisée au Tableau de Bord Administrateur',
       status: 'success' as const
@@ -2579,7 +2572,7 @@ const adminStore: {
       timestamp: new Date(Date.now() - 5 * 3600000).toISOString(),
       category: 'wallet' as const,
       action: 'WALLET_ADJUSTMENT',
-      actorEmail: 'admin1@gmail.com',
+      actorEmail: 'peter25ngouala@gmail.com',
       actorRole: 'admin' as const,
       targetUserEmail: 'amadou.ba@outlook.com',
       targetUserId: 'USR-003',
@@ -2601,7 +2594,7 @@ const adminStore: {
       timestamp: new Date(Date.now() - 24 * 3600000).toISOString(),
       category: 'promo' as const,
       action: 'PROMO_CODE_CREATED',
-      actorEmail: 'admin1@gmail.com',
+      actorEmail: 'peter25ngouala@gmail.com',
       actorRole: 'admin' as const,
       details: 'Création du code promo DAKAR2026 (-30%, limite: 100 utilisations)',
       status: 'success' as const
@@ -2741,7 +2734,7 @@ const adminStore: {
       aiStatus: 'MANUALLY_VALIDATED',
       paymentMethod: 'wave',
       receiptTimestamp: '25/08/2026 à 12:45',
-      manuallyValidatedBy: 'admin1@gmail.com',
+      manuallyValidatedBy: 'peter25ngouala@gmail.com',
       manuallyValidatedAt: new Date(Date.now() - 3600000).toISOString(),
       adminValidationNote: 'Validation manuelle après vérification du reçu sur l\'application Wave Business.',
       newBalance: 1000,
@@ -2914,7 +2907,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
 app.post('/api/admin/users/:id/impersonate', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     
     const user = adminStore.users.find(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
     if (!user) {
@@ -2949,7 +2942,7 @@ app.post('/api/admin/users/:id/impersonate', requireAdmin, (req, res) => {
 app.post('/api/admin/users/:id/unlock-documents', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { reason = 'Déblocage administratif forcé' } = req.body || {};
 
     const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
@@ -2988,7 +2981,7 @@ app.post('/api/admin/users/:id/unlock-documents', requireAdmin, (req, res) => {
 app.post('/api/admin/users/:id/toggle-suspension', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { reason = 'Action administrative de conformité' } = req.body || {};
 
     const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
@@ -2996,7 +2989,7 @@ app.post('/api/admin/users/:id/toggle-suspension', requireAdmin, (req, res) => {
       return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
     }
 
-    if (adminStore.users[userIndex].role === 'admin' && adminStore.users[userIndex].email === 'admin1@gmail.com') {
+    if (adminStore.users[userIndex].role === 'admin' && adminStore.users[userIndex].email === 'peter25ngouala@gmail.com') {
       return res.status(400).json({ success: false, error: 'Impossible de suspendre le compte Super Admin principal.' });
     }
 
@@ -3033,7 +3026,7 @@ app.post('/api/admin/users/:id/toggle-suspension', requireAdmin, (req, res) => {
 app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { firstName, lastName, phone, city, targetJob, role, subscriptionStatus, balance } = req.body || {};
 
     const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
@@ -3078,7 +3071,7 @@ app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
 app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.query?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.query?.adminEmail || 'peter25ngouala@gmail.com') as string;
 
     const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
     if (userIndex < 0) {
@@ -3086,7 +3079,7 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
     }
 
     const user = adminStore.users[userIndex];
-    if (user.role === 'admin' && user.email === 'admin1@gmail.com') {
+    if (user.role === 'admin' && user.email === 'peter25ngouala@gmail.com') {
       return res.status(400).json({ success: false, error: 'Impossible de supprimer le compte Super Admin.' });
     }
 
@@ -3117,7 +3110,7 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
 app.post('/api/admin/wallet/adjust', requireAdmin, (req, res) => {
   try {
     const { userId, userEmail, amount, type = 'credit', reason = 'Ajustement Administrateur' } = req.body || {};
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
 
     const delta = Number(amount);
     if (!delta || delta <= 0) {
@@ -3240,7 +3233,7 @@ app.get('/api/admin/pricing', requireAdmin, (req, res) => {
 
 app.post('/api/admin/pricing', requireAdmin, (req, res) => {
   try {
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const {
       cvOnlyPrice,
       letterOnlyPrice,
@@ -3305,7 +3298,7 @@ app.get('/api/admin/promo-codes', requireAdmin, (req, res) => {
 
 app.post('/api/admin/promo-codes', requireAdmin, (req, res) => {
   try {
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { id, code, discountType, discountValue, minOrderAmount, maxUsageLimit, description, active } = req.body || {};
 
     if (!code || code.trim().length < 3) {
@@ -3398,7 +3391,7 @@ app.post('/api/admin/promo-codes', requireAdmin, (req, res) => {
 app.post('/api/admin/promo-codes/:id/toggle', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
 
     const index = adminStore.promoCodes.findIndex(p => p.id === id || p.code === id.toUpperCase());
     if (index < 0) {
@@ -3433,7 +3426,7 @@ app.post('/api/admin/promo-codes/:id/toggle', requireAdmin, (req, res) => {
 app.delete('/api/admin/promo-codes/:id', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.query?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.query?.adminEmail || 'peter25ngouala@gmail.com') as string;
 
     const index = adminStore.promoCodes.findIndex(p => p.id === id || p.code.toUpperCase() === id.toUpperCase());
     if (index >= 0) {
@@ -3684,7 +3677,7 @@ app.get('/api/admin/transactions', requireAdmin, (req, res) => {
 app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { note = 'Validation manuelle effectuée par l\'administrateur' } = req.body || {};
 
     const txIndex = adminStore.transactions.findIndex(t => t.id === id || (t as any).transactionId === id);
@@ -3768,7 +3761,7 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
 app.post('/api/admin/transactions/:id/reject', requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'admin1@gmail.com') as string;
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { reason = 'Rejet confirmé par l\'administrateur' } = req.body || {};
 
     const txIndex = adminStore.transactions.findIndex(t => t.id === id || (t as any).transactionId === id);
