@@ -71,7 +71,13 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
   return (
     <div 
       id="ebook-printable-area" 
-      className={`kdp-printable-manuscript w-full max-w-[820px] mx-auto space-y-12 select-text ${getFontFamilyClass()}`}
+      data-a4-document="true"
+      className={`kdp-printable-manuscript w-[210mm] min-w-[210mm] max-w-[210mm] mx-auto space-y-12 select-text a4-document-root ${getFontFamilyClass()}`}
+      style={{
+        width: '210mm',
+        minWidth: '210mm',
+        maxWidth: '210mm'
+      }}
     >
 
       {/* ========================================================================= */}
@@ -79,8 +85,14 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
       {/* ========================================================================= */}
       <div 
         id="ebook-page-1"
-        className="kdp-page-break relative w-full aspect-[1/1.5] max-w-[620px] mx-auto rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col justify-between p-8 sm:p-12 text-white border-2 border-slate-800 transition-all duration-300"
+        data-a4-page="true"
+        className="kdp-page-break relative w-[210mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] mx-auto rounded-none shadow-2xl overflow-hidden flex flex-col justify-between p-12 text-white border border-slate-800 transition-all duration-300"
         style={{
+          width: '210mm',
+          minWidth: '210mm',
+          maxWidth: '210mm',
+          minHeight: '297mm',
+          boxSizing: 'border-box',
           backgroundImage: frontMode === 'uploaded' && data.frontCover.customImageUrl 
             ? `url(${data.frontCover.customImageUrl})` 
             : currentFrontProposal.artImageUrl 
@@ -157,8 +169,14 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
       {/* ========================================================================= */}
       <div 
         id="ebook-page-2"
-        className="kdp-page-break bg-white text-slate-900 p-10 sm:p-16 min-h-[900px] flex flex-col justify-between text-left shadow-sm border border-slate-100"
+        data-a4-page="true"
+        className="kdp-page-break bg-white text-slate-900 p-16 min-h-[297mm] w-[210mm] min-w-[210mm] max-w-[210mm] mx-auto flex flex-col justify-between text-left shadow-xl border border-slate-200/90"
         style={{
+          width: '210mm',
+          minWidth: '210mm',
+          maxWidth: '210mm',
+          minHeight: '297mm',
+          boxSizing: 'border-box',
           backgroundColor: '#ffffff',
           color: '#1a1a1a',
           pageBreakAfter: 'always',
@@ -212,8 +230,14 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
       {/* ========================================================================= */}
       <div 
         id="ebook-page-3"
-        className="kdp-page-break bg-white text-slate-900 p-10 sm:p-16 min-h-[900px] flex flex-col justify-between shadow-sm border border-slate-100"
+        data-a4-page="true"
+        className="kdp-page-break bg-white text-slate-900 p-16 min-h-[297mm] w-[210mm] min-w-[210mm] max-w-[210mm] mx-auto flex flex-col justify-between shadow-xl border border-slate-200/90"
         style={{
+          width: '210mm',
+          minWidth: '210mm',
+          maxWidth: '210mm',
+          minHeight: '297mm',
+          boxSizing: 'border-box',
           backgroundColor: '#ffffff',
           color: '#1a1a1a',
           pageBreakAfter: 'always',
@@ -271,8 +295,14 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
         <article 
           key={`interior-page-${page.pageNumber}`}
           id={`ebook-page-${page.pageNumber}`}
-          className="kdp-page-break bg-white text-slate-900 p-10 sm:p-16 min-h-[920px] flex flex-col justify-between shadow-sm border border-slate-100"
+          data-a4-page="true"
+          className="kdp-page-break bg-white text-slate-900 p-16 min-h-[297mm] w-[210mm] min-w-[210mm] max-w-[210mm] mx-auto flex flex-col justify-between shadow-xl border border-slate-200/90"
           style={{
+            width: '210mm',
+            minWidth: '210mm',
+            maxWidth: '210mm',
+            minHeight: '297mm',
+            boxSizing: 'border-box',
             backgroundColor: '#ffffff',
             color: '#1a1a1a',
             pageBreakAfter: 'always',
@@ -412,8 +442,14 @@ export const EbookTemplate: React.FC<EbookTemplateProps> = ({
       {/* ========================================================================= */}
       <div 
         id={`ebook-page-${totalExactPages}`}
-        className="kdp-page-break relative w-full aspect-[1/1.5] max-w-[620px] mx-auto rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col justify-between p-8 sm:p-12 text-white border-2 border-slate-800 transition-all duration-300"
+        data-a4-page="true"
+        className="kdp-page-break relative w-[210mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] mx-auto rounded-none shadow-2xl overflow-hidden flex flex-col justify-between p-12 text-white border border-slate-800 transition-all duration-300"
         style={{
+          width: '210mm',
+          minWidth: '210mm',
+          maxWidth: '210mm',
+          minHeight: '297mm',
+          boxSizing: 'border-box',
           backgroundImage: backMode === 'uploaded' && data.backCover.customImageUrl 
             ? `url(${data.backCover.customImageUrl})` 
             : currentBackProposal.artImageUrl 

@@ -80,8 +80,13 @@ export const CoverLetterTemplate: React.FC<CoverLetterTemplateProps> = ({
       <div 
         id="letter-preview" 
         data-single-page="true"
-        className="w-full max-w-[210mm] min-h-[297mm] bg-white text-slate-900 shadow-xl border border-slate-200/90 p-8 sm:p-12 lg:p-14 flex flex-col justify-between font-sans leading-relaxed print:shadow-none print:border-none print:p-0 print:m-0 print:min-h-0"
+        data-a4-document="true"
+        className="w-[210mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] bg-white text-slate-900 shadow-xl border border-slate-200/90 p-12 flex flex-col justify-between font-sans leading-relaxed print:shadow-none print:border-none print:p-0 print:m-0 print:min-h-0 a4-document-root"
         style={{
+          width: '210mm',
+          minWidth: '210mm',
+          maxWidth: '210mm',
+          minHeight: '297mm',
           boxSizing: 'border-box',
           pageBreakInside: 'avoid',
           breakInside: 'avoid'

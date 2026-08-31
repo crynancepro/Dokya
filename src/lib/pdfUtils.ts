@@ -488,11 +488,21 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
         const origDisplay = pageEl.style.display;
         const origBreakAfter = pageEl.style.breakAfter;
         const origPageBreakAfter = pageEl.style.pageBreakAfter;
+        const origWidth = pageEl.style.width;
+        const origMinWidth = pageEl.style.minWidth;
+        const origMaxWidth = pageEl.style.maxWidth;
+        const origMinHeight = pageEl.style.minHeight;
+        const origTransform = pageEl.style.transform;
 
         pageEl.style.opacity = '1';
         pageEl.style.display = 'flex';
         pageEl.style.breakAfter = 'page';
         pageEl.style.pageBreakAfter = 'always';
+        pageEl.style.width = '794px';
+        pageEl.style.minWidth = '794px';
+        pageEl.style.maxWidth = '794px';
+        pageEl.style.minHeight = '1123px';
+        pageEl.style.transform = 'none';
 
         // Check if page is front or back cover (has rich dark background / gradient / background-image)
         const isCoverPage = pageEl.id === 'ebook-page-1' || pageEl.id === `ebook-page-${childPages.length}` || pIdx === 0 || pIdx === childPages.length - 1;
@@ -555,13 +565,15 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
           });
         }
 
-        // Render page cleanly to canvas
+        // Render page cleanly to canvas with desktop viewport evaluation
         const canvas = await html2canvas(pageEl, {
-          scale: 2,
+          scale: 2.2,
           useCORS: true,
           allowTaint: true,
           logging: false,
           backgroundColor: isCoverPage ? null : '#ffffff',
+          windowWidth: 1440,
+          width: 794,
           scrollX: 0,
           scrollY: 0,
         });
@@ -577,6 +589,11 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
         pageEl.style.display = origDisplay;
         pageEl.style.breakAfter = origBreakAfter;
         pageEl.style.pageBreakAfter = origPageBreakAfter;
+        pageEl.style.width = origWidth;
+        pageEl.style.minWidth = origMinWidth;
+        pageEl.style.maxWidth = origMaxWidth;
+        pageEl.style.minHeight = origMinHeight;
+        pageEl.style.transform = origTransform;
 
         const imgData = canvas.toDataURL('image/jpeg', 0.98);
 
@@ -585,19 +602,8 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
           pdf.addPage();
         }
 
-        const canvasRatio = canvas.height / canvas.width;
-        let renderWidth = pdfWidth - 10; // Small 5mm safe margin
-        let renderHeight = renderWidth * canvasRatio;
-
-        if (renderHeight > (pdfHeight - 10)) {
-          renderHeight = pdfHeight - 10;
-          renderWidth = renderHeight / canvasRatio;
-        }
-
-        const xOffset = (pdfWidth - renderWidth) / 2;
-        const yOffset = (pdfHeight - renderHeight) / 2;
-
-        pdf.addImage(imgData, 'JPEG', xOffset, yOffset, renderWidth, renderHeight);
+        // Full A4 page bleed (0, 0, 210mm, 297mm)
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
       }
 
       pdf.save(fileName);
@@ -605,9 +611,41 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
     }
 
     // =========================================================================
-    // B. SINGLE-PAGE DOCUMENT EXPORT (CV, Letter, Devis, Facture)
+    // B. SINGLE-PAGE OR MULTI-PAGE A4 DOCUMENT EXPORT (CV, Letter, Devis, Facture)
     // =========================================================================
-    if (elementId === 'cv-preview' || elementId === 'letter-preview' || elementId === 'business-doc-preview' || element.getAttribute('data-single-page') === 'true') {
+    if (
+      elementId === 'cv-preview' || 
+      elementId === 'letter-preview' || 
+      elementId === 'business-doc-preview' || 
+      element.getAttribute('data-single-page') === 'true' ||
+      element.getAttribute('data-a4-document') === 'true'
+    ) {
+      // Find all ancestor elements that have transform scale (e.g. A4PreviewContainer)
+      const scaledAncestors: Array<{ el: HTMLElement; origTransform: string }> = [];
+      let curr: HTMLElement | null = element.parentElement;
+      while (curr && curr !== document.body) {
+        if (curr.style && curr.style.transform && curr.style.transform.includes('scale')) {
+          scaledAncestors.push({ el: curr, origTransform: curr.style.transform });
+          curr.style.transform = 'none';
+        }
+        curr = curr.parentElement;
+      }
+
+      // Save element original sizing & force unscaled standard A4 dimensions (794px x 1123px)
+      const origElWidth = element.style.width;
+      const origElMinWidth = element.style.minWidth;
+      const origElMaxWidth = element.style.maxWidth;
+      const origElMinHeight = element.style.minHeight;
+      const origElTransform = element.style.transform;
+      const origBoxSizing = element.style.boxSizing;
+
+      element.style.width = '794px';
+      element.style.minWidth = '794px';
+      element.style.maxWidth = '794px';
+      element.style.minHeight = '1123px';
+      element.style.boxSizing = 'border-box';
+      element.style.transform = 'none';
+
       const allElements = [element, ...Array.from(element.querySelectorAll<HTMLElement>('*'))];
       const styleRestorers: Array<{ el: HTMLElement; color: string; bg: string; border: string; opacity: string }> = [];
 
@@ -648,12 +686,15 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
         }
       });
 
+      // Capture high-fidelity canvas with desktop width emulation
       const canvas = await html2canvas(element, {
-        scale: 2,
+        scale: 2.2,
         useCORS: true,
         logging: false,
         allowTaint: true,
         backgroundColor: '#ffffff',
+        windowWidth: 1440,
+        width: 794,
         scrollX: 0,
         scrollY: 0
       });
@@ -666,7 +707,17 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
         el.style.opacity = opacity;
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      element.style.width = origElWidth;
+      element.style.minWidth = origElMinWidth;
+      element.style.maxWidth = origElMaxWidth;
+      element.style.minHeight = origElMinHeight;
+      element.style.transform = origElTransform;
+      element.style.boxSizing = origBoxSizing;
+
+      // Restore ancestor scales
+      scaledAncestors.forEach(({ el, origTransform }) => {
+        el.style.transform = origTransform;
+      });
 
       const pdf = new jsPDF({
         orientation: 'portrait',
@@ -677,19 +728,45 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
       const pdfWidth = 210;
       const pdfHeight = 297;
 
-      const canvasRatio = canvas.height / canvas.width;
-      let renderWidth = pdfWidth;
-      let renderHeight = (canvas.height * pdfWidth) / canvas.width;
+      // Check if document fits on 1 page (tolerance up to 1160px for minor padding)
+      const singlePageThresholdPx = Math.round(canvas.width * (297 / 210) * 1.05);
 
-      if (renderHeight > pdfHeight) {
-        renderHeight = pdfHeight;
-        renderWidth = pdfHeight / canvasRatio;
+      if (canvas.height <= singlePageThresholdPx) {
+        // Exact 1-Page A4 Full Bleed
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+      } else {
+        // Multi-page document: Slice accurately by A4 ratio
+        const pageHeightPx = Math.round(canvas.width * (297 / 210));
+        const totalPages = Math.ceil(canvas.height / pageHeightPx);
+
+        for (let i = 0; i < totalPages; i++) {
+          if (i > 0) pdf.addPage();
+          
+          const pageCanvas = document.createElement('canvas');
+          pageCanvas.width = canvas.width;
+          pageCanvas.height = pageHeightPx;
+          const ctx = pageCanvas.getContext('2d');
+
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+            
+            const sourceY = i * pageHeightPx;
+            const sourceH = Math.min(pageHeightPx, canvas.height - sourceY);
+
+            ctx.drawImage(
+              canvas,
+              0, sourceY, canvas.width, sourceH,
+              0, 0, canvas.width, sourceH
+            );
+
+            const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.98);
+            pdf.addImage(pageImgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+          }
+        }
       }
 
-      const xOffset = (pdfWidth - renderWidth) / 2;
-      const yOffset = Math.max(0, (pdfHeight - renderHeight) / 2);
-
-      pdf.addImage(imgData, 'JPEG', xOffset, yOffset, renderWidth, renderHeight);
       pdf.save(fileName);
       return true;
     }

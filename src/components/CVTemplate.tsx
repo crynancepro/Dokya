@@ -226,15 +226,18 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
   return (
     <div 
       id="cv-preview"
+      data-a4-document="true"
       style={{
         width: '210mm',
+        minWidth: '210mm',
+        maxWidth: '210mm',
         minHeight: '297mm',
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between'
       }}
-      className={`bg-white text-slate-800 shadow-xl rounded-none print:shadow-none print:rounded-none border border-slate-200 transition-all relative w-[210mm] max-w-full mx-auto min-h-[297mm] flex flex-col justify-between ${fontClass} ${fontSizeClass}`}
+      className={`bg-white text-slate-800 shadow-xl rounded-none print:shadow-none print:rounded-none border border-slate-200 transition-all relative w-[210mm] min-w-[210mm] max-w-[210mm] mx-auto min-h-[297mm] flex flex-col justify-between ${fontClass} ${fontSizeClass} a4-document-root`}
     >
       {/* Subtle Watermark Overlay when in unpaid preview mode */}
       {!unlocked && (

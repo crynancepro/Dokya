@@ -1828,7 +1828,7 @@ Retourne UNIQUEMENT un objet JSON valide avec cette structure exacte :
 
     adminStore.transactions.unshift(newTransaction);
 
-    // Si c'est une recharge de solde, créditer le compte utilisateur
+    // Si c'est une recharge de solde, créditer le compte utilisateur, ou activer l'abonnement
     let userNewBalance = undefined;
     const userIndex = adminStore.users.findIndex(u => u.uid === userId || (userEmail && u.email.toLowerCase() === userEmail.toLowerCase()));
     if (userIndex !== -1) {
@@ -1836,6 +1836,20 @@ Retourne UNIQUEMENT un objet JSON valide avec cette structure exacte :
         adminStore.users[userIndex].balance = (adminStore.users[userIndex].balance || 0) + effectiveAmount;
         adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
         userNewBalance = adminStore.users[userIndex].balance;
+      } else if (purpose === 'subscription_purchase') {
+        adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
+        const subDurationDays = effectiveAmount >= 25000 ? 365 : (effectiveAmount >= 5000 ? 30 : 7);
+        const subEndDate = new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString();
+        adminStore.users[userIndex].subscription = {
+          status: 'active',
+          planId: effectiveAmount >= 25000 ? 'annual' : (effectiveAmount >= 5000 ? 'monthly' : 'weekly'),
+          planTitle: effectiveAmount >= 25000 ? 'Pass VIP Annuel' : (effectiveAmount >= 5000 ? 'Pass VIP Mensuel' : 'Pass VIP Hebdomadaire'),
+          startDate: new Date().toISOString(),
+          endDate: subEndDate,
+          pricePaid: effectiveAmount,
+          paymentMethod: detectedMethod,
+          documentsGeneratedCount: 0
+        };
       } else {
         adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
         adminStore.users[userIndex].unlockedDocsCount = (adminStore.users[userIndex].unlockedDocsCount || 0) + 1;
@@ -1897,6 +1911,8 @@ app.post('/api/subscription/submit-payment', (req, res) => {
       amount = 5000,
       paymentMethod = 'wave',
       senderPhone = '',
+      countryCode = 'SN',
+      countryName = 'Sénégal',
       transactionReference = '',
       receiptImage = ''
     } = req.body || {};
@@ -1921,6 +1937,8 @@ app.post('/api/subscription/submit-payment', (req, res) => {
       aiStatus: 'PENDING' as const,
       paymentMethod,
       senderPhone,
+      countryCode,
+      countryName,
       receiptImage: receiptImage && receiptImage.length < 350000 ? receiptImage : undefined,
       createdAt: nowIso,
       purpose: 'subscription_purchase',
@@ -1940,6 +1958,8 @@ app.post('/api/subscription/submit-payment', (req, res) => {
         pricePaid: priceNum,
         paymentMethod,
         senderPhone,
+        countryCode,
+        countryName,
         transactionReference: transactionReference || txId,
         submittedAt: nowIso
       };
@@ -1950,8 +1970,8 @@ app.post('/api/subscription/submit-payment', (req, res) => {
       'payment',
       'SUBSCRIPTION_PAYMENT_SUBMITTED',
       userEmail || 'candidat@dokya.sn',
-      `Demande de souscription soumise pour ${planTitle} (${priceNum.toLocaleString('fr-FR')} FCFA via ${paymentMethod}). En attente de validation administrative.`,
-      { txId, planId, planTitle, amount: priceNum, paymentMethod, senderPhone, transactionReference },
+      `Demande de souscription soumise pour ${planTitle} (${priceNum.toLocaleString('fr-FR')} FCFA via ${paymentMethod} - ${countryName}). En attente de validation administrative.`,
+      { txId, planId, planTitle, amount: priceNum, paymentMethod, senderPhone, countryCode, countryName, transactionReference },
       userEmail,
       userId,
       'warning'
@@ -1985,6 +2005,8 @@ app.post('/api/recharge/submit-payment', (req, res) => {
       amount = 3000,
       paymentMethod = 'wave',
       senderPhone = '',
+      countryCode = 'SN',
+      countryName = 'Sénégal',
       transactionReference = '',
       receiptImage = ''
     } = req.body || {};
@@ -2009,6 +2031,8 @@ app.post('/api/recharge/submit-payment', (req, res) => {
       aiStatus: 'PENDING' as const,
       paymentMethod,
       senderPhone,
+      countryCode,
+      countryName,
       receiptImage: receiptImage && receiptImage.length < 350000 ? receiptImage : undefined,
       createdAt: nowIso,
       purpose: 'wallet_recharge'
@@ -2020,8 +2044,8 @@ app.post('/api/recharge/submit-payment', (req, res) => {
       'payment',
       'WALLET_RECHARGE_SUBMITTED',
       userEmail || 'candidat@dokya.sn',
-      `Demande de recharge de solde soumise : ${amountNum.toLocaleString('fr-FR')} FCFA via ${paymentMethod}. En attente de validation administrative.`,
-      { txId, amount: amountNum, paymentMethod, senderPhone, transactionReference },
+      `Demande de recharge de solde soumise : ${amountNum.toLocaleString('fr-FR')} FCFA via ${paymentMethod} (${countryName}). En attente de validation administrative.`,
+      { txId, amount: amountNum, paymentMethod, senderPhone, countryCode, countryName, transactionReference },
       userEmail,
       userId,
       'warning'
@@ -2252,6 +2276,7 @@ export interface ServerAdminUserRecord {
   credits: number;
   role: 'admin' | 'candidate' | 'recruiter' | string;
   subscriptionStatus: 'free' | 'pro' | 'unlimited' | string;
+  subscription?: any;
   status?: 'active' | 'suspended' | string;
   suspendedReason?: string;
   documentsCount?: number;

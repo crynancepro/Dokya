@@ -173,7 +173,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* ZONE 2 (CENTER): ACTIVE SERVICE & DOCUMENT BADGE (Clean, single-purpose) */}
           {activeBadge && (
-            <div className="flex items-center justify-center">
+            <div className="hidden md:flex items-center justify-center">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-slate-700/80 bg-slate-900/90 text-xs font-semibold shadow-inner">
                 <activeBadge.icon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                 <span className="truncate max-w-[140px] sm:max-w-[220px] md:max-w-none text-slate-200 font-bold">{activeBadge.title}</span>

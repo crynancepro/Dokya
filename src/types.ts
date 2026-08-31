@@ -397,6 +397,8 @@ export interface UserSubscription {
   receiptImage?: string;
   transactionReference?: string;
   senderPhone?: string;
+  countryCode?: string;
+  countryName?: string;
   submittedAt?: string;
   adminValidationNote?: string;
 }

@@ -256,7 +256,16 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
   return (
     <div 
       id="business-doc-preview" 
-      className="w-full bg-white text-slate-900 p-6 sm:p-10 rounded-2xl shadow-sm border border-slate-100 print:shadow-none print:border-none print:p-0 font-sans text-xs selection:bg-indigo-600 selection:text-white"
+      data-single-page="true"
+      data-a4-document="true"
+      style={{
+        width: '210mm',
+        minWidth: '210mm',
+        maxWidth: '210mm',
+        minHeight: '297mm',
+        boxSizing: 'border-box'
+      }}
+      className="w-[210mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] mx-auto bg-white text-slate-900 p-10 rounded-none shadow-xl border border-slate-200/90 print:shadow-none print:border-none print:p-0 font-sans text-xs selection:bg-indigo-600 selection:text-white a4-document-root"
     >
       {/* ------------------------------------------------------------------ */}
       {/* MODÈLE 1 : CLASSIQUE OHADA (Standard UEMOA)                       */}

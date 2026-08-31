@@ -57,16 +57,17 @@ export const AIFormValidationBanner: React.FC<AIFormValidationBannerProps> = ({
         </div>
 
         {/* Right Side: Action Button & Toggle */}
-        <div className="flex items-center gap-2 self-end sm:self-center">
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
           {onEnrichAI && (
             <button
               type="button"
               onClick={onEnrichAI}
               disabled={isGenerating}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-98 rounded-lg shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-98 rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer text-center"
             >
-              <Wand2 className="w-3.5 h-3.5" />
-              <span>{isGenerating ? 'Optimisation en cours...' : enrichButtonLabel}</span>
+              <Wand2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="sm:hidden">{isGenerating ? 'Optimisation...' : 'Enrichir avec l\'IA'}</span>
+              <span className="hidden sm:inline">{isGenerating ? 'Optimisation en cours...' : enrichButtonLabel}</span>
             </button>
           )}
 
@@ -74,7 +75,7 @@ export const AIFormValidationBanner: React.FC<AIFormValidationBannerProps> = ({
             <button
               type="button"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="inline-flex items-center gap-1 px-2.5 py-2 text-xs font-semibold text-slate-700 bg-white/80 hover:bg-white border border-slate-300 rounded-lg transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold text-slate-700 bg-white/90 hover:bg-white border border-slate-300 rounded-xl transition-colors cursor-pointer shrink-0"
               title="Voir les conseils d'enrichissement"
             >
               <span>{isExpanded ? 'Masquer' : 'Conseils'}</span>

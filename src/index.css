@@ -285,3 +285,99 @@
   page-break-before: always !important;
 }
 
+/* ========================================================================= */
+/* STRICT A4 FIXED-CANVAS & NON-RESPONSIVE PRINT & EXPORT ENGINE            */
+/* Ensures that inside any document preview (#cv-preview, #letter-preview,   */
+/* #business-doc-preview, #ebook-printable-area, .a4-document-root), layouts */
+/* never collapse into narrow mobile single-columns and remain 100% true A4. */
+/* ========================================================================= */
+.a4-document-root,
+#cv-preview,
+#letter-preview,
+#business-doc-preview,
+#ebook-printable-area,
+[data-a4-document="true"],
+.kdp-page-break[data-a4-page="true"] {
+  width: 210mm !important;
+  min-width: 210mm !important;
+  max-width: 210mm !important;
+  min-height: 297mm !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+}
+
+/* Prevent text shrinking or responsive stacking inside A4 containers */
+.a4-document-root .grid,
+#cv-preview .grid,
+#letter-preview .grid,
+#business-doc-preview .grid {
+  display: grid !important;
+}
+
+/* Force standard desktop grid column distribution */
+.a4-document-root .md\:grid-cols-12,
+#cv-preview .md\:grid-cols-12,
+#letter-preview .md\:grid-cols-12,
+#business-doc-preview .md\:grid-cols-12 {
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+}
+
+.a4-document-root .md\:grid-cols-3,
+#cv-preview .md\:grid-cols-3,
+#letter-preview .md\:grid-cols-3,
+#business-doc-preview .md\:grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.a4-document-root .sm\:grid-cols-2,
+#cv-preview .sm\:grid-cols-2,
+#letter-preview .sm\:grid-cols-2,
+#business-doc-preview .sm\:grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.a4-document-root .md\:col-span-8,
+#cv-preview .md\:col-span-8 {
+  grid-column: span 8 / span 8 !important;
+}
+
+.a4-document-root .md\:col-span-7,
+#cv-preview .md\:col-span-7 {
+  grid-column: span 7 / span 7 !important;
+}
+
+.a4-document-root .md\:col-span-6,
+#cv-preview .md\:col-span-6 {
+  grid-column: span 6 / span 6 !important;
+}
+
+.a4-document-root .md\:col-span-5,
+#cv-preview .md\:col-span-5 {
+  grid-column: span 5 / span 5 !important;
+}
+
+.a4-document-root .md\:col-span-4,
+#cv-preview .md\:col-span-4 {
+  grid-column: span 4 / span 4 !important;
+}
+
+.a4-document-root .md\:col-span-3,
+#cv-preview .md\:col-span-3 {
+  grid-column: span 3 / span 3 !important;
+}
+
+.a4-document-root .sm\:flex-row,
+#cv-preview .sm\:flex-row,
+#letter-preview .sm\:flex-row,
+#business-doc-preview .sm\:flex-row {
+  flex-direction: row !important;
+}
+
+.a4-document-root .sm\:text-right,
+#cv-preview .sm\:text-right,
+#letter-preview .sm\:text-right,
+#business-doc-preview .sm\:text-right {
+  text-align: right !important;
+}
+
+

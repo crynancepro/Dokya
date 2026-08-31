@@ -6,6 +6,7 @@ import { CVTemplate } from './CVTemplate';
 import { CoverLetterTemplate } from './CoverLetterTemplate';
 import { DevisFactureTemplate } from './DevisFactureTemplate';
 import { EbookTemplate } from './EbookTemplate';
+import { A4PreviewContainer } from './A4PreviewContainer';
 import { usePricing } from '../contexts/PricingContext';
 import { 
   ArrowLeft, Download, FileText, Printer, 
@@ -585,11 +586,8 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
       {/* ========================================================================= */}
       {/* 2. MAIN DOCUMENT STAGE (CENTERED SINGLE A4 SHEET WITH DROP SHADOW)        */}
       {/* ========================================================================= */}
-      <div className="bg-slate-100/80 border border-slate-200/90 rounded-3xl p-3 sm:p-6 lg:p-8 flex justify-center items-start min-h-[850px] overflow-x-auto shadow-inner">
-        <div 
-          className="transition-transform duration-200 origin-top flex justify-center items-start w-full"
-          style={{ transform: `scale(${zoomLevel / 100})` }}
-        >
+      <div className="bg-slate-100/80 border border-slate-200/90 rounded-3xl p-2 sm:p-6 lg:p-8 flex justify-center items-start min-h-[850px] overflow-x-auto shadow-inner">
+        <A4PreviewContainer zoomLevel={zoomLevel}>
           
           {/* Render Active Document */}
           {activePreviewKind === 'ebook' && ebookData && (
@@ -623,12 +621,12 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
           )}
 
           {(activePreviewKind === 'devis' || activePreviewKind === 'facture') && (
-            <div className="w-full max-w-[210mm] mx-auto">
+            <div className="w-[210mm] min-w-[210mm] max-w-[210mm] mx-auto">
               <DevisFactureTemplate data={businessDocData} />
             </div>
           )}
 
-        </div>
+        </A4PreviewContainer>
       </div>
 
       {/* ========================================================================= */}

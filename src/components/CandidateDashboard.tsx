@@ -30,6 +30,7 @@ import { CVTemplate } from './CVTemplate';
 import { CoverLetterTemplate } from './CoverLetterTemplate';
 import { DevisFactureTemplate } from './DevisFactureTemplate';
 import { EbookTemplate } from './EbookTemplate';
+import { A4PreviewContainer } from './A4PreviewContainer';
 import { isAdminEmail } from '../lib/adminAuth';
 
 interface CandidateDashboardProps {
@@ -1882,24 +1883,26 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
             {/* Modal Body Preview */}
             <div className="p-4 overflow-y-auto flex-1 bg-slate-950 flex justify-center">
-              <div className="bg-white text-slate-900 rounded-xl shadow-2xl p-4 sm:p-8 w-full max-w-3xl overflow-x-auto">
-                {previewDoc.generationMode === 'devis' || previewDoc.generationMode === 'facture' || previewDoc.generationMode === 'pack_business' ? (
-                  <div id="modal-business-preview" className="w-full">
-                    <DevisFactureTemplate data={previewDoc.businessDocData || (previewDoc.formData as any)} />
-                  </div>
-                ) : previewDoc.generationMode === 'ebook' && previewDoc.ebookData ? (
-                  <div id="modal-ebook-preview" className="w-full">
-                    <EbookTemplate data={previewDoc.ebookData} unlocked={true} />
-                  </div>
-                ) : previewTab === 'cv' ? (
-                  <div id="modal-cv-preview">
-                    <CVTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} unlocked={true} />
-                  </div>
-                ) : (
-                  <div id="modal-letter-preview">
-                    <CoverLetterTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} />
-                  </div>
-                )}
+              <div className="bg-slate-900/60 rounded-xl shadow-2xl p-2 sm:p-4 w-full flex justify-center overflow-x-auto">
+                <A4PreviewContainer>
+                  {previewDoc.generationMode === 'devis' || previewDoc.generationMode === 'facture' || previewDoc.generationMode === 'pack_business' ? (
+                    <div id="modal-business-preview" className="w-[210mm] min-w-[210mm] max-w-[210mm]">
+                      <DevisFactureTemplate data={previewDoc.businessDocData || (previewDoc.formData as any)} />
+                    </div>
+                  ) : previewDoc.generationMode === 'ebook' && previewDoc.ebookData ? (
+                    <div id="modal-ebook-preview" className="w-[210mm] min-w-[210mm] max-w-[210mm]">
+                      <EbookTemplate data={previewDoc.ebookData} unlocked={true} />
+                    </div>
+                  ) : previewTab === 'cv' ? (
+                    <div id="modal-cv-preview">
+                      <CVTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} unlocked={true} />
+                    </div>
+                  ) : (
+                    <div id="modal-letter-preview">
+                      <CoverLetterTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} />
+                    </div>
+                  )}
+                </A4PreviewContainer>
               </div>
             </div>
 
