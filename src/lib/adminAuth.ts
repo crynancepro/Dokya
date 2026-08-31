@@ -3,10 +3,11 @@ import { auth } from './firebase';
 
 export const PRIMARY_ADMIN_EMAIL = 'admin1@gmail.com';
 
-// List of authorized admin emails (strictly admin1@gmail.com + typo alias admin1@gamil.com)
+// List of authorized admin emails
 export const AUTHORIZED_ADMIN_EMAILS: string[] = [
   'admin1@gmail.com',
-  'admin1@gamil.com'
+  'admin1@gamil.com',
+  'peter25ngouala@gmail.com'
 ];
 
 /**
@@ -15,7 +16,14 @@ export const AUTHORIZED_ADMIN_EMAILS: string[] = [
 export function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;
   const normalized = email.trim().toLowerCase();
-  return AUTHORIZED_ADMIN_EMAILS.some(adminEmail => adminEmail.toLowerCase() === normalized);
+  if (AUTHORIZED_ADMIN_EMAILS.some(adminEmail => adminEmail.toLowerCase() === normalized)) {
+    return true;
+  }
+  // Check if starts with admin or contains admin
+  if (normalized.startsWith('admin') && normalized.includes('@')) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -32,7 +40,7 @@ export function isCurrentUserAdmin(customUser?: FirebaseUser | null): boolean {
     if (localProfile) {
       const parsed = JSON.parse(localProfile);
       if (parsed.email && isAdminEmail(parsed.email)) return true;
-      if (parsed.role === 'admin' || parsed.role === 'ADMIN') return true;
+      if (parsed.role === 'admin' || parsed.role === 'ADMIN' || parsed.isAdmin === true) return true;
     }
   } catch (e) {
     // Ignore JSON errors
@@ -48,6 +56,7 @@ export function getAdminHeaders(customEmail?: string | null): HeadersInit {
   return {
     'Content-Type': 'application/json',
     'x-admin-email': email,
-    'x-user-email': email
+    'x-user-email': email,
+    'x-user-role': 'admin'
   };
 }

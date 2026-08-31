@@ -41,6 +41,7 @@ import {
 import { verifyReceiptImage } from '../services/receiptPaymentService';
 import { TransactionRecord, UserSubscription } from '../types';
 import { usePricing } from '../contexts/PricingContext';
+import { recordTransactionEverywhere, saveTransactionRecord } from '../lib/firebase';
 
 export interface CountryOption {
   code: string;
@@ -486,6 +487,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           senderPhone: fullPhone
         };
 
+        recordTransactionEverywhere(tx).catch(() => {});
+
         setTimeout(() => {
           setIsAiScanning(false);
           setValidationOutcome('success');
@@ -528,6 +531,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       newBalance: safeBalance,
       documentTitle
     };
+
+    recordTransactionEverywhere(freeTx).catch(() => {});
 
     setTimeout(() => {
       setIsAiScanning(false);
@@ -626,6 +631,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           receiptImage: previewUrl || undefined,
           newBalance: result.newBalance
         };
+
+        recordTransactionEverywhere(tx).catch(() => {});
 
         setTimeout(() => {
           setIsAiScanning(false);
@@ -743,6 +750,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         transactionReference: transactionRef.trim() || generatedTxId,
         receiptImage: previewUrl || undefined
       };
+
+      recordTransactionEverywhere(pendingTx).catch(() => {});
 
       setIsAiScanning(false);
       setValidationOutcome('pending');

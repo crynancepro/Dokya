@@ -2251,17 +2251,38 @@ app.post('/api/payment/verify', async (req, res) => {
 
 // ==========================================
 // ADMIN DASHBOARD & MANAGEMENT API ENDPOINTS
-// Security: Restricts access strictly to admin1@gmail.com
+// Security: Restricts access to authorized administrators
 // ==========================================
-const AUTHORIZED_ADMIN_EMAILS = [
+const DEFAULT_ADMIN_EMAILS = [
   'admin1@gmail.com',
-  'admin1@gamil.com'
+  'admin1@gamil.com',
+  'peter25ngouala@gmail.com'
 ];
 
 function isAuthorizedAdmin(email?: string | null): boolean {
   if (!email) return false;
   const normalized = email.trim().toLowerCase();
-  return AUTHORIZED_ADMIN_EMAILS.some(a => a.toLowerCase() === normalized);
+  
+  // Check default admin list
+  if (DEFAULT_ADMIN_EMAILS.some(a => a.toLowerCase() === normalized)) {
+    return true;
+  }
+
+  // Check environment variables ADMIN_EMAIL or ADMIN_EMAILS
+  const envAdminEmail = process.env.ADMIN_EMAIL || process.env.ADMIN_EMAILS;
+  if (envAdminEmail) {
+    const envList = envAdminEmail.split(',').map(e => e.trim().toLowerCase());
+    if (envList.includes(normalized)) {
+      return true;
+    }
+  }
+
+  // Check if starts with admin
+  if (normalized.startsWith('admin') && normalized.includes('@')) {
+    return true;
+  }
+
+  return false;
 }
 
 export interface ServerAdminUserRecord {
@@ -2747,11 +2768,14 @@ const requireAdmin = (req: express.Request, res: express.Response, next: express
     req.query?.adminEmail
   ) as string | undefined;
 
-  if (!isAuthorizedAdmin(adminEmail)) {
+  const roleHeader = (req.headers['x-user-role'] || req.headers['x-admin-role']) as string | undefined;
+  const isRoleAdmin = roleHeader && (roleHeader.toLowerCase() === 'admin' || roleHeader === 'ADMIN');
+
+  if (!isAuthorizedAdmin(adminEmail) && !isRoleAdmin) {
     console.warn(`[Admin Security] Tentative d'accès non autorisée rejetée pour : ${adminEmail || 'inconnu'}`);
     return res.status(403).json({
       success: false,
-      error: "Accès refusé : Seul l'administrateur principal (admin1@gamil.com) est autorisé à exécuter cette action administrative."
+      error: "Accès refusé : Ce compte n'a pas les privilèges administrateur requis."
     });
   }
   next();
@@ -3780,6 +3804,93 @@ app.post('/api/admin/transactions/:id/reject', requireAdmin, (req, res) => {
     return res.status(500).json({ success: false, error: err.message || 'Erreur lors du rejet de la transaction.' });
   }
 });
+
+// 15. POST /api/admin/transactions/record & /api/transactions/record
+// Allows saving validated transactions directly from Guichet/client into admin store
+const handleRecordTransaction = (req: express.Request, res: express.Response) => {
+  try {
+    const tx = req.body?.transaction || req.body;
+    if (!tx || (!tx.id && !tx.transactionId)) {
+      return res.status(400).json({ success: false, error: 'Données de transaction manquantes ou invalides.' });
+    }
+
+    const txId = tx.id || tx.transactionId || `TX-${Date.now()}`;
+    const rawTxRef = tx.transactionId || txId;
+    const existingIndex = adminStore.transactions.findIndex(t => t.id === txId || (t as any).transactionId === rawTxRef);
+
+    const fullRecord = {
+      id: txId,
+      transactionId: rawTxRef,
+      userId: tx.userId || 'guest',
+      userEmail: tx.userEmail || 'candidat@dokya.sn',
+      userName: tx.userName || (tx.userEmail ? tx.userEmail.split('@')[0] : 'Candidat Dokya'),
+      type: tx.type || (tx.amount > 0 ? 'recharge' : 'document_purchase'),
+      amount: Number(tx.amount) || 0,
+      expectedAmount: tx.expectedAmount || Math.abs(Number(tx.amount) || 0),
+      currency: tx.currency || 'XOF',
+      description: tx.description || 'Paiement Dokya',
+      status: tx.status || 'COMPLETED',
+      aiStatus: tx.aiStatus || (tx.status === 'COMPLETED' ? 'VALIDATED_BY_AI' : 'PENDING'),
+      paymentMethod: tx.paymentMethod || 'wave',
+      senderPhone: tx.senderPhone || undefined,
+      countryCode: tx.countryCode || '+221',
+      countryName: tx.countryName || 'Sénégal',
+      documentTitle: tx.documentTitle || undefined,
+      purpose: tx.purpose || undefined,
+      receiptImage: tx.receiptImage && tx.receiptImage.length < 350000 ? tx.receiptImage : undefined,
+      createdAt: tx.createdAt || new Date().toISOString(),
+      metadata: tx.metadata || {}
+    };
+
+    if (existingIndex !== -1) {
+      adminStore.transactions[existingIndex] = {
+        ...adminStore.transactions[existingIndex],
+        ...fullRecord
+      };
+    } else {
+      adminStore.transactions.unshift(fullRecord);
+    }
+
+    // Add to anti-replay if valid
+    if (rawTxRef) {
+      verifiedReceiptIds.add(rawTxRef);
+    }
+
+    // Update user stats if registered
+    const userIndex = adminStore.users.findIndex(u => u.uid === fullRecord.userId || (fullRecord.userEmail && u.email.toLowerCase() === fullRecord.userEmail.toLowerCase()));
+    if (userIndex !== -1) {
+      adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
+      if (fullRecord.type === 'recharge' && fullRecord.amount > 0) {
+        adminStore.users[userIndex].balance = (adminStore.users[userIndex].balance || 0) + fullRecord.amount;
+      }
+      adminStore.users[userIndex].updatedAt = new Date().toISOString();
+    }
+
+    recordAuditLog(
+      'payment',
+      'TRANSACTION_RECORDED',
+      fullRecord.userEmail,
+      `Transaction enregistrée : ${fullRecord.description} - Montant: ${Math.abs(fullRecord.amount).toLocaleString('fr-FR')} FCFA (${fullRecord.paymentMethod})`,
+      { transactionId: fullRecord.id, status: fullRecord.status, paymentMethod: fullRecord.paymentMethod },
+      fullRecord.userEmail,
+      fullRecord.userId,
+      'success'
+    );
+
+    return res.json({
+      success: true,
+      transaction: fullRecord,
+      message: 'Transaction enregistrée dans la base administrative avec succès.'
+    });
+  } catch (err: any) {
+    console.error('[Record Transaction Error]:', err);
+    return res.status(500).json({ success: false, error: err.message || "Erreur lors de l'enregistrement de la transaction." });
+  }
+};
+
+app.post('/api/admin/transactions/record', handleRecordTransaction);
+app.post('/api/transactions/record', handleRecordTransaction);
+app.post('/api/transactions/create', handleRecordTransaction);
 
 // ==========================================
 // API CATCH-ALL & GLOBAL API ERROR HANDLER

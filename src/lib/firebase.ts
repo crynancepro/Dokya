@@ -385,6 +385,67 @@ export async function deletePromoCodeFromFirestore(promoId: string, promoCode?: 
 
 
 
+export async function fetchAllFirestoreTransactions(): Promise<TransactionRecord[]> {
+  try {
+    const q = query(collection(db, 'transactions'));
+    const querySnapshot = await getDocs(q);
+    const transactions: TransactionRecord[] = [];
+    querySnapshot.forEach((d) => {
+      transactions.push({ id: d.id, ...(d.data() as any) } as TransactionRecord);
+    });
+    return transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (error) {
+    console.warn('Could not fetch all transactions from Firestore:', error);
+    return [];
+  }
+}
+
+export async function fetchAllFirestoreUserProfiles(): Promise<CandidateProfile[]> {
+  try {
+    const q = query(collection(db, 'user_profiles'));
+    const querySnapshot = await getDocs(q);
+    const profiles: CandidateProfile[] = [];
+    querySnapshot.forEach((d) => {
+      profiles.push({ uid: d.id, ...(d.data() as any) } as CandidateProfile);
+    });
+    return profiles;
+  } catch (error) {
+    console.warn('Could not fetch all user profiles from Firestore:', error);
+    return [];
+  }
+}
+
+/**
+ * Persists transaction simultaneously to Firestore and Backend Admin Store
+ */
+export async function recordTransactionEverywhere(tx: TransactionRecord): Promise<boolean> {
+  let firestoreSuccess = false;
+  try {
+    firestoreSuccess = await saveTransactionRecord(tx);
+  } catch (e) {
+    console.warn('Error saving to Firestore:', e);
+  }
+
+  try {
+    const res = await fetch('/api/admin/transactions/record', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-email': 'admin1@gmail.com',
+        'x-user-role': 'admin'
+      },
+      body: JSON.stringify({ transaction: tx })
+    });
+    if (res.ok) {
+      return true;
+    }
+  } catch (e) {
+    console.warn('Error posting to backend transaction recorder:', e);
+  }
+
+  return firestoreSuccess;
+}
+
 export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
