@@ -7,7 +7,7 @@ import {
   Sliders, UserCheck, Eye, Edit3, X, HelpCircle, Tag, ShieldAlert,
   Percent, Clock, Trash2, Ban, Unlock, Check, AlertTriangle, ArrowRight,
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
-  Phone, Globe
+  Phone, Globe, Flame
 } from 'lucide-react';
 import { 
   auth, 
@@ -19,7 +19,11 @@ import {
   DEFAULT_PLATFORM_PRICING,
   fetchAllFirestoreTransactions,
   fetchAllFirestoreUserProfiles,
-  saveTransactionRecord
+  saveTransactionRecord,
+  subscribeToAllTransactions,
+  approveTransactionWithAtomicFirestore,
+  rejectTransactionWithFirestore,
+  purgeDemoDataInFirestore
 } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail, PRIMARY_ADMIN_EMAIL, getAdminHeaders } from '../lib/adminAuth';
@@ -138,6 +142,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Pricing Form State
   const [editingPricing, setEditingPricing] = useState<PlatformPricingConfig>(pricingConfig);
   const [isSavingPricing, setIsSavingPricing] = useState<boolean>(false);
+
+  // Demo Data Purge Modal State (Exclusive to peter25ngouala@gmail.com)
+  const [isPurgeModalOpen, setIsPurgeModalOpen] = useState<boolean>(false);
+  const [isPurgingDemoData, setIsPurgingDemoData] = useState<boolean>(false);
 
   // Check auth state
   useEffect(() => {
@@ -276,6 +284,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (isAuthorized) {
       loadAdminData();
 
+      // Real-time Firestore transactions listener (instantly detects new pending recharges and receipts)
+      const unsubTx = subscribeToAllTransactions((liveTxs) => {
+        if (Array.isArray(liveTxs)) {
+          setTransactionsList(liveTxs);
+        }
+      });
+
       // Real-time Firestore pricing listener
       const unsubPricing = subscribeToPricing((livePricing) => {
         setPricingConfig(livePricing);
@@ -294,6 +309,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
 
       return () => {
+        unsubTx();
         unsubPricing();
         unsubPromos();
       };
@@ -957,43 +973,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsValidatingTx(true);
     setErrorMsg(null);
     try {
-      const headers = getAdminHeaders(adminEmail);
-      const res = await fetch(`/api/admin/transactions/${tx.id}/validate`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          adminEmail,
-          adminNote: note || manualValidationNote || 'Validation manuelle effectuée par l\'administrateur.'
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        const updatedTx: TransactionRecord = {
-          ...tx,
-          status: 'MANUALLY_VALIDATED',
-          aiStatus: 'MANUALLY_VALIDATED',
-          manuallyValidatedBy: adminEmail,
-          manuallyValidatedAt: new Date().toISOString(),
-          adminValidationNote: note || manualValidationNote || 'Validation manuelle effectuée par l\'administrateur.'
-        };
-        saveTransactionRecord(updatedTx).catch(() => {});
+      const finalNote = note || manualValidationNote || 'Validation manuelle effectuée par l\'administrateur.';
+      // Run atomic Firestore approval transaction: updates status to 'APPROVED' & credits walletBalance in users/{userId}
+      const result = await approveTransactionWithAtomicFirestore(tx.id, adminEmail, finalNote);
 
-        setSuccessMsg(data.message || `Transaction ${tx.id} validée manuellement avec succès !`);
+      if (result.success) {
+        setSuccessMsg(result.message || `Transaction ${tx.id} validée et accréditée avec succès !`);
         setManualValidationNote('');
         if (selectedTxForInspection && selectedTxForInspection.id === tx.id) {
           setSelectedTxForInspection(prev => prev ? {
             ...prev,
-            status: 'MANUALLY_VALIDATED',
+            status: 'APPROVED',
             aiStatus: 'MANUALLY_VALIDATED',
             manuallyValidatedBy: adminEmail,
             manuallyValidatedAt: new Date().toISOString(),
-            adminValidationNote: note || manualValidationNote || 'Validé manuellement'
+            adminValidationNote: finalNote
           } : null);
         }
         setTimeout(() => setSuccessMsg(null), 4500);
         loadAdminData();
       } else {
-        setErrorMsg(data.error || 'Erreur lors de la validation manuelle de la transaction.');
+        setErrorMsg(result.error || result.message || 'Erreur lors de la validation manuelle de la transaction.');
       }
     } catch (e: any) {
       console.error('Error validating transaction:', e);
@@ -1008,35 +1008,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsRejectingTx(true);
     setErrorMsg(null);
     try {
-      const headers = getAdminHeaders(adminEmail);
-      const res = await fetch(`/api/admin/transactions/${tx.id}/reject`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          adminEmail,
-          reason: reason || tx.rejectionReason || 'Rejet confirmé par l\'administrateur.'
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg(data.message || `Rejet confirmé pour la transaction ${tx.id}.`);
+      const finalReason = reason || tx.rejectionReason || 'Rejet confirmé par l\'administrateur.';
+      const result = await rejectTransactionWithFirestore(tx.id, adminEmail, finalReason);
+      if (result.success) {
+        setSuccessMsg(result.message || `Rejet confirmé pour la transaction ${tx.id}.`);
         if (selectedTxForInspection && selectedTxForInspection.id === tx.id) {
           setSelectedTxForInspection(prev => prev ? {
             ...prev,
-            status: 'REJECTED_BY_ADMIN',
-            aiStatus: 'REJECTED_BY_ADMIN'
+            status: 'REJECTED',
+            aiStatus: 'REJECTED_BY_ADMIN',
+            rejectionReason: finalReason
           } : null);
         }
         setTimeout(() => setSuccessMsg(null), 4000);
         loadAdminData();
       } else {
-        setErrorMsg(data.error || 'Erreur lors de la confirmation du rejet.');
+        setErrorMsg(result.error || result.message || 'Erreur lors de la confirmation du rejet.');
       }
     } catch (e: any) {
       console.error('Error rejecting transaction:', e);
       setErrorMsg(e.message || 'Erreur réseau lors du rejet.');
     } finally {
       setIsRejectingTx(false);
+    }
+  };
+
+  // 10. PURGE DEMO DATA (EXCLUSIVE TO SUPER ADMIN peter25ngouala@gmail.com)
+  const handlePurgeDemoData = async () => {
+    setIsPurgingDemoData(true);
+    setErrorMsg(null);
+    try {
+      const res = await purgeDemoDataInFirestore(adminEmail);
+      if (res.success) {
+        setSuccessMsg(res.message);
+        setIsPurgeModalOpen(false);
+        await loadAdminData();
+        setTimeout(() => setSuccessMsg(null), 7000);
+      } else {
+        setErrorMsg(res.message || 'Erreur lors du nettoyage des données de démonstration.');
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Erreur lors de la purge.');
+    } finally {
+      setIsPurgingDemoData(false);
     }
   };
 
@@ -1160,6 +1174,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Quick Actions */}
           <div className="flex items-center gap-2 flex-wrap">
+            {adminEmail === PRIMARY_ADMIN_EMAIL && (
+              <button
+                onClick={() => setIsPurgeModalOpen(true)}
+                type="button"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-xl bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-600 hover:to-rose-600 text-amber-300 hover:text-white border border-amber-500/40 transition-all cursor-pointer shadow-sm"
+                title="Purger les faux reçus et réinitialiser les soldes de test pour le lancement réel"
+              >
+                <Flame className="w-3.5 h-3.5 text-amber-400" />
+                <span>🔥 Nettoyer les données de démo</span>
+              </button>
+            )}
+
             <button
               onClick={async () => {
                 await loadAdminData();
@@ -3785,6 +3811,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* PURGE DEMO DATA CONFIRMATION MODAL (SUPER ADMIN ONLY)       */}
+      {/* ============================================================ */}
+      {isPurgeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl shadow-rose-950/50 space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                <Flame className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-white">
+                  Purge & Remise à Zéro Production
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Opération réservée exclusivement à <strong className="text-amber-300">{PRIMARY_ADMIN_EMAIL}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2 text-xs text-amber-200">
+              <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                Attention : Cette action est irréversible !
+              </div>
+              <p className="leading-relaxed text-slate-300">
+                Cette action va :
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-slate-300 pl-1">
+                <li>Supprimer toutes les transactions de test dans Firestore</li>
+                <li>Réinitialiser les soldes de test des utilisateurs à <strong className="text-white">0 FCFA</strong></li>
+                <li>Nettoyer le cache mémoire du serveur</li>
+              </ul>
+              <p className="text-slate-400 pt-1 text-[11px]">
+                La plateforme sera immédiatement prête pour accueillir les vrais paiements en ligne Wave / Orange Money et les recharges de solde réelles.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isPurgingDemoData}
+                onClick={() => setIsPurgeModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={isPurgingDemoData}
+                onClick={handlePurgeDemoData}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-black text-xs transition-all cursor-pointer shadow-lg shadow-rose-950/40 flex items-center gap-2 disabled:opacity-50"
+              >
+                {isPurgingDemoData ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Purge en cours...</span>
+                  </>
+                ) : (
+                  <>
+                    <Flame className="w-4 h-4" />
+                    <span>Confirmer la remise à zéro</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -15,7 +15,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Lazy init Gemini client
 function getGenAIClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
   if (!apiKey || apiKey.trim() === '' || apiKey === 'MY_GEMINI_API_KEY') {
     throw new Error('La clé GEMINI_API_KEY n\'est pas configurée dans l\'environnement. Veuillez ajouter votre clé API Gemini dans les secrets d\'environnement.');
   }
@@ -1394,7 +1394,61 @@ app.post('/api/payment/verify-receipt', async (req, res) => {
     console.log(`[Receipt OCR IA] Début de l'analyse d'image reçu pour ${userEmail} (Montant attendu: ${expectedAmount} FCFA, Heure référence: ${serverDateStr} ${serverTimeStr} GMT)...`);
 
     // 1. Initialiser le client Gemini AI
-    const ai = getGenAIClient();
+    let ai: GoogleGenAI | null = null;
+    try {
+      ai = getGenAIClient();
+    } catch (keyErr: any) {
+      console.warn('[Gemini API Notice] Clé API non configurée pour l\'OCR IA automatique, enregistrement de la transaction pour validation administrative.');
+      
+      const rawTxId = transactionRef || `REF-${Date.now().toString().slice(-6)}`;
+      const targetAmount = Math.max(100, Number(expectedAmount) || 1000);
+      const pendingTxRecordId = `TX-PENDING-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+      const pendingTx = {
+        id: pendingTxRecordId,
+        transactionId: rawTxId,
+        userId: userId || 'guest',
+        userEmail: userEmail || 'candidat@senegalcv.sn',
+        userName: userName || (userEmail ? userEmail.split('@')[0] : 'Candidat'),
+        type: purpose === 'wallet_recharge' ? 'recharge' : (purpose === 'subscription_purchase' ? 'subscription_purchase' : 'document_purchase'),
+        amount: purpose === 'wallet_recharge' ? targetAmount : -targetAmount,
+        expectedAmount: targetAmount,
+        extractedAmount: targetAmount,
+        currency: 'XOF',
+        description: purpose === 'wallet_recharge'
+          ? `Recharge Solde (${targetAmount.toLocaleString('fr-FR')} FCFA - En attente validation)`
+          : purpose === 'subscription_purchase'
+            ? `Abonnement (${targetAmount.toLocaleString('fr-FR')} FCFA - En attente validation)`
+            : `${documentTitle || 'Document'} (${targetAmount.toLocaleString('fr-FR')} FCFA - En attente validation)`,
+        status: 'PENDING_APPROVAL',
+        aiStatus: 'PENDING',
+        paymentMethod: 'wave',
+        senderPhone: senderPhone || undefined,
+        countryCode: countryCode || '+221',
+        countryName: countryName || 'Sénégal',
+        transactionReference: rawTxId,
+        createdAt: new Date().toISOString(),
+        documentTitle,
+        purpose,
+        receiptImage: imageBase64 && imageBase64.length < 350000 ? imageBase64 : undefined,
+        metadata: {
+          submittedAt: new Date().toISOString(),
+          status: 'PENDING_ADMIN_REVIEW',
+          notice: 'Validation administrative en cours'
+        }
+      };
+
+      adminStore.transactions.unshift(pendingTx);
+
+      return res.json({
+        success: false,
+        status: 'PENDING',
+        transactionId: rawTxId,
+        amount: targetAmount,
+        message: "Votre reçu a été enregistré avec succès et transmis pour certification administrative (délai : moins de 2 minutes).",
+        errorCode: 'PENDING_APPROVAL'
+      });
+    }
 
     const imagePart = {
       inlineData: {
@@ -1454,19 +1508,75 @@ Retourne UNIQUEMENT un objet JSON valide avec cette structure exacte :
   "validation_reason": "Reçu Wave authentique et récent vers le destinataire officiel"
 }`;
 
-    const geminiResponse = await generateContentWithRetry(ai, {
-      model: 'gemini-flash-latest',
-      contents: {
-        parts: [imagePart, { text: promptText }]
-      },
-      config: {
-        responseMimeType: 'application/json',
-        temperature: 0.1
-      }
-    });
+    let responseText = '';
+    let extractedData: any = null;
 
-    const responseText = geminiResponse.text || '';
-    const extractedData = repairTruncatedJSON(responseText);
+    try {
+      const geminiResponse = await generateContentWithRetry(ai, {
+        model: 'gemini-flash-latest',
+        contents: {
+          parts: [imagePart, { text: promptText }]
+        },
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.1
+        }
+      });
+
+      responseText = geminiResponse.text || '';
+      extractedData = repairTruncatedJSON(responseText);
+    } catch (aiGenErr: any) {
+      console.warn('[Receipt OCR IA Notice] Modèle IA non disponible, enregistrement du reçu pour validation administrative:', aiGenErr?.message);
+      
+      const rawTxId = transactionRef || `REF-${Date.now().toString().slice(-6)}`;
+      const targetAmount = Math.max(100, Number(expectedAmount) || 1000);
+      const pendingTxRecordId = `TX-PENDING-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+      const pendingTx = {
+        id: pendingTxRecordId,
+        transactionId: rawTxId,
+        userId: userId || 'guest',
+        userEmail: userEmail || 'candidat@senegalcv.sn',
+        userName: userName || (userEmail ? userEmail.split('@')[0] : 'Candidat'),
+        type: purpose === 'wallet_recharge' ? 'recharge' : (purpose === 'subscription_purchase' ? 'subscription_purchase' : 'document_purchase'),
+        amount: purpose === 'wallet_recharge' ? targetAmount : -targetAmount,
+        expectedAmount: targetAmount,
+        extractedAmount: targetAmount,
+        currency: 'XOF',
+        description: purpose === 'wallet_recharge'
+          ? `Recharge Solde (${targetAmount.toLocaleString('fr-FR')} FCFA - En attente validation)`
+          : purpose === 'subscription_purchase'
+            ? `Abonnement (${targetAmount.toLocaleString('fr-FR')} FCFA - En attente validation)`
+            : `${documentTitle || 'Document'} (${targetAmount.toLocaleString('fr-FR')} FCFA - En attente validation)`,
+        status: 'PENDING_APPROVAL',
+        aiStatus: 'PENDING',
+        paymentMethod: 'wave',
+        senderPhone: senderPhone || undefined,
+        countryCode: countryCode || '+221',
+        countryName: countryName || 'Sénégal',
+        transactionReference: rawTxId,
+        createdAt: new Date().toISOString(),
+        documentTitle,
+        purpose,
+        receiptImage: imageBase64 && imageBase64.length < 350000 ? imageBase64 : undefined,
+        metadata: {
+          submittedAt: new Date().toISOString(),
+          status: 'PENDING_ADMIN_REVIEW',
+          notice: 'Validation administrative en cours'
+        }
+      };
+
+      adminStore.transactions.unshift(pendingTx);
+
+      return res.json({
+        success: false,
+        status: 'PENDING',
+        transactionId: rawTxId,
+        amount: targetAmount,
+        message: "Votre reçu a été enregistré avec succès et transmis pour certification administrative (délai : moins de 2 minutes).",
+        errorCode: 'PENDING_APPROVAL'
+      });
+    }
 
     console.log('[Receipt OCR IA Result]:', extractedData);
 
@@ -3884,6 +3994,69 @@ const handleRecordTransaction = (req: express.Request, res: express.Response) =>
 app.post('/api/admin/transactions/record', handleRecordTransaction);
 app.post('/api/transactions/record', handleRecordTransaction);
 app.post('/api/transactions/create', handleRecordTransaction);
+
+// 16. GET /api/transactions/:id/status - Real-time status lookup for clients
+app.get('/api/transactions/:id/status', (req, res) => {
+  try {
+    const { id } = req.params;
+    const tx = adminStore.transactions.find(t => t.id === id || (t as any).transactionId === id);
+    if (!tx) {
+      return res.status(404).json({ success: false, error: 'Transaction non trouvée' });
+    }
+    return res.json({
+      success: true,
+      id: tx.id,
+      transactionId: (tx as any).transactionId || tx.id,
+      status: tx.status,
+      aiStatus: (tx as any).aiStatus,
+      rejectionReason: (tx as any).rejectionReason,
+      newBalance: (tx as any).newBalance,
+      transaction: tx
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message || 'Erreur serveur' });
+  }
+});
+
+// 17. POST /api/admin/purge-demo-data - Purge all demo/test transactions & reset test balances
+app.post('/api/admin/purge-demo-data', requireAdmin, (req, res) => {
+  try {
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
+    if (adminEmail !== 'peter25ngouala@gmail.com') {
+      return res.status(403).json({ success: false, error: 'Accès refusé. Réservé au super-administrateur.' });
+    }
+
+    const previousTxCount = adminStore.transactions.length;
+    adminStore.transactions = [];
+    verifiedReceiptIds.clear();
+
+    // Reset user test balances to 0 for production mode
+    adminStore.users.forEach(u => {
+      u.balance = 0;
+      u.ordersCount = 0;
+    });
+
+    recordAuditLog(
+      'admin_action',
+      'PURGE_DEMO_DATA',
+      adminEmail,
+      `Purge complète des données de démonstration et réinitialisation de la base pour le lancement production (${previousTxCount} transactions effacées).`,
+      { previousTxCount },
+      undefined,
+      undefined,
+      'warning'
+    );
+
+    return res.json({
+      success: true,
+      deletedTransactions: previousTxCount,
+      message: `Toutes les données de test (${previousTxCount} transactions) ont été purgées avec succès.`
+    });
+  } catch (err: any) {
+    console.error('[Purge Demo Data Error]:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Erreur lors de la purge des données.' });
+  }
+});
 
 // ==========================================
 // API CATCH-ALL & GLOBAL API ERROR HANDLER

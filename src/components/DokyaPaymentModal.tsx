@@ -41,7 +41,7 @@ import {
 import { verifyReceiptImage } from '../services/receiptPaymentService';
 import { TransactionRecord, UserSubscription } from '../types';
 import { usePricing } from '../contexts/PricingContext';
-import { recordTransactionEverywhere, saveTransactionRecord } from '../lib/firebase';
+import { recordTransactionEverywhere, saveTransactionRecord, subscribeToTransactionStatus, subscribeToVipWithWallet } from '../lib/firebase';
 
 export interface CountryOption {
   code: string;
@@ -219,6 +219,25 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     newBalance?: number;
   }>({});
 
+  // 2-minute dynamic progressive scan timer & real-time listener state
+  const [timerSecondsLeft, setTimerSecondsLeft] = useState<number>(120); // 2 minutes countdown (120s)
+  const [activePendingTxId, setActivePendingTxId] = useState<string | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const txUnsubscribeRef = useRef<(() => void) | null>(null);
+  const isHandledSuccessRef = useRef<boolean>(false);
+
+  // Helper to stop all background scanning timers and listeners
+  const stopScanningProcesses = () => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    if (txUnsubscribeRef.current) {
+      txUnsubscribeRef.current();
+      txUnsubscribeRef.current = null;
+    }
+  };
+
   // Promo code states
   const [showPromoBox, setShowPromoBox] = useState<boolean>(false);
   const [promoInput, setPromoInput] = useState<string>('');
@@ -227,9 +246,10 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
 
-  // Clean object URL on unmount or replace
+  // Clean object URL and timers on unmount or replace
   useEffect(() => {
     return () => {
+      stopScanningProcesses();
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
@@ -237,11 +257,15 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   // Reset modal state when opened
   useEffect(() => {
     if (isOpen) {
+      stopScanningProcesses();
       setCurrentStep(1);
       setErrorMessage(null);
       setValidationOutcome(null);
       setScanPhase(0);
       setIsAiScanning(false);
+      setTimerSecondsLeft(120);
+      setActivePendingTxId(null);
+      isHandledSuccessRef.current = false;
       setAppliedPromo(null);
       setPromoInput('');
       setPromoError(null);
@@ -249,6 +273,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       setSelectedFile(null);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
+    } else {
+      stopScanningProcesses();
     }
   }, [isOpen]);
 
@@ -413,10 +439,27 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       const newComputedBalance = Math.max(0, safeBalance - payablePrice);
 
       if (activeMode === 'subscription') {
-        // Subscription via wallet
+        // Subscription via wallet with atomic Firestore transaction
+        const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
         const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
         const subEndDate = new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString();
-        const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
+
+        if (userId && userId !== 'guest') {
+          const vipRes = await subscribeToVipWithWallet(
+            userId,
+            effectivePlanId,
+            payablePrice,
+            userEmail,
+            userName
+          );
+          if (!vipRes.success && vipRes.error === 'INSUFFICIENT_BALANCE') {
+            setIsAiScanning(false);
+            setValidationOutcome('failed');
+            setErrorMessage(vipRes.message || "Solde insuffisant pour activer le Pass VIP.");
+            return;
+          }
+        }
+
         const activeSub: UserSubscription = {
           status: 'active',
           planId: effectivePlanId,
@@ -573,33 +616,208 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     }, 600);
   };
 
-  // Execute Step 3: Real-Time AI Receipt OCR Scanner
+  // Handle Instant Certification Success (by Admin or OCR)
+  const handleCertificationSuccess = (
+    tx: TransactionRecord, 
+    customMsg?: string, 
+    customAmt?: number, 
+    customBal?: number
+  ) => {
+    if (isHandledSuccessRef.current) return;
+    isHandledSuccessRef.current = true;
+    stopScanningProcesses();
+
+    const effectiveAmt = customAmt !== undefined ? customAmt : (tx.extractedAmount || tx.expectedAmount || payablePrice);
+    const finalBalance = customBal !== undefined ? customBal : (tx as any).newBalance;
+
+    setIsAiScanning(false);
+    setValidationOutcome('success');
+    setValidationDetails({
+      txId: tx.transactionId || tx.id,
+      amount: effectiveAmt,
+      message: customMsg || "Paiement certifié avec succès ! Votre document est débloqué.",
+      senderPhone: tx.senderPhone,
+      unlockedTitle: activeMode === 'subscription' ? planTitle : documentTitle,
+      newBalance: finalBalance
+    });
+
+    // Fire domain callbacks safely
+    try {
+      if (activeMode === 'recharge' && onRechargeSuccess) {
+        onRechargeSuccess(effectiveAmt, tx);
+      } else if (activeMode === 'subscription' && onSubscriptionSuccess) {
+        const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
+        const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
+        onSubscriptionSuccess({
+          status: 'active',
+          planId: effectivePlanId,
+          planName: planTitle || 'Pass VIP Mensuel',
+          startedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString(),
+          pricePaid: effectiveAmt,
+          paymentMethod: tx.paymentMethod === 'orange_money' ? 'orange_money' : 'wave',
+          documentsGeneratedCount: 0
+        }, 'mobile_money');
+      }
+      if (onPaymentSuccess) onPaymentSuccess('mobile_money', tx);
+    } catch (cbErr) {
+      console.warn('[Certification Success Callback Warn]:', cbErr);
+    }
+  };
+
+  // Handle Instant Certification Rejection (by Admin or OCR)
+  const handleCertificationReject = (reason?: string) => {
+    stopScanningProcesses();
+    setIsAiScanning(false);
+    setValidationOutcome('failed');
+    setErrorMessage(reason || "Paiement non reconnu ou invalide. Veuillez contacter le support WhatsApp.");
+  };
+
+  // Execute Step 3: Real-Time AI Receipt OCR Scanner with Instant Admin Realtime Interruption
   const handleStartAiScan = async () => {
     if (!selectedFile) {
       setErrorMessage("Veuillez sélectionner ou déposer la capture d'écran de votre reçu.");
       return;
     }
 
+    stopScanningProcesses();
     setCurrentStep(3);
     setIsAiScanning(true);
     setScanPhase(1);
     setErrorMessage(null);
     setValidationOutcome(null);
+    setTimerSecondsLeft(120);
+    isHandledSuccessRef.current = false;
 
     const fullPhone = senderPhoneNumber 
       ? `${selectedCountry.dialCode} ${senderPhoneNumber}`.trim() 
-      : undefined;
-
-    // Sequential scanner phase animation
-    const timer1 = setTimeout(() => setScanPhase(2), 1200);
-    const timer2 = setTimeout(() => setScanPhase(3), 2600);
+      : `${selectedCountry.dialCode} (Numéro non renseigné)`;
 
     const titleContext = activeMode === 'recharge' 
-      ? `Recharge Solde (${payablePrice} FCFA)` 
+      ? `Recharge Solde (${payablePrice.toLocaleString('fr-FR')} FCFA)` 
       : activeMode === 'subscription' 
         ? `Abonnement ${planTitle}` 
         : `${documentTypeLabel} : ${documentTitle}`;
 
+    // Unique generated tracking reference
+    const generatedTxId = `TX-REQ-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const txRefCode = transactionRef.trim() || `REF-${Date.now().toString().slice(-6)}`;
+    setActivePendingTxId(generatedTxId);
+
+    let receiptBase64 = '';
+    try {
+      const reader = new FileReader();
+      receiptBase64 = await new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(selectedFile);
+      });
+    } catch (_e) {}
+
+    // 1. Immediately register PENDING_APPROVAL transaction to DB & Firestore
+    const pendingTx: TransactionRecord = {
+      id: generatedTxId,
+      transactionId: txRefCode,
+      userId: userId || 'guest',
+      userEmail: userEmail || 'candidat@dokya.sn',
+      userName: userName || 'Candidat Dokya',
+      type: activeMode === 'recharge' ? 'recharge' : (activeMode === 'subscription' ? 'subscription_purchase' : 'document_purchase'),
+      amount: activeMode === 'recharge' ? payablePrice : -payablePrice,
+      expectedAmount: payablePrice,
+      extractedAmount: payablePrice,
+      currency: 'XOF',
+      description: `${titleContext} (${selectedMethod === 'wave' ? 'Wave' : 'Orange Money'} - En attente de validation)`,
+      status: 'PENDING_APPROVAL',
+      aiStatus: 'PENDING',
+      paymentMethod: selectedMethod,
+      senderPhone: fullPhone,
+      countryCode: selectedCountry.dialCode,
+      countryName: selectedCountry.name,
+      transactionReference: txRefCode,
+      receiptImage: receiptBase64 ? receiptBase64.slice(0, 300000) : (previewUrl || undefined),
+      createdAt: new Date().toISOString(),
+      documentTitle: activeMode === 'subscription' ? planTitle : documentTitle,
+      purpose: currentPurpose
+    };
+
+    // Save to Firestore & Server DB immediately
+    recordTransactionEverywhere(pendingTx).catch((e) => console.warn('[Pending Tx Record Warn]:', e));
+
+    const submitEndpoint = activeMode === 'recharge' 
+      ? '/api/recharge/submit-payment' 
+      : activeMode === 'subscription' 
+        ? '/api/subscription/submit-payment' 
+        : '/api/documents/submit-payment';
+
+    fetch(submitEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: userId || 'guest',
+        userEmail: userEmail || 'candidat@dokya.sn',
+        userName: userName || 'Candidat Dokya',
+        documentTitle,
+        documentTypeLabel,
+        planId,
+        planTitle,
+        amount: payablePrice,
+        paymentMethod: selectedMethod,
+        senderPhone: fullPhone,
+        countryCode: selectedCountry.dialCode,
+        countryName: selectedCountry.name,
+        transactionReference: txRefCode,
+        receiptImage: receiptBase64.slice(0, 300000)
+      })
+    }).catch((e) => console.warn('[Submit API Warn]:', e));
+
+    // 2. Start Fluid 2-Minute Countdown Timer
+    timerIntervalRef.current = setInterval(() => {
+      setTimerSecondsLeft((prev) => {
+        if (prev <= 1) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Sequential visual scanner phase progress
+    setTimeout(() => setScanPhase(2), 1500);
+    setTimeout(() => setScanPhase(3), 3200);
+
+    // 3. Real-Time Listener (Firestore onSnapshot + ultra-fast status polling)
+    const unsub = subscribeToTransactionStatus(generatedTxId, (status, liveTx) => {
+      const isApproved = status === 'MANUALLY_VALIDATED' || 
+        status === 'VALIDATED_BY_AI' || 
+        status === 'COMPLETED' || 
+        status === 'success' || 
+        status === 'active';
+
+      const isRejected = status === 'REJECTED_BY_ADMIN' || 
+        status === 'REJECTED_BY_AI' || 
+        status === 'failed' || 
+        status === 'cancelled' || 
+        status === 'REJECTED';
+
+      if (isApproved) {
+        const validatedTx: TransactionRecord = {
+          ...pendingTx,
+          ...(liveTx || {}),
+          status: 'COMPLETED',
+          aiStatus: 'MANUALLY_VALIDATED'
+        };
+        handleCertificationSuccess(
+          validatedTx,
+          "Paiement certifié avec succès !",
+          payablePrice,
+          (liveTx as any)?.newBalance
+        );
+      } else if (isRejected) {
+        handleCertificationReject(
+          (liveTx as any)?.rejectionReason || "Paiement non reconnu ou invalide. Veuillez contacter le support WhatsApp."
+        );
+      }
+    });
+    txUnsubscribeRef.current = unsub;
+
+    // 4. In parallel, run OCR analysis in background for instant automated match
     try {
       const result = await verifyReceiptImage({
         file: selectedFile,
@@ -611,204 +829,32 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         senderPhone: fullPhone,
         countryCode: selectedCountry.dialCode,
         countryName: selectedCountry.name,
-        transactionRef: transactionRef.trim() || undefined,
+        transactionRef: txRefCode,
         purpose: currentPurpose
       });
 
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-
       if (result.success && result.status === 'COMPLETED') {
-        setScanPhase(4);
-        const txId = result.transactionId || `TX-${Date.now().toString().slice(-6)}`;
-
-        const tx: TransactionRecord = {
-          id: txId,
-          transactionId: txId,
-          userId: userId || 'guest',
-          userEmail: userEmail || 'candidat@dokya.sn',
-          userName: userName || 'Candidat Dokya',
-          type: activeMode === 'recharge' ? 'recharge' : 'document_purchase',
-          amount: activeMode === 'recharge' ? payablePrice : -payablePrice,
-          currency: 'XOF',
-          description: `${titleContext} (Validé par Scan IA)`,
+        const ocrTx: TransactionRecord = {
+          ...pendingTx,
+          id: result.transactionId || generatedTxId,
+          transactionId: result.transactionId || txRefCode,
           status: 'COMPLETED',
           aiStatus: 'VALIDATED_BY_AI',
+          extractedAmount: result.amount || payablePrice,
           paymentMethod: result.method === 'orange_money' ? 'orange_money' : 'wave',
-          createdAt: new Date().toISOString(),
-          documentTitle: titleContext,
-          senderPhone: result.senderPhone || fullPhone,
-          countryCode: selectedCountry.dialCode,
-          countryName: selectedCountry.name,
-          receiptImage: previewUrl || undefined,
           newBalance: result.newBalance
         };
-
-        recordTransactionEverywhere(tx).catch(() => {});
-
-        setTimeout(() => {
-          setIsAiScanning(false);
-          setValidationOutcome('success');
-          setValidationDetails({
-            txId: result.transactionId,
-            amount: payablePrice,
-            message: result.message || "Reçu officiel certifié et validé avec succès par le scanner IA !",
-            senderPhone: result.senderPhone || fullPhone,
-            unlockedTitle: titleContext,
-            newBalance: result.newBalance
-          });
-
-          // Fire appropriate domain callbacks safely
-          try {
-            if (activeMode === 'recharge' && onRechargeSuccess) {
-              onRechargeSuccess(payablePrice, tx);
-            } else if (activeMode === 'subscription' && onSubscriptionSuccess) {
-              const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
-              const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
-              onSubscriptionSuccess({
-                status: 'active',
-                planId: effectivePlanId,
-                planName: planTitle || 'Pass VIP Mensuel',
-                startedAt: new Date().toISOString(),
-                expiresAt: new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString(),
-                pricePaid: payablePrice,
-                paymentMethod: result.method === 'orange_money' ? 'orange_money' : 'wave',
-                documentsGeneratedCount: 0
-              }, 'mobile_money');
-            }
-            if (onPaymentSuccess) onPaymentSuccess('mobile_money', tx);
-          } catch (callbackErr) {
-            console.warn('[Payment Modal Callback Warn]:', callbackErr);
-          }
-        }, 800);
-      } else {
-        setIsAiScanning(false);
-        setValidationOutcome('failed');
-        setErrorMessage(
-          result.error || 
-          "L'IA n'a pas pu certifier automatiquement ce reçu. Vérifiez que la capture est nette, complète et récente (moins de 30 min)."
-        );
+        saveTransactionRecord(ocrTx).catch(() => {});
+        handleCertificationSuccess(ocrTx, "Paiement certifié avec succès par le scanner IA !", payablePrice, result.newBalance);
       }
     } catch (err: any) {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      setIsAiScanning(false);
-      setValidationOutcome('failed');
-      setErrorMessage(err.message || "Erreur lors de l'analyse du reçu.");
+      console.warn('[Background OCR Assist Warn]:', err);
     }
   };
 
   // Fallback: Submit for Manual Admin Validation
   const handleManualValidationFallback = async () => {
-    setIsAiScanning(true);
-    setErrorMessage(null);
-
-    const fullPhone = senderPhoneNumber ? `${selectedCountry.dialCode} ${senderPhoneNumber}`.trim() : '';
-
-    try {
-      let receiptBase64 = '';
-      if (selectedFile) {
-        const reader = new FileReader();
-        receiptBase64 = await new Promise((resolve) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(selectedFile);
-        });
-      }
-
-      const endpoint = activeMode === 'recharge' 
-        ? '/api/recharge/submit-payment' 
-        : activeMode === 'subscription' 
-          ? '/api/subscription/submit-payment' 
-          : '/api/documents/submit-payment';
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: userId || 'guest',
-          userEmail: userEmail || 'candidat@dokya.sn',
-          userName: userName || 'Candidat Dokya',
-          documentTitle,
-          documentTypeLabel,
-          planId,
-          planTitle,
-          amount: payablePrice,
-          paymentMethod: selectedMethod,
-          senderPhone: fullPhone,
-          countryCode: selectedCountry.dialCode,
-          countryName: selectedCountry.name,
-          transactionReference: transactionRef.trim(),
-          receiptImage: receiptBase64.slice(0, 300000)
-        })
-      });
-
-      const data = await res.json();
-      const generatedTxId = data.transactionId || `REF-${Date.now().toString().slice(-6)}`;
-
-      const pendingTx: TransactionRecord = {
-        id: generatedTxId,
-        transactionId: transactionRef.trim() || generatedTxId,
-        userId: userId || 'guest',
-        userEmail: userEmail || 'candidat@dokya.sn',
-        userName: userName || 'Candidat Dokya',
-        type: activeMode === 'recharge' ? 'recharge' : 'document_purchase',
-        amount: activeMode === 'recharge' ? payablePrice : -payablePrice,
-        currency: 'XOF',
-        description: `${activeMode === 'recharge' ? 'Recharge' : activeMode === 'subscription' ? 'Abonnement' : documentTitle} (En attente de validation manuelle)`,
-        status: 'pending',
-        aiStatus: 'PENDING',
-        createdAt: new Date().toISOString(),
-        paymentMethod: selectedMethod,
-        documentTitle: activeMode === 'subscription' ? planTitle : documentTitle,
-        senderPhone: fullPhone,
-        countryCode: selectedCountry.dialCode,
-        countryName: selectedCountry.name,
-        transactionReference: transactionRef.trim() || generatedTxId,
-        receiptImage: previewUrl || undefined
-      };
-
-      recordTransactionEverywhere(pendingTx).catch(() => {});
-
-      setIsAiScanning(false);
-      setValidationOutcome('pending');
-      setValidationDetails({
-        txId: generatedTxId,
-        amount: payablePrice,
-        message: "Votre reçu a été transmis avec succès à l'équipe Dokya. Validation manuelle en cours (5 à 15 minutes).",
-        senderPhone: fullPhone,
-        unlockedTitle: activeMode === 'subscription' ? planTitle : documentTitle
-      });
-
-      try {
-        if (activeMode === 'recharge' && onRechargeSuccess) {
-          onRechargeSuccess(0, pendingTx);
-        } else if (activeMode === 'subscription' && onSubscriptionSuccess) {
-          const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
-          onSubscriptionSuccess({
-            status: 'pending',
-            planId: effectivePlanId,
-            planName: planTitle || 'Pass VIP Mensuel',
-            startedAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            pricePaid: payablePrice,
-            paymentMethod: selectedMethod,
-            documentsGeneratedCount: 0,
-            senderPhone: fullPhone,
-            countryCode: selectedCountry.dialCode,
-            countryName: selectedCountry.name,
-            transactionReference: transactionRef.trim() || generatedTxId,
-            submittedAt: new Date().toISOString(),
-            receiptImage: previewUrl || undefined
-          }, 'mobile_money');
-        }
-        if (onPaymentSuccess) onPaymentSuccess('mobile_money', pendingTx);
-      } catch (cbErr) {
-        console.warn('[Manual Validation Callback Warn]:', cbErr);
-      }
-    } catch (e: any) {
-      setIsAiScanning(false);
-      setErrorMessage(e.message || "Erreur lors de la transmission de la demande.");
-    }
+    handleStartAiScan();
   };
 
   return (
@@ -1490,59 +1536,101 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* ÉTAPE 3 : SCANNER IA LASER & DÉBLOCAGE INSTANTANÉ                         */}
+          {/* ÉTAPE 3 : SCANNER IA LASER, BARRE 2 MIN & CERTIFICATION EN TEMPS RÉEL     */}
           {/* ========================================================================= */}
           {currentStep === 3 && (
             <div className="space-y-4 animate-in fade-in duration-200">
               
-              {/* Active AI Laser Scanning Animation */}
+              {/* Active Dynamic Laser Scanner with 2-Minute Fluid Progress Bar */}
               {isAiScanning && (
-                <div className="p-6 rounded-3xl bg-slate-950 border border-emerald-500/40 relative overflow-hidden text-center space-y-4">
-                  {/* Laser Beam Effect */}
-                  <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse shadow-[0_0_15px_#10b981]" />
+                <div className="p-6 rounded-3xl bg-slate-950 border border-emerald-500/40 relative overflow-hidden text-center space-y-5 shadow-2xl">
+                  {/* Laser Beam Animation Effect */}
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse shadow-[0_0_20px_#10b981]" />
+                  <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-emerald-500/10 rounded-3xl blur-sm pointer-events-none" />
 
-                  <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center relative">
+                  {/* Pulsing Scanner Icon */}
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center relative shadow-lg shadow-emerald-500/20">
                     <ScanLine className="w-8 h-8 text-emerald-400 animate-bounce" />
-                    <div className="absolute inset-0 rounded-2xl border border-emerald-400 animate-ping opacity-30" />
+                    <div className="absolute inset-0 rounded-2xl border border-emerald-400 animate-ping opacity-25" />
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-black text-white flex items-center justify-center gap-2">
+                    <h4 className="text-base font-black text-white flex items-center justify-center gap-2">
                       <Sparkles className="w-4 h-4 text-emerald-400 animate-spin" />
-                      <span>Scanner OCR IA en cours d'exécution...</span>
+                      <span>Analyse Laser & Certification en Cours...</span>
                     </h4>
                     <p className="text-xs text-slate-400 mt-1">
-                      Analyse instantanée des signatures de sécurité et de l'horodatage.
+                      Contrôle des signatures de sécurité, du montant et de la conformité du reçu.
                     </p>
                   </div>
 
-                  {/* Scanning Checklist Steps */}
-                  <div className="space-y-2 text-left max-w-xs mx-auto text-xs font-semibold">
-                    <div className={`flex items-center gap-2 ${scanPhase >= 1 ? 'text-emerald-400' : 'text-slate-600'}`}>
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${scanPhase >= 1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
-                        {scanPhase >= 1 ? '✓' : '1'}
-                      </div>
-                      <span>Reconnaissance de l'opérateur</span>
+                  {/* Fluid 2-Minute Progress Bar & Timer */}
+                  <div className="space-y-2 max-w-sm mx-auto">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-slate-300 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Temps restant estimé :</span>
+                      </span>
+                      <span className="font-mono text-emerald-400">
+                        {Math.floor(timerSecondsLeft / 60)} min {(timerSecondsLeft % 60).toString().padStart(2, '0')} s
+                      </span>
                     </div>
 
-                    <div className={`flex items-center gap-2 ${scanPhase >= 2 ? 'text-emerald-400' : 'text-slate-600'}`}>
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${scanPhase >= 2 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
-                        {scanPhase >= 2 ? '✓' : '2'}
-                      </div>
-                      <span>Contrôle du montant ({payablePrice.toLocaleString('fr-FR')} FCFA)</span>
+                    {/* Fluid Progress Track */}
+                    <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-800 p-0.5 relative">
+                      <div 
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-400 transition-all duration-1000 shadow-[0_0_10px_#10b981]"
+                        style={{
+                          width: `${Math.min(99, Math.max(8, Math.round(((120 - timerSecondsLeft) / 120) * 100)))}%`
+                        }}
+                      />
                     </div>
+                  </div>
 
-                    <div className={`flex items-center gap-2 ${scanPhase >= 3 ? 'text-emerald-400' : 'text-slate-600'}`}>
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${scanPhase >= 3 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
-                        {scanPhase >= 3 ? '✓' : '3'}
-                      </div>
-                      <span>Certification temporelle & anti-doublon</span>
+                  {/* Reassurance Message Banner */}
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 text-xs text-left flex items-start gap-3 shadow-inner">
+                    <ShieldCheck className="w-5 h-5 shrink-0 text-emerald-400 mt-0.5" />
+                    <p className="leading-relaxed">
+                      <strong className="font-bold text-emerald-300">Traitement et certification de votre reçu en cours...</strong> Temps estimé : moins de 2 minutes. Ne fermez pas cette page ou retrouvez votre document dans <em>« Mes Documents »</em>.
+                    </p>
+                  </div>
+
+                  {/* Live Transaction Metadata Summary */}
+                  <div className="p-3.5 bg-slate-900/90 rounded-2xl border border-slate-800 text-xs space-y-1.5 text-left text-slate-300 font-medium">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Réf. Demande :</span>
+                      <span className="font-mono font-bold text-amber-400">{activePendingTxId || 'Génération...'}</span>
                     </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Montant :</span>
+                      <span className="font-bold text-slate-100">{payablePrice.toLocaleString('fr-FR')} FCFA</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Statut du Guichet :</span>
+                      <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        <span>Écoute en direct des validations admin</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Optional WhatsApp Direct Link while waiting */}
+                  <div className="pt-1">
+                    <a
+                      href={`https://wa.me/221789619088?text=${encodeURIComponent(`Bonjour Dokya, j'ai soumis mon reçu de ${payablePrice} FCFA pour ${documentTitle || (activeMode === 'subscription' ? planTitle : 'mon document')} (Réf: ${activePendingTxId || 'TX'}). Pouvez-vous valider rapidement ?`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-[11px] text-slate-400 hover:text-emerald-400 transition-colors"
+                    >
+                      <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Besoin d'une validation ultra-rapide ? Notifier sur WhatsApp</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
                   </div>
                 </div>
               )}
 
-              {/* SUCCESS OUTCOME */}
+              {/* SUCCESS OUTCOME (Instantly displayed when Admin validates) */}
               {!isAiScanning && validationOutcome === 'success' && (
                 <div className="p-6 rounded-3xl bg-emerald-950/40 border border-emerald-500/40 text-center space-y-5 animate-in zoom-in-95 duration-200">
                   {/* Celebratory Icon */}
@@ -1558,15 +1646,15 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                   </div>
 
                   <div>
-                    <h4 className="text-lg font-black text-white flex items-center justify-center gap-2">
-                      <span>Paiement validé avec succès !</span>
+                    <h4 className="text-xl font-black text-white flex items-center justify-center gap-2">
+                      <span>Paiement certifié avec succès !</span>
                     </h4>
                     <p className="text-sm font-semibold text-emerald-300/90 mt-1">
                       {activeMode === 'recharge' 
                         ? 'Votre solde Dokya Wallet a été débloqué et crédité !'
-                        : activeMode === 'subscription'
-                          ? 'Votre Pass VIP a été activé avec succès !'
-                          : 'Paiement validé avec succès ! Votre document a été débloqué.'}
+                        : activeMode === 'subscription' 
+                          ? 'Votre Pass VIP a été activé avec succès !' 
+                          : 'Votre document a été débloqué et enregistré dans votre espace « Mes Documents ».'}
                     </p>
                     {validationDetails.message && (
                       <p className="text-xs text-slate-400 mt-1.5 max-w-md mx-auto">
@@ -1586,7 +1674,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400">Statut de Certification :</span>
                       <span className="font-bold text-emerald-400 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5" /> Validé & Débloqué par IA Dokya
+                        <Sparkles className="w-3.5 h-3.5" /> Validé & Débloqué avec Succès
                       </span>
                     </div>
                     {validationDetails.amount !== undefined && (
@@ -1605,7 +1693,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                     )}
                   </div>
 
-                  {/* Action Buttons: 1. Primary Action (Download or Solde), 2. Discrete Close */}
+                  {/* Action Buttons: Download PDF / Word / Access Documents */}
                   <div className="space-y-2.5 pt-1">
                     {activeMode === 'document' && (
                       <div className="space-y-2">
@@ -1619,7 +1707,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                               className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/25 transition-all transform active:scale-95"
                             >
                               <Download className="w-4 h-4 text-slate-950" />
-                              <span>📥 Télécharger mon PDF</span>
+                              <span>📥 Télécharger mon document (PDF)</span>
                             </button>
                           ) : (
                             <button
@@ -1682,63 +1770,37 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                 </div>
               )}
 
-              {/* PENDING OUTCOME (Manual Validation) */}
-              {!isAiScanning && validationOutcome === 'pending' && (
-                <div className="p-6 rounded-3xl bg-amber-950/30 border border-amber-500/40 text-center space-y-4 animate-in zoom-in-95 duration-200">
-                  <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-400">
-                    <Clock className="w-9 h-9" />
+              {/* FAILED / REJECTED OUTCOME */}
+              {!isAiScanning && validationOutcome === 'failed' && (
+                <div className="p-6 rounded-3xl bg-rose-950/30 border border-rose-500/40 text-center space-y-4 animate-in zoom-in-95 duration-200">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                    <AlertCircle className="w-8 h-8" />
                   </div>
 
                   <div>
-                    <h4 className="text-base font-black text-white">Transmission Réussie !</h4>
-                    <p className="text-xs text-slate-300 mt-1">
-                      {validationDetails.message}
+                    <h4 className="text-base font-black text-white">Validation Non Aboutie</h4>
+                    <p className="text-xs text-rose-300 mt-1 font-medium">
+                      {errorMessage || "Paiement non reconnu ou invalide. Veuillez contacter le support WhatsApp."}
                     </p>
                   </div>
 
-                  <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 text-xs space-y-1.5 text-left">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Réf Suivi :</span>
-                      <span className="font-mono font-bold text-amber-400">{validationDetails.txId}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Statut :</span>
-                      <span className="font-bold text-amber-300">En cours d'examen par l'administration</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    D'accord, fermer
-                  </button>
-                </div>
-              )}
-
-              {/* FAILED OUTCOME WITH MANUAL FALLBACK */}
-              {!isAiScanning && validationOutcome === 'failed' && (
-                <div className="p-5 rounded-3xl bg-rose-950/30 border border-rose-500/40 space-y-4 animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
-                      <AlertCircle className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-black text-white">Analyse IA Non Concluante</h4>
-                      <p className="text-xs text-rose-300 mt-0.5">
-                        {errorMessage || "Le reçu n'a pas pu être validé automatiquement."}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Fallback Option: Submit for manual inspection */}
-                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
-                    <p className="text-xs text-slate-300 font-medium">
-                      Pas d'inquiétude ! Vous pouvez soit reprendre une photo plus nette, soit <strong>transmettre votre reçu directement à notre équipe</strong> pour validation manuelle prioritaire :
+                  {/* Actions: Contact WhatsApp Support + Retry */}
+                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3 text-left">
+                    <p className="text-xs text-slate-300">
+                      Notre équipe support est disponible pour vérifier manuellement votre transfert sous quelques instants :
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-2">
+                      <a
+                        href={`https://wa.me/221789619088?text=${encodeURIComponent(`Bonjour Dokya, ma transaction ${activePendingTxId || ''} de ${payablePrice} FCFA n'a pas été reconnue. Voici ma preuve de paiement.`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Contacter le Support WhatsApp</span>
+                      </a>
+
                       <button
                         type="button"
                         onClick={() => setCurrentStep(2)}
@@ -1747,19 +1809,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Réessayer avec un autre reçu</span>
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={handleManualValidationFallback}
-                        className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-emerald-600/20"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Valider par l'Équipe Dokya</span>
-                      </button>
                     </div>
                   </div>
                 </div>
               )}
+
             </div>
           )}
 

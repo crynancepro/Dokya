@@ -1,8 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, User as FirebaseUser } from 'firebase/auth';
 import { 
-  initializeFirestore, doc, getDoc, getDocFromServer, setDoc, deleteDoc, 
-  collection, query, where, getDocs, onSnapshot, Unsubscribe 
+  initializeFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, 
+  collection, query, where, getDocs, onSnapshot, Unsubscribe, runTransaction,
+  serverTimestamp, writeBatch
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode } from '../types';
@@ -21,6 +22,24 @@ export enum OperationType {
   LIST = 'list',
   GET = 'get',
   WRITE = 'write',
+}
+
+export interface FirebaseUserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  walletBalance: number;
+  subscription: {
+    planId: string; // "VIP" | "weekly" | "monthly" | "annual" | "none"
+    status: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'active' | 'expired' | 'none';
+    expiresAt?: string | null;
+    startedAt?: string | null;
+  };
+  createdAt: string;
+  updatedAt: string;
+  personalInfo?: any;
+  role?: 'admin' | 'candidate';
 }
 
 export interface OrderRecord {
@@ -73,12 +92,128 @@ export async function fetchUserOrders(userId: string): Promise<OrderRecord[]> {
 export async function saveTransactionRecord(tx: TransactionRecord): Promise<boolean> {
   try {
     const txDocRef = doc(db, 'transactions', tx.id);
-    await setDoc(txDocRef, tx);
+    await setDoc(txDocRef, {
+      ...tx,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
     return true;
   } catch (error) {
     console.warn('Could not save transaction to Firestore:', error);
     return false;
   }
+}
+
+/**
+ * Real-time listener for user profile from Firestore collection 'users/{userId}'
+ * Automatically initializes clean default user document if missing.
+ */
+export function subscribeToUserProfile(
+  userId: string,
+  onUpdate: (userDoc: FirebaseUserProfile) => void
+): Unsubscribe {
+  const userRef = doc(db, 'users', userId);
+  return onSnapshot(userRef, async (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      const profile: FirebaseUserProfile = {
+        uid: userId,
+        email: data.email || auth.currentUser?.email || '',
+        displayName: data.displayName || auth.currentUser?.displayName || 'Candidat',
+        photoURL: data.photoURL || auth.currentUser?.photoURL || '',
+        walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : (typeof data.balance === 'number' ? data.balance : 0),
+        subscription: {
+          planId: data.subscription?.planId || 'none',
+          status: data.subscription?.status || (data.subscriptionStatus === 'unlimited' ? 'ACTIVE' : 'INACTIVE'),
+          expiresAt: data.subscription?.expiresAt || null,
+          startedAt: data.subscription?.startedAt || null,
+        },
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString(),
+        personalInfo: data.personalInfo || undefined,
+        role: data.role || (data.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate')
+      };
+      onUpdate(profile);
+    } else if (auth.currentUser && auth.currentUser.uid === userId) {
+      // Initialize dynamic user profile in Firestore
+      const initialProfile: FirebaseUserProfile = {
+        uid: userId,
+        email: auth.currentUser.email || '',
+        displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Candidat',
+        photoURL: auth.currentUser.photoURL || '',
+        walletBalance: 0, // Mode Réel : Démarre à 0 FCFA
+        subscription: {
+          planId: 'none',
+          status: 'INACTIVE',
+          expiresAt: null,
+          startedAt: null
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        role: auth.currentUser.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate'
+      };
+      try {
+        await setDoc(userRef, initialProfile, { merge: true });
+        onUpdate(initialProfile);
+      } catch (e) {
+        console.warn('[Initialize User Doc Warn]:', e);
+        onUpdate(initialProfile);
+      }
+    }
+  }, (err) => {
+    console.warn('[Firestore User Snapshot Warn]:', err);
+  });
+}
+
+/**
+ * Real-time listener for transaction status changes via Firestore onSnapshot + HTTP polling fallback
+ */
+export function subscribeToTransactionStatus(
+  txId: string,
+  onStatusChange: (status: string, txData?: TransactionRecord) => void
+): () => void {
+  let isCleanedUp = false;
+  let firestoreUnsub: Unsubscribe | null = null;
+
+  // 1. Listen via Firestore onSnapshot
+  try {
+    const txRef = doc(db, 'transactions', txId);
+    firestoreUnsub = onSnapshot(txRef, (snapshot) => {
+      if (isCleanedUp) return;
+      if (snapshot.exists()) {
+        const data = snapshot.data() as TransactionRecord;
+        if (data && data.status) {
+          onStatusChange(data.status, data);
+        }
+      }
+    }, (err) => {
+      console.warn('[Firestore Tx Listen Warn]:', err);
+    });
+  } catch (e) {
+    console.warn('[Firestore Tx Sub Init Warn]:', e);
+  }
+
+  // 2. Ultra-responsive HTTP polling fallback (every 1.5s)
+  const pollInterval = setInterval(async () => {
+    if (isCleanedUp) return;
+    try {
+      const res = await fetch(`/api/transactions/${encodeURIComponent(txId)}/status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.status) {
+          onStatusChange(data.status, data.transaction);
+        }
+      }
+    } catch (_err) {}
+  }, 1500);
+
+  // Return teardown function
+  return () => {
+    isCleanedUp = true;
+    clearInterval(pollInterval);
+    if (firestoreUnsub) {
+      try { firestoreUnsub(); } catch (_e) {}
+    }
+  };
 }
 
 export async function fetchUserTransactions(userId: string): Promise<TransactionRecord[]> {
@@ -444,6 +579,377 @@ export async function recordTransactionEverywhere(tx: TransactionRecord): Promis
   }
 
   return firestoreSuccess;
+}
+
+/**
+ * Real-time listener for ALL transactions for the Admin Panel (ordering by date desc)
+ */
+export function subscribeToAllTransactions(
+  onUpdate: (txs: TransactionRecord[]) => void,
+  onError?: (err: any) => void
+): Unsubscribe {
+  const colRef = collection(db, 'transactions');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const list: TransactionRecord[] = [];
+      snapshot.forEach((d) => {
+        list.push({ id: d.id, ...(d.data() as any) } as TransactionRecord);
+      });
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      onUpdate(list);
+    },
+    (err) => {
+      console.warn('[Firestore All Transactions Snapshot Warn]:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Action [ VALIDER ] - Exécute une transaction atomique Firestore (runTransaction) :
+ * 1. Passe le statut de la transaction à 'APPROVED' (et 'MANUALLY_VALIDATED').
+ * 2. Accrédite le champ 'walletBalance' du document 'users/{userId}' de la valeur exacte de la recharge (+amount).
+ * 3. Si achat d'abonnement, active le Pass VIP 'subscription.status = ACTIVE' pour +30 jours.
+ * 4. Enregistre la date d'approbation et l'ID de l'admin.
+ */
+export async function approveTransactionWithAtomicFirestore(
+  txId: string,
+  adminEmail: string,
+  note: string = 'Validation manuelle effectuée par l\'administrateur'
+): Promise<{ success: boolean; message: string; newBalance?: number; error?: string }> {
+  try {
+    const txRef = doc(db, 'transactions', txId);
+
+    const result = await runTransaction(db, async (transaction) => {
+      // 1. ALL READS FIRST
+      const txDoc = await transaction.get(txRef);
+      if (!txDoc.exists()) {
+        throw new Error(`Transaction ${txId} introuvable dans Firestore.`);
+      }
+
+      const txData = txDoc.data() as TransactionRecord;
+      const targetUserId = txData.userId;
+      const isRecharge = txData.type === 'recharge' || (txData as any).purpose === 'wallet_recharge';
+      const isSubscription = txData.type === 'subscription_purchase' || (txData as any).purpose === 'subscription_purchase';
+      const rechargeAmount = Math.abs(Number(txData.expectedAmount || txData.amount || 0));
+
+      let userDocSnapshot: any = null;
+      let userRef: any = null;
+      if (targetUserId && targetUserId !== 'guest') {
+        userRef = doc(db, 'users', targetUserId);
+        userDocSnapshot = await transaction.get(userRef);
+      }
+
+      // 2. ALL WRITES AFTER ALL READS
+      const nowIso = new Date().toISOString();
+
+      // Update the transaction atomically
+      transaction.update(txRef, {
+        status: 'APPROVED',
+        aiStatus: 'MANUALLY_VALIDATED',
+        approvedAt: nowIso,
+        approvedBy: adminEmail,
+        manuallyValidatedBy: adminEmail,
+        manuallyValidatedAt: nowIso,
+        adminValidationNote: note,
+        updatedAt: nowIso
+      });
+
+      let updatedBalance: number | undefined;
+
+      // Update User Document in 'users/{userId}'
+      if (userRef && userDocSnapshot && userDocSnapshot.exists()) {
+        const userData = userDocSnapshot.data();
+        const currentBalance = typeof userData.walletBalance === 'number' ? userData.walletBalance : (typeof userData.balance === 'number' ? userData.balance : 0);
+
+        if (isRecharge && rechargeAmount > 0) {
+          updatedBalance = currentBalance + rechargeAmount;
+          transaction.update(userRef, {
+            walletBalance: updatedBalance,
+            balance: updatedBalance,
+            updatedAt: nowIso
+          });
+        } else if (isSubscription) {
+          const days = (txData as any).planId === 'weekly' ? 7 : (txData as any).planId === 'annual' ? 365 : 30;
+          const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+          transaction.update(userRef, {
+            subscription: {
+              planId: (txData as any).planId || 'VIP',
+              planName: (txData as any).planTitle || 'Pass VIP Dokya',
+              status: 'ACTIVE',
+              startedAt: nowIso,
+              expiresAt,
+              pricePaid: rechargeAmount,
+              adminValidationNote: note
+            },
+            subscriptionStatus: 'unlimited',
+            updatedAt: nowIso
+          });
+        }
+      }
+
+      return {
+        success: true,
+        message: `Transaction ${txId} validée et accréditée avec succès !`,
+        newBalance: updatedBalance
+      };
+    });
+
+    // Also notify backend store
+    fetch(`/api/admin/transactions/${encodeURIComponent(txId)}/validate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-email': adminEmail,
+        'x-user-role': 'admin'
+      },
+      body: JSON.stringify({ adminEmail, note })
+    }).catch((e) => console.warn('[Backend Validate Sync Warn]:', e));
+
+    return result;
+  } catch (error: any) {
+    console.error('[Firestore Atomic Transaction Error]:', error);
+    return {
+      success: false,
+      message: error?.message || 'Erreur lors de la validation atomique.',
+      error: error?.message
+    };
+  }
+}
+
+/**
+ * Action [ REJETER ] - Passe le statut à 'REJECTED' avec un motif dans Firestore
+ */
+export async function rejectTransactionWithFirestore(
+  txId: string,
+  adminEmail: string,
+  reason: string = 'Rejet confirmé par l\'administrateur'
+): Promise<{ success: boolean; message: string; error?: string }> {
+  try {
+    const txRef = doc(db, 'transactions', txId);
+    const nowIso = new Date().toISOString();
+
+    await updateDoc(txRef, {
+      status: 'REJECTED',
+      aiStatus: 'REJECTED_BY_ADMIN',
+      rejectionReason: reason,
+      rejectedBy: adminEmail,
+      rejectedAt: nowIso,
+      updatedAt: nowIso
+    });
+
+    // Sync to backend store
+    fetch(`/api/admin/transactions/${encodeURIComponent(txId)}/reject`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-email': adminEmail,
+        'x-user-role': 'admin'
+      },
+      body: JSON.stringify({ adminEmail, reason })
+    }).catch((e) => console.warn('[Backend Reject Sync Warn]:', e));
+
+    return {
+      success: true,
+      message: `Rejet de la transaction ${txId} enregistré avec succès.`
+    };
+  } catch (error: any) {
+    console.error('[Firestore Reject Error]:', error);
+    return {
+      success: false,
+      message: error?.message || 'Erreur lors du rejet de la transaction.',
+      error: error?.message
+    };
+  }
+}
+
+/**
+ * GESTION DES ABONNEMENTS EN TEMPS RÉEL (Pass VIP)
+ * Vérifie le solde dans 'users/{userId}.walletBalance', le débite et active l'abonnement VIP.
+ */
+export async function subscribeToVipWithWallet(
+  userId: string,
+  planId: 'VIP' | 'weekly' | 'monthly' | 'annual' = 'VIP',
+  price: number = 3499,
+  userEmail?: string,
+  userName?: string
+): Promise<{ success: boolean; newBalance?: number; error?: string; message?: string }> {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const txId = `SUB-VIP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const now = new Date();
+    const days = planId === 'weekly' ? 7 : (planId === 'annual' ? 365 : 30);
+    const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) {
+        throw new Error("Profil utilisateur introuvable dans Firestore.");
+      }
+
+      const userData = userDoc.data();
+      const currentBalance = typeof userData.walletBalance === 'number' ? userData.walletBalance : (typeof userData.balance === 'number' ? userData.balance : 0);
+
+      if (currentBalance < price) {
+        throw new Error("INSUFFICIENT_BALANCE");
+      }
+
+      const newBalance = currentBalance - price;
+
+      // 1. Débite et active l'abonnement dans 'users/{userId}'
+      transaction.update(userRef, {
+        walletBalance: newBalance,
+        balance: newBalance,
+        subscription: {
+          planId: planId || 'VIP',
+          planName: planId === 'annual' ? 'Pass VIP Annuel' : (planId === 'weekly' ? 'Pass VIP Semaine' : 'Pass VIP Mensuel'),
+          status: 'ACTIVE',
+          startedAt: now.toISOString(),
+          expiresAt,
+          pricePaid: price,
+          paymentMethod: 'wallet'
+        },
+        subscriptionStatus: 'unlimited',
+        updatedAt: now.toISOString()
+      });
+
+      // 2. Enregistre la transaction dans la collection 'transactions'
+      const txRef = doc(db, 'transactions', txId);
+      transaction.set(txRef, {
+        id: txId,
+        transactionId: txId,
+        userId,
+        userEmail: userEmail || userData.email || auth.currentUser?.email || '',
+        userName: userName || userData.displayName || auth.currentUser?.displayName || 'Candidat',
+        type: 'subscription_purchase',
+        amount: -price,
+        expectedAmount: price,
+        currency: 'XOF',
+        description: `Souscription ${planId === 'annual' ? 'Pass VIP Annuel' : 'Pass VIP Mensuel'} (Débit Solde)`,
+        status: 'APPROVED',
+        aiStatus: 'COMPLETED',
+        paymentMethod: 'wallet',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      });
+
+      return {
+        success: true,
+        newBalance,
+        message: "Abonnement Pass VIP activé avec succès !"
+      };
+    });
+
+    return result;
+  } catch (error: any) {
+    console.warn('[Vip Wallet Subscription Error]:', error);
+    if (error?.message === 'INSUFFICIENT_BALANCE') {
+      return {
+        success: false,
+        error: 'INSUFFICIENT_BALANCE',
+        message: `Solde insuffisant. Vous avez besoin de ${price.toLocaleString('fr-FR')} FCFA pour activer le Pass VIP.`
+      };
+    }
+    return {
+      success: false,
+      error: error?.message || 'Erreur lors de l\'activation de l\'abonnement.',
+      message: error?.message
+    };
+  }
+}
+
+/**
+ * 5. NETTOYAGE ET PURGE DES DONNÉES DE TEST (REMISE À ZÉRO) :
+ * Réservé exclusivement à peter25ngouala@gmail.com
+ * Purge les faux reçus, remet les soldes de test à zéro et vide les transactions factices.
+ */
+export async function purgeDemoDataInFirestore(
+  adminEmail: string
+): Promise<{ success: boolean; deletedTransactionsCount: number; message: string }> {
+  if (adminEmail !== 'peter25ngouala@gmail.com') {
+    throw new Error("Action non autorisée. Réservée au super-administrateur.");
+  }
+
+  try {
+    let deletedCount = 0;
+
+    // 1. Purge all transactions in Firestore
+    try {
+      const txQuery = query(collection(db, 'transactions'));
+      const txSnapshot = await getDocs(txQuery);
+
+      if (!txSnapshot.empty) {
+        // Delete in batches of up to 400
+        const docs = txSnapshot.docs;
+        for (let i = 0; i < docs.length; i += 400) {
+          const chunk = docs.slice(i, i + 400);
+          const batch = writeBatch(db);
+          chunk.forEach((docSnap) => {
+            batch.delete(docSnap.ref);
+          });
+          await batch.commit();
+          deletedCount += chunk.length;
+        }
+      }
+    } catch (txErr) {
+      console.warn('[Purge Transactions Warning]:', txErr);
+    }
+
+    // 2. Reset demo balances in 'users' collection to 0 FCFA
+    try {
+      const usersQuery = query(collection(db, 'users'));
+      const usersSnapshot = await getDocs(usersQuery);
+      if (!usersSnapshot.empty) {
+        const userDocs = usersSnapshot.docs;
+        for (let i = 0; i < userDocs.length; i += 400) {
+          const chunk = userDocs.slice(i, i + 400);
+          const userBatch = writeBatch(db);
+          chunk.forEach((userDoc) => {
+            userBatch.update(userDoc.ref, {
+              walletBalance: 0,
+              balance: 0,
+              updatedAt: new Date().toISOString()
+            });
+          });
+          await userBatch.commit();
+        }
+      }
+    } catch (userErr) {
+      console.warn('[Purge Users Balances Warning]:', userErr);
+    }
+
+    // 3. Clear server backend demo cache
+    try {
+      await fetch('/api/admin/purge-demo-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail,
+          'x-user-role': 'admin'
+        }
+      });
+    } catch (_e) {}
+
+    // 4. Clear local test transactions cache
+    try {
+      localStorage.removeItem('senegal_cv_user_transactions');
+      localStorage.removeItem('senegal_cv_paid_docs');
+    } catch (_e) {}
+
+    return {
+      success: true,
+      deletedTransactionsCount: deletedCount,
+      message: `🔥 Base de données remise à zéro avec succès ! ${deletedCount} transaction(s) de test purgée(s). Les soldes ont été réinitialisés à 0 FCFA pour le mode production réel.`
+    };
+  } catch (error: any) {
+    console.error('[Purge Demo Data Error]:', error);
+    return {
+      success: false,
+      deletedTransactionsCount: 0,
+      message: error?.message || 'Erreur lors du nettoyage des données.'
+    };
+  }
 }
 
 export interface FirestoreErrorInfo {

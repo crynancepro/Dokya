@@ -445,8 +445,8 @@ export interface TransactionRecord {
   extractedAmount?: number;
   currency: string;
   description: string;
-  status: 'success' | 'COMPLETED' | 'pending' | 'cancel' | 'failed' | 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN';
-  aiStatus?: 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'PENDING' | 'COMPLETED';
+  status: 'success' | 'COMPLETED' | 'pending' | 'PENDING_APPROVAL' | 'cancel' | 'failed' | 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'REJECTED';
+  aiStatus?: 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'PENDING' | 'PENDING_APPROVAL' | 'COMPLETED';
   createdAt: string;
   paymentMethod?: 'wallet' | 'wave' | 'orange_money' | 'free_money' | 'card' | 'receipt_ai' | 'admin_manual' | 'free';
   transactionId?: string;
