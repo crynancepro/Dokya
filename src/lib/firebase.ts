@@ -3,7 +3,7 @@ import { getAuth, GoogleAuthProvider, User as FirebaseUser } from 'firebase/auth
 import { 
   initializeFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, 
   collection, query, where, getDocs, onSnapshot, Unsubscribe, runTransaction,
-  serverTimestamp, writeBatch
+  serverTimestamp, writeBatch, increment
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode } from '../types';
@@ -30,8 +30,10 @@ export interface FirebaseUserProfile {
   displayName: string;
   photoURL?: string;
   walletBalance: number;
+  currency?: string; // e.g. "FCFA"
+  balance?: number; // legacy alias
   subscription: {
-    planId: string; // "VIP" | "weekly" | "monthly" | "annual" | "none"
+    planId: string; // "FREE" | "VIP" | "weekly" | "monthly" | "annual"
     status: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'active' | 'expired' | 'none';
     expiresAt?: string | null;
     startedAt?: string | null;
@@ -104,8 +106,57 @@ export async function saveTransactionRecord(tx: TransactionRecord): Promise<bool
 }
 
 /**
+ * Initializes a new user's document in Firestore users/{userId} with STRICT 0 FCFA balance and FREE subscription
+ */
+export async function initializeUserAccountDoc(
+  user: FirebaseUser,
+  extra?: { displayName?: string }
+): Promise<FirebaseUserProfile> {
+  const userRef = doc(db, 'users', user.uid);
+  try {
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      const nowIso = new Date().toISOString();
+      const initialProfile: FirebaseUserProfile = {
+        uid: user.uid,
+        email: user.email || '',
+        displayName: extra?.displayName || user.displayName || user.email?.split('@')[0] || 'Candidat',
+        photoURL: user.photoURL || '',
+        walletBalance: 0,
+        currency: 'FCFA',
+        subscription: {
+          planId: 'FREE',
+          status: 'INACTIVE',
+          expiresAt: null,
+          startedAt: null
+        },
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        role: user.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate'
+      };
+      await setDoc(userRef, initialProfile, { merge: true });
+      return initialProfile;
+    }
+    return snap.data() as FirebaseUserProfile;
+  } catch (err) {
+    console.warn('[Initialize User Doc Warn]:', err);
+    return {
+      uid: user.uid,
+      email: user.email || '',
+      displayName: extra?.displayName || user.displayName || 'Candidat',
+      walletBalance: 0,
+      currency: 'FCFA',
+      subscription: { planId: 'FREE', status: 'INACTIVE', expiresAt: null, startedAt: null },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      role: user.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate'
+    };
+  }
+}
+
+/**
  * Real-time listener for user profile from Firestore collection 'users/{userId}'
- * Automatically initializes clean default user document if missing.
+ * Automatically initializes clean default user document (0 FCFA, INACTIVE) if missing.
  */
 export function subscribeToUserProfile(
   userId: string,
@@ -121,8 +172,9 @@ export function subscribeToUserProfile(
         displayName: data.displayName || auth.currentUser?.displayName || 'Candidat',
         photoURL: data.photoURL || auth.currentUser?.photoURL || '',
         walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : (typeof data.balance === 'number' ? data.balance : 0),
+        currency: data.currency || 'FCFA',
         subscription: {
-          planId: data.subscription?.planId || 'none',
+          planId: data.subscription?.planId || (data.subscriptionStatus === 'unlimited' ? 'VIP' : 'FREE'),
           status: data.subscription?.status || (data.subscriptionStatus === 'unlimited' ? 'ACTIVE' : 'INACTIVE'),
           expiresAt: data.subscription?.expiresAt || null,
           startedAt: data.subscription?.startedAt || null,
@@ -134,15 +186,16 @@ export function subscribeToUserProfile(
       };
       onUpdate(profile);
     } else if (auth.currentUser && auth.currentUser.uid === userId) {
-      // Initialize dynamic user profile in Firestore
+      // Initialize dynamic user profile in Firestore with STRICT 0 FCFA
       const initialProfile: FirebaseUserProfile = {
         uid: userId,
         email: auth.currentUser.email || '',
         displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Candidat',
         photoURL: auth.currentUser.photoURL || '',
-        walletBalance: 0, // Mode Réel : Démarre à 0 FCFA
+        walletBalance: 0,
+        currency: 'FCFA',
         subscription: {
-          planId: 'none',
+          planId: 'FREE',
           status: 'INACTIVE',
           expiresAt: null,
           startedAt: null
@@ -630,9 +683,9 @@ export async function approveTransactionWithAtomicFirestore(
 
       const txData = txDoc.data() as TransactionRecord;
       const targetUserId = txData.userId;
-      const isRecharge = txData.type === 'recharge' || (txData as any).purpose === 'wallet_recharge';
       const isSubscription = txData.type === 'subscription_purchase' || (txData as any).purpose === 'subscription_purchase';
-      const rechargeAmount = Math.abs(Number(txData.expectedAmount || txData.amount || 0));
+      const isRecharge = !isSubscription;
+      const rechargeAmount = Math.abs(Number(txData.expectedAmount || txData.amount || (txData as any).extractedAmount || 0));
 
       let userDocSnapshot: any = null;
       let userRef: any = null;
@@ -644,7 +697,7 @@ export async function approveTransactionWithAtomicFirestore(
       // 2. ALL WRITES AFTER ALL READS
       const nowIso = new Date().toISOString();
 
-      // Update the transaction atomically
+      // Update the transaction atomically to APPROVED
       transaction.update(txRef, {
         status: 'APPROVED',
         aiStatus: 'MANUALLY_VALIDATED',
@@ -659,32 +712,62 @@ export async function approveTransactionWithAtomicFirestore(
       let updatedBalance: number | undefined;
 
       // Update User Document in 'users/{userId}'
-      if (userRef && userDocSnapshot && userDocSnapshot.exists()) {
-        const userData = userDocSnapshot.data();
-        const currentBalance = typeof userData.walletBalance === 'number' ? userData.walletBalance : (typeof userData.balance === 'number' ? userData.balance : 0);
+      if (userRef) {
+        if (userDocSnapshot && userDocSnapshot.exists()) {
+          const userData = userDocSnapshot.data();
+          const currentBalance = typeof userData.walletBalance === 'number' ? userData.walletBalance : (typeof userData.balance === 'number' ? userData.balance : 0);
 
-        if (isRecharge && rechargeAmount > 0) {
-          updatedBalance = currentBalance + rechargeAmount;
-          transaction.update(userRef, {
+          if (isSubscription) {
+            const days = (txData as any).planId === 'weekly' ? 7 : (txData as any).planId === 'annual' ? 365 : 30;
+            const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+            transaction.update(userRef, {
+              subscription: {
+                planId: (txData as any).planId || 'VIP',
+                planName: (txData as any).planTitle || 'Pass VIP Dokya',
+                status: 'ACTIVE',
+                startedAt: nowIso,
+                expiresAt,
+                pricePaid: rechargeAmount,
+                adminValidationNote: note
+              },
+              subscriptionStatus: 'unlimited',
+              updatedAt: nowIso
+            });
+          } else {
+            updatedBalance = currentBalance + rechargeAmount;
+            transaction.update(userRef, {
+              walletBalance: updatedBalance,
+              balance: updatedBalance,
+              currency: 'FCFA',
+              updatedAt: nowIso
+            });
+          }
+        } else if (targetUserId && targetUserId !== 'guest') {
+          updatedBalance = isSubscription ? 0 : rechargeAmount;
+          transaction.set(userRef, {
+            uid: targetUserId,
+            email: txData.userEmail || '',
+            displayName: txData.userName || 'Candidat',
             walletBalance: updatedBalance,
             balance: updatedBalance,
-            updatedAt: nowIso
-          });
-        } else if (isSubscription) {
-          const days = (txData as any).planId === 'weekly' ? 7 : (txData as any).planId === 'annual' ? 365 : 30;
-          const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-          transaction.update(userRef, {
-            subscription: {
+            currency: 'FCFA',
+            subscription: isSubscription ? {
               planId: (txData as any).planId || 'VIP',
               planName: (txData as any).planTitle || 'Pass VIP Dokya',
               status: 'ACTIVE',
               startedAt: nowIso,
-              expiresAt,
+              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
               pricePaid: rechargeAmount,
               adminValidationNote: note
+            } : {
+              planId: 'FREE',
+              status: 'INACTIVE',
+              expiresAt: null,
+              startedAt: null
             },
-            subscriptionStatus: 'unlimited',
-            updatedAt: nowIso
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            role: 'candidate'
           });
         }
       }

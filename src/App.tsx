@@ -30,7 +30,7 @@ import { InterviewPrepView } from './components/InterviewPrepView';
 import { AuthModal } from './components/AuthModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
-import { auth, saveUserDocument, saveTransactionRecord } from './lib/firebase';
+import { auth, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, initializeUserAccountDoc } from './lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { generateCVWithGemini, generateInterviewPrepWithGemini } from './lib/geminiService';
 
@@ -204,16 +204,17 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState<boolean>(false);
   const [isGeneratingDocx, setIsGeneratingDocx] = useState<boolean>(false);
 
-  // User Wallet Balance
+  // User Wallet Balance - Real-time synchronization with Firestore (starts at 0 FCFA)
   const [userBalance, setUserBalance] = useState<number>(() => {
     const saved = localStorage.getItem('senegal_cv_user_profile');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        if (typeof parsed.walletBalance === 'number') return parsed.walletBalance;
         if (typeof parsed.balance === 'number') return parsed.balance;
       } catch (e) { /* ignore */ }
     }
-    return 3000;
+    return 0;
   });
 
   // Modal states
@@ -282,16 +283,34 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     navigateToView('landing');
   };
 
-  // Listen to Firebase Auth state
+  // Listen to Firebase Auth state & subscribe in real-time to Firestore user profile (wallet balance & subscription)
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
+    let unsubProfile: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       if (user) {
+        // Ensure user document exists in Firestore (0 FCFA default)
+        initializeUserAccountDoc(user).catch(e => console.warn('User doc init error:', e));
+
+        // Subscribe to real-time profile balance updates
+        if (unsubProfile) unsubProfile();
+        unsubProfile = subscribeToUserProfile(user.uid, (liveProfile) => {
+          if (typeof liveProfile.walletBalance === 'number') {
+            setUserBalance(liveProfile.walletBalance);
+          }
+        });
+
         // If user just logged in and was on landing or auth, navigate to dashboard
         if (activeTab === 'landing' || activeTab === 'auth') {
           setActiveTab('dashboard');
         }
       } else {
+        if (unsubProfile) {
+          unsubProfile();
+          unsubProfile = null;
+        }
+        setUserBalance(0);
         // When user logs out / is logged out, redirect immediately to landing page
         if (activeTab !== 'landing') {
           setActiveTab('landing');
@@ -301,7 +320,11 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         }
       }
     });
-    return () => unsub();
+
+    return () => {
+      unsubAuth();
+      if (unsubProfile) unsubProfile();
+    };
   }, [activeTab]);
 
   // Handle URL Hash synchronization

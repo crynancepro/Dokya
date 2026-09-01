@@ -972,32 +972,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleValidateTransaction = async (tx: TransactionRecord, note?: string) => {
     setIsValidatingTx(true);
     setErrorMsg(null);
+    const finalNote = note || manualValidationNote || 'Validation manuelle effectuée par l\'administrateur.';
+
+    // Dynamic instant local UI update to replace the button with the green badge immediately
+    const nowIso = new Date().toISOString();
+    setTransactionsList(prev => prev.map(t => t.id === tx.id ? {
+      ...t,
+      status: 'APPROVED',
+      aiStatus: 'MANUALLY_VALIDATED',
+      manuallyValidatedBy: adminEmail,
+      manuallyValidatedAt: nowIso,
+      adminValidationNote: finalNote
+    } : t));
+
+    if (selectedTxForInspection && selectedTxForInspection.id === tx.id) {
+      setSelectedTxForInspection(prev => prev ? {
+        ...prev,
+        status: 'APPROVED',
+        aiStatus: 'MANUALLY_VALIDATED',
+        manuallyValidatedBy: adminEmail,
+        manuallyValidatedAt: nowIso,
+        adminValidationNote: finalNote
+      } : null);
+    }
+
     try {
-      const finalNote = note || manualValidationNote || 'Validation manuelle effectuée par l\'administrateur.';
       // Run atomic Firestore approval transaction: updates status to 'APPROVED' & credits walletBalance in users/{userId}
       const result = await approveTransactionWithAtomicFirestore(tx.id, adminEmail, finalNote);
 
       if (result.success) {
         setSuccessMsg(result.message || `Transaction ${tx.id} validée et accréditée avec succès !`);
         setManualValidationNote('');
-        if (selectedTxForInspection && selectedTxForInspection.id === tx.id) {
-          setSelectedTxForInspection(prev => prev ? {
-            ...prev,
-            status: 'APPROVED',
-            aiStatus: 'MANUALLY_VALIDATED',
-            manuallyValidatedBy: adminEmail,
-            manuallyValidatedAt: new Date().toISOString(),
-            adminValidationNote: finalNote
-          } : null);
-        }
         setTimeout(() => setSuccessMsg(null), 4500);
         loadAdminData();
       } else {
         setErrorMsg(result.error || result.message || 'Erreur lors de la validation manuelle de la transaction.');
+        loadAdminData();
       }
     } catch (e: any) {
       console.error('Error validating transaction:', e);
       setErrorMsg(e.message || 'Erreur réseau lors de la validation manuelle.');
+      loadAdminData();
     } finally {
       setIsValidatingTx(false);
     }
@@ -2475,14 +2490,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </tr>
                     ) : (
                       filteredTransactions.map((tx) => {
-                        const isAiValidated = tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED';
-                        const isAiRejected = tx.status === 'REJECTED_BY_AI';
-                        const isManualValidated = tx.status === 'MANUALLY_VALIDATED';
-                        const isManualRejected = tx.status === 'REJECTED_BY_ADMIN';
-                        const isPending = tx.status === 'pending' || tx.status === 'PENDING_ADMIN_VALIDATION';
+                        const isApproved = tx.status === 'APPROVED' || tx.status === 'MANUALLY_VALIDATED' || tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED';
+                        const isRejected = tx.status === 'REJECTED' || tx.status === 'REJECTED_BY_ADMIN' || tx.status === 'REJECTED_BY_AI' || tx.status === 'failed' || tx.status === 'cancel';
+                        const isPending = !isApproved && !isRejected;
                         
                         const expectedAmt = tx.expectedAmount || Math.abs(tx.amount);
-                        const extractedAmt = tx.extractedAmount || (tx.extractedData?.amount) || (isAiValidated ? expectedAmt : undefined);
+                        const extractedAmt = tx.extractedAmount || (tx.extractedData?.amount) || (isApproved ? expectedAmt : undefined);
                         const isAmountMismatch = extractedAmt !== undefined && extractedAmt < expectedAmt;
 
                         const countryInfo = getCountryInfo(tx);
@@ -2579,28 +2592,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                             {/* 7. Statut de vérification */}
                             <td className="py-3.5 px-3">
-                              {isAiValidated ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
-                                  <Sparkles className="w-3 h-3 text-emerald-400" />
-                                  <span>VALIDÉ IA</span>
+                              {isApproved ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap shadow-xs">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  <span>APPROVED / VALIDÉ</span>
                                 </span>
-                              ) : isAiRejected ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
-                                  <AlertTriangle className="w-3 h-3 text-rose-400" />
-                                  <span>REJETÉ IA</span>
-                                </span>
-                              ) : isManualValidated ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/30 whitespace-nowrap">
-                                  <ShieldCheck className="w-3 h-3 text-sky-400" />
-                                  <span>VALIDÉ MANUEL</span>
-                                </span>
-                              ) : isManualRejected ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-800 text-rose-300 border border-rose-500/30 whitespace-nowrap">
+                              ) : isRejected ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
                                   <Ban className="w-3 h-3 text-rose-400" />
-                                  <span>REJETÉ ADMIN</span>
+                                  <span>REJETÉ</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
                                   <Clock className="w-3 h-3 text-amber-400" />
                                   <span>EN ATTENTE</span>
                                 </span>
@@ -2643,29 +2646,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <Eye className="w-4 h-4 text-emerald-400" />
                                 </button>
 
-                                {(!isAiValidated && !isManualValidated) && (
-                                  <button
-                                    type="button"
-                                    disabled={isValidatingTx}
-                                    onClick={() => handleValidateTransaction(tx)}
-                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black transition-all cursor-pointer shadow-sm flex items-center gap-1"
-                                    title="Valider la transaction en 1 clic"
-                                  >
-                                    <Check className="w-3 h-3" />
-                                    <span>Valider</span>
-                                  </button>
-                                )}
+                                {isApproved ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>VALIDÉ</span>
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={isValidatingTx}
+                                      onClick={() => handleValidateTransaction(tx)}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95"
+                                      title="Valider la transaction en 1 clic"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      <span>Valider</span>
+                                    </button>
 
-                                {(isPending || (!isManualRejected && !isAiRejected)) && (
-                                  <button
-                                    type="button"
-                                    disabled={isRejectingTx}
-                                    onClick={() => handleRejectTransaction(tx)}
-                                    className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all cursor-pointer"
-                                    title="Rejeter la transaction"
-                                  >
-                                    <Ban className="w-3 h-3" />
-                                  </button>
+                                    {!isRejected && (
+                                      <button
+                                        type="button"
+                                        disabled={isRejectingTx}
+                                        onClick={() => handleRejectTransaction(tx)}
+                                        className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all cursor-pointer"
+                                        title="Rejeter la transaction"
+                                      >
+                                        <Ban className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -3447,7 +3457,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span className="text-[10px] text-slate-400">Privilèges Super Admin</span>
                   </div>
 
-                  {selectedTxForInspection.status === 'REJECTED_BY_AI' || selectedTxForInspection.status === 'REJECTED_BY_ADMIN' || selectedTxForInspection.status === 'failed' || selectedTxForInspection.status === 'cancel' ? (
+                  {selectedTxForInspection.status === 'APPROVED' || selectedTxForInspection.status === 'MANUALLY_VALIDATED' || selectedTxForInspection.status === 'VALIDATED_BY_AI' || selectedTxForInspection.status === 'success' || selectedTxForInspection.status === 'COMPLETED' ? (
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 font-bold">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>APPROVED / VALIDÉ & Solde Accrédité</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {selectedTxForInspection.manuallyValidatedBy ? `Par ${selectedTxForInspection.manuallyValidatedBy}` : 'Validé'}
+                      </span>
+                    </div>
+                  ) : (
                     <div className="space-y-2.5">
                       <input
                         type="text"
@@ -3461,10 +3481,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           type="button"
                           disabled={isValidatingTx}
                           onClick={() => handleValidateTransaction(selectedTxForInspection, manualValidationNote)}
-                          className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg transition-all cursor-pointer"
+                          className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95"
                         >
                           <Check className="w-4 h-4" />
-                          <span>{isValidatingTx ? 'Validation en cours...' : 'Valider Manuellement'}</span>
+                          <span>{isValidatingTx ? 'Validation en cours...' : 'Valider & Accréditer le Solde'}</span>
                         </button>
 
                         <button
@@ -3477,16 +3497,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span>{isRejectingTx ? 'Rejet...' : 'Confirmer le Rejet'}</span>
                         </button>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-semibold">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        <span>Transaction validée et comptabilisée.</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400">
-                        {selectedTxForInspection.manuallyValidatedBy ? `Par ${selectedTxForInspection.manuallyValidatedBy}` : 'Par OCR IA'}
-                      </span>
                     </div>
                   )}
 

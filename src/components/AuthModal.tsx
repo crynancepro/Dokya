@@ -18,7 +18,7 @@ import {
   createUserWithEmailAndPassword, 
   signInWithPopup 
 } from 'firebase/auth';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth, googleProvider, initializeUserAccountDoc } from '../lib/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -51,15 +51,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       if (mode === 'login') {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCred = await signInWithEmailAndPassword(auth, email, password);
+        await initializeUserAccountDoc(userCred.user);
         setSuccessMsg('Connexion réussie !');
         setTimeout(() => {
           if (onSuccess) onSuccess();
           onClose();
         }, 800);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
-        setSuccessMsg('Compte créé avec succès !');
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        await initializeUserAccountDoc(userCred.user, { displayName: fullName.trim() || undefined });
+        setSuccessMsg('Compte créé avec succès ! (Solde initial : 0 FCFA)');
         setTimeout(() => {
           if (onSuccess) onSuccess();
           onClose();
@@ -89,7 +91,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const userCred = await signInWithPopup(auth, googleProvider);
+      await initializeUserAccountDoc(userCred.user);
       setSuccessMsg('Connexion Google réussie !');
       setTimeout(() => {
         if (onSuccess) onSuccess();

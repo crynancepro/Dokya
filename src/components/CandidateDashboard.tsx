@@ -14,7 +14,7 @@ import {
 import { 
   fetchUserProfile, saveCandidateProfile, fetchUserDocuments, 
   deleteUserDocument, fetchUserOrders, saveOrderRecord, OrderRecord,
-  saveTransactionRecord, fetchUserTransactions
+  saveTransactionRecord, fetchUserTransactions, subscribeToUserProfile
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
@@ -77,13 +77,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const [docFilterType, setDocFilterType] = useState<string>('all');
   const [docSearchQuery, setDocSearchQuery] = useState<string>('');
 
-  // Profile state
+  // Profile state - Production Mode : 0 FCFA Solde Initial
   const [profile, setProfile] = useState<CandidateProfile>(() => {
     const saved = localStorage.getItem('senegal_cv_user_profile');
     if (saved) {
       try { 
         const parsed = JSON.parse(saved);
-        if (typeof parsed.balance !== 'number') parsed.balance = 3000;
+        if (typeof parsed.walletBalance === 'number') parsed.balance = parsed.walletBalance;
+        if (typeof parsed.balance !== 'number') parsed.balance = 0;
         if (!parsed.personalInfo) {
           parsed.personalInfo = {
             firstName: '',
@@ -124,8 +125,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       education: [],
       skills: [{ category: 'Compétences Principales', skills: ['Gestion de projet', 'Analyse de données'] }],
       languages: [{ name: 'Français', level: 'Bilingue / Maternelle' }],
-      credits: 2,
-      balance: 3000,
+      credits: 0,
+      balance: 0,
       subscriptionStatus: 'free',
       updatedAt: new Date().toISOString()
     };
@@ -140,26 +141,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     return [];
   });
 
-  // Transactions History
+  // Transactions History - Clean empty array by default (Real Firestore transactions only)
   const [transactions, setTransactions] = useState<TransactionRecord[]>(() => {
     const saved = localStorage.getItem('senegal_cv_transactions');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { /* ignore */ }
     }
-    return [
-      {
-        id: 'TX-INIT-001',
-        userId: user?.uid || 'guest',
-        type: 'recharge',
-        amount: 3000,
-        currency: 'XOF',
-        description: 'Offre de bienvenue - Solde Initial Dokya Wallet',
-        status: 'success',
-        createdAt: new Date().toISOString(),
-        paymentMethod: 'wallet',
-        newBalance: 3000
-      }
-    ];
+    return [];
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -172,40 +160,40 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingDocx, setIsExportingDocx] = useState(false);
 
-  // Listen to auth
+  // Listen to auth & Real-Time Firestore User Profile Subscription
   useEffect(() => {
+    let unsubProfileSnapshot: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
         setIsLoading(true);
-        try {
-          const remoteProfile = await fetchUserProfile(u.uid);
-          if (remoteProfile) {
-            const mergedProfile = {
-              ...remoteProfile,
-              personalInfo: {
-                firstName: '',
-                lastName: '',
-                email: u.email || '',
-                phone: '',
-                address: '',
-                city: 'Dakar',
-                country: 'Sénégal',
-                targetJob: '',
-                linkedin: '',
-                portfolio: '',
-                ...(remoteProfile.personalInfo || {})
-              },
-              experiences: remoteProfile.experiences || [],
-              education: remoteProfile.education || [],
-              skills: remoteProfile.skills || [],
-              languages: remoteProfile.languages || [],
-              balance: typeof remoteProfile.balance === 'number' ? remoteProfile.balance : 3000
-            };
-            setProfile(mergedProfile);
-            localStorage.setItem('senegal_cv_user_profile', JSON.stringify(mergedProfile));
-          }
 
+        // Real-time Firestore Profile & Wallet Balance Subscription
+        if (unsubProfileSnapshot) unsubProfileSnapshot();
+        unsubProfileSnapshot = subscribeToUserProfile(u.uid, (liveProfile) => {
+          const liveBalance = liveProfile.walletBalance ?? liveProfile.balance ?? 0;
+          const isVip = liveProfile.subscription?.status === 'ACTIVE' || liveProfile.subscription?.status === 'active';
+          
+          setProfile(prev => {
+            const updated = {
+              ...prev,
+              uid: liveProfile.uid,
+              email: liveProfile.email || prev.email,
+              displayName: liveProfile.displayName || prev.displayName,
+              balance: liveBalance,
+              subscriptionStatus: isVip ? ('unlimited' as const) : ('free' as const),
+              subscriptionPlan: liveProfile.subscription?.planId,
+              subscriptionExpiresAt: liveProfile.subscription?.expiresAt || undefined
+            };
+            try {
+              localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updated));
+            } catch (_e) {}
+            return updated;
+          });
+        });
+
+        try {
           const remoteDocs = await fetchUserDocuments(u.uid);
           if (remoteDocs && remoteDocs.length > 0) {
             setDocuments(remoteDocs);
@@ -222,9 +210,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         } finally {
           setIsLoading(false);
         }
+      } else {
+        if (unsubProfileSnapshot) {
+          unsubProfileSnapshot();
+          unsubProfileSnapshot = null;
+        }
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribe();
+      if (unsubProfileSnapshot) unsubProfileSnapshot();
+    };
   }, []);
 
   // Handle Tab Selection from Sidebar
@@ -554,7 +551,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         onSelectTab={handleSelectTab}
         profile={profile}
         documentsCount={documents.length}
-        userBalance={profile.balance ?? 3000}
+        userBalance={profile.balance ?? 0}
         onOpenRecharge={() => setIsRechargeModalOpen(true)}
         onOpenAdmin={onOpenAdmin}
         onSignOut={onSignOut ? onSignOut : async () => {
@@ -611,7 +608,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             >
               <Wallet className="w-3.5 h-3.5 text-emerald-400" />
               <span className="text-xs font-black text-emerald-400">
-                {(profile.balance ?? 3000).toLocaleString('fr-FR')} <span className="text-[10px] text-emerald-300">FCFA</span>
+                {(profile.balance ?? 0).toLocaleString('fr-FR')} <span className="text-[10px] text-emerald-300">FCFA</span>
               </span>
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded-md hidden lg:inline">
                 + Recharger
@@ -734,7 +731,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   </div>
                   <div className="flex items-baseline justify-between">
                     <p className="text-xl font-black text-emerald-400">
-                      {(profile.balance ?? 3000).toLocaleString('fr-FR')} <span className="text-xs font-normal text-emerald-300">FCFA</span>
+                      {(profile.balance ?? 0).toLocaleString('fr-FR')} <span className="text-xs font-normal text-emerald-300">FCFA</span>
                     </p>
                     <button
                       type="button"
@@ -1709,7 +1706,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       Compte Dokya Wallet
                     </span>
                     <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                      Solde Disponible : <span className="text-emerald-400">{(profile.balance ?? 3000).toLocaleString('fr-FR')} FCFA</span>
+                      Solde Disponible : <span className="text-emerald-400">{(profile.balance ?? 0).toLocaleString('fr-FR')} FCFA</span>
                     </h3>
                     <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
                       Utilisez votre solde pour débloquer vos documents en 1 clic ou activer un Pass VIP.
@@ -1748,7 +1745,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
                   <div className="text-right">
                     <span className="text-xs text-slate-400">Solde Actuel</span>
-                    <p className="text-lg font-black text-emerald-400">{(profile.balance ?? 3000).toLocaleString('fr-FR')} FCFA</p>
+                    <p className="text-lg font-black text-emerald-400">{(profile.balance ?? 0).toLocaleString('fr-FR')} FCFA</p>
                   </div>
                 </div>
 
@@ -1946,7 +1943,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       <RechargeWalletModal
         isOpen={isRechargeModalOpen}
         onClose={() => setIsRechargeModalOpen(false)}
-        currentBalance={profile.balance ?? 3000}
+        currentBalance={profile.balance ?? 0}
         userId={user?.uid || profile.uid}
         userEmail={user?.email || profile.email}
         userName={`${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim()}
@@ -1960,7 +1957,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         planId={subscriptionModalConfig.planId}
         planTitle={subscriptionModalConfig.planTitle}
         price={subscriptionModalConfig.price}
-        userBalance={profile.balance ?? 3000}
+        userBalance={profile.balance ?? 0}
         userId={user?.uid || profile.uid}
         userEmail={user?.email || profile.email}
         userName={`${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim()}
