@@ -1551,6 +1551,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         onClose={() => setIsPaymentModalOpen(false)}
         documentTitle={paymentDocTitle}
         documentTypeLabel={paymentDocTypeLabel}
+        targetDocId={currentDocId}
         price={paymentPrice}
         userBalance={userBalance}
         isAlreadyPaid={isCurrentDocPaid}
@@ -1558,6 +1559,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         userEmail={currentUser?.email || undefined}
         userName={currentUser?.displayName || undefined}
         onPaymentSuccess={handlePaymentSuccess}
+        onOpenInterviewPrep={() => navigateToView('interview_prep')}
         onOpenRechargeModal={() => {
           setIsPaymentModalOpen(false);
           setIsRechargeModalOpen(true);

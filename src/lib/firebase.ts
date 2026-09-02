@@ -269,6 +269,35 @@ export function subscribeToTransactionStatus(
   };
 }
 
+/**
+ * Real-time listener for all transactions of a user via Firestore onSnapshot
+ */
+export function subscribeToUserTransactions(
+  userId: string,
+  onUpdate: (transactions: TransactionRecord[]) => void
+): () => void {
+  if (!userId || userId === 'guest') {
+    return () => {};
+  }
+  try {
+    const q = query(collection(db, 'transactions'), where('userId', '==', userId));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const txs: TransactionRecord[] = [];
+      snapshot.forEach((d) => {
+        txs.push(d.data() as TransactionRecord);
+      });
+      txs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      onUpdate(txs);
+    }, (err) => {
+      console.warn('[subscribeToUserTransactions warn]:', err);
+    });
+    return unsub;
+  } catch (e) {
+    console.warn('[subscribeToUserTransactions init warn]:', e);
+    return () => {};
+  }
+}
+
 export async function fetchUserTransactions(userId: string): Promise<TransactionRecord[]> {
   const path = 'transactions';
   try {
@@ -683,15 +712,24 @@ export async function approveTransactionWithAtomicFirestore(
 
       const txData = txDoc.data() as TransactionRecord;
       const targetUserId = txData.userId;
+      const isDirectPurchase = txData.type === 'DIRECT_PURCHASE' || txData.type === 'document_purchase' || (txData as any).purpose === 'document_purchase';
       const isSubscription = txData.type === 'subscription_purchase' || (txData as any).purpose === 'subscription_purchase';
-      const isRecharge = !isSubscription;
-      const rechargeAmount = Math.abs(Number(txData.expectedAmount || txData.amount || (txData as any).extractedAmount || 0));
+      const isRecharge = txData.type === 'WALLET_RECHARGE' || txData.type === 'recharge' || (txData as any).purpose === 'wallet_recharge' || (!isDirectPurchase && !isSubscription);
+      const targetAmount = Math.abs(Number(txData.expectedAmount || txData.amount || (txData as any).extractedAmount || 0));
+      const targetDocId = txData.targetDocId || (txData as any).unlockedDocId;
 
       let userDocSnapshot: any = null;
       let userRef: any = null;
       if (targetUserId && targetUserId !== 'guest') {
         userRef = doc(db, 'users', targetUserId);
         userDocSnapshot = await transaction.get(userRef);
+      }
+
+      let targetDocSnapshot: any = null;
+      let targetDocRef: any = null;
+      if (isDirectPurchase && targetDocId) {
+        targetDocRef = doc(db, 'user_documents', targetDocId);
+        targetDocSnapshot = await transaction.get(targetDocRef);
       }
 
       // 2. ALL WRITES AFTER ALL READS
@@ -706,18 +744,44 @@ export async function approveTransactionWithAtomicFirestore(
         manuallyValidatedBy: adminEmail,
         manuallyValidatedAt: nowIso,
         adminValidationNote: note,
+        unlockedDocId: targetDocId || undefined,
         updatedAt: nowIso
       });
 
       let updatedBalance: number | undefined;
+
+      // Update Target Document if direct purchase
+      if (targetDocRef && targetDocSnapshot && targetDocSnapshot.exists()) {
+        transaction.update(targetDocRef, {
+          unlocked: true,
+          isPaid: true,
+          paidAt: nowIso,
+          updatedAt: nowIso
+        });
+      }
 
       // Update User Document in 'users/{userId}'
       if (userRef) {
         if (userDocSnapshot && userDocSnapshot.exists()) {
           const userData = userDocSnapshot.data();
           const currentBalance = typeof userData.walletBalance === 'number' ? userData.walletBalance : (typeof userData.balance === 'number' ? userData.balance : 0);
+          const currentUnlockedDocs = Array.isArray(userData.purchasedDocIds) ? userData.purchasedDocIds : [];
 
-          if (isSubscription) {
+          if (isDirectPurchase) {
+            // DIRECT PURCHASE: Unlock document without modifying walletBalance
+            updatedBalance = currentBalance;
+            const updatedPurchasedDocs = targetDocId && !currentUnlockedDocs.includes(targetDocId)
+              ? [...currentUnlockedDocs, targetDocId]
+              : currentUnlockedDocs;
+
+            transaction.update(userRef, {
+              purchasedDocIds: updatedPurchasedDocs,
+              ordersCount: (userData.ordersCount || 0) + 1,
+              updatedAt: nowIso
+            });
+          } else if (isSubscription) {
+            // PASS VIP: Activate VIP subscription
+            updatedBalance = currentBalance;
             const days = (txData as any).planId === 'weekly' ? 7 : (txData as any).planId === 'annual' ? 365 : 30;
             const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
             transaction.update(userRef, {
@@ -727,23 +791,26 @@ export async function approveTransactionWithAtomicFirestore(
                 status: 'ACTIVE',
                 startedAt: nowIso,
                 expiresAt,
-                pricePaid: rechargeAmount,
+                pricePaid: targetAmount,
                 adminValidationNote: note
               },
               subscriptionStatus: 'unlimited',
+              ordersCount: (userData.ordersCount || 0) + 1,
               updatedAt: nowIso
             });
           } else {
-            updatedBalance = currentBalance + rechargeAmount;
+            // WALLET RECHARGE: Credit user balance
+            updatedBalance = currentBalance + targetAmount;
             transaction.update(userRef, {
               walletBalance: updatedBalance,
               balance: updatedBalance,
               currency: 'FCFA',
+              ordersCount: (userData.ordersCount || 0) + 1,
               updatedAt: nowIso
             });
           }
         } else if (targetUserId && targetUserId !== 'guest') {
-          updatedBalance = isSubscription ? 0 : rechargeAmount;
+          updatedBalance = isRecharge ? targetAmount : 0;
           transaction.set(userRef, {
             uid: targetUserId,
             email: txData.userEmail || '',
@@ -751,13 +818,14 @@ export async function approveTransactionWithAtomicFirestore(
             walletBalance: updatedBalance,
             balance: updatedBalance,
             currency: 'FCFA',
+            purchasedDocIds: targetDocId ? [targetDocId] : [],
             subscription: isSubscription ? {
               planId: (txData as any).planId || 'VIP',
               planName: (txData as any).planTitle || 'Pass VIP Dokya',
               status: 'ACTIVE',
               startedAt: nowIso,
               expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-              pricePaid: rechargeAmount,
+              pricePaid: targetAmount,
               adminValidationNote: note
             } : {
               planId: 'FREE',
@@ -765,6 +833,7 @@ export async function approveTransactionWithAtomicFirestore(
               expiresAt: null,
               startedAt: null
             },
+            ordersCount: 1,
             createdAt: nowIso,
             updatedAt: nowIso,
             role: 'candidate'
@@ -774,7 +843,11 @@ export async function approveTransactionWithAtomicFirestore(
 
       return {
         success: true,
-        message: `Transaction ${txId} validée et accréditée avec succès !`,
+        message: isDirectPurchase
+          ? `Achat direct pour "${txData.documentTitle || targetDocId || 'le document'}" validé ! Le document est débloqué.`
+          : isSubscription
+            ? `Pass VIP validé avec succès pour ${(txData as any).planTitle || 'le candidat'} !`
+            : `Recharge de ${targetAmount.toLocaleString('fr-FR')} FCFA validée avec succès !`,
         newBalance: updatedBalance
       };
     });

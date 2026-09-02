@@ -2432,6 +2432,7 @@ const adminStore: {
   promoCodes: any[];
   auditLogs: ServerAuditLog[];
   transactions: any[];
+  documents: any[];
 } = {
   users: [
     {
@@ -2859,7 +2860,8 @@ const adminStore: {
         validation_reason: 'Reçu rejeté initialement par IA pour dépassement de 35 min, mais validé après confirmation bancaire.'
       }
     }
-  ]
+  ],
+  documents: []
 };
 
 // Middleware to verify admin identity
@@ -3810,15 +3812,29 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
     const targetAmount = (tx as any).expectedAmount || Math.abs(tx.amount);
     let credited = false;
     let subscriptionActivated = false;
+    let documentUnlocked = false;
 
-    if (tx.type === 'recharge' || (tx as any).purpose === 'wallet_recharge') {
+    const isDirectPurchase = tx.type === 'DIRECT_PURCHASE' || tx.type === 'document_purchase' || (tx as any).purpose === 'document_purchase' || (tx as any).purpose === 'document_unlock';
+    const isSubscription = tx.type === 'subscription_purchase' || (tx as any).purpose === 'subscription_purchase' || ((tx as any).description && (tx as any).description.toLowerCase().includes('souscription'));
+    const isRecharge = tx.type === 'WALLET_RECHARGE' || tx.type === 'recharge' || (tx as any).purpose === 'wallet_recharge' || (!isDirectPurchase && !isSubscription);
+
+    if (isDirectPurchase) {
+      const targetDocId = (tx as any).targetDocId || (tx as any).unlockedDocId;
       const userIndex = adminStore.users.findIndex(u => u.uid === tx.userId || ((tx as any).userEmail && u.email.toLowerCase() === (tx as any).userEmail.toLowerCase()));
       if (userIndex !== -1) {
-        adminStore.users[userIndex].balance = (adminStore.users[userIndex].balance || 0) + targetAmount;
         adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
-        credited = true;
+        adminStore.users[userIndex].unlockedDocsCount = (adminStore.users[userIndex].unlockedDocsCount || 0) + 1;
       }
-    } else if (tx.type === 'subscription_purchase' || (tx as any).purpose === 'subscription_purchase' || ((tx as any).description && (tx as any).description.toLowerCase().includes('souscription'))) {
+      if (targetDocId && adminStore.documents) {
+        const docIndex = adminStore.documents.findIndex(d => d.id === targetDocId);
+        if (docIndex !== -1) {
+          (adminStore.documents[docIndex] as any).unlocked = true;
+          (adminStore.documents[docIndex] as any).isPaid = true;
+          (adminStore.documents[docIndex] as any).paidAt = new Date().toISOString();
+        }
+      }
+      documentUnlocked = true;
+    } else if (isSubscription) {
       const userIndex = adminStore.users.findIndex(u => u.uid === tx.userId || ((tx as any).userEmail && u.email.toLowerCase() === (tx as any).userEmail.toLowerCase()));
       const planId = (tx as any).planId || 'monthly';
       const planTitle = (tx as any).planTitle || 'Pass VIP Mensuel';
@@ -3839,7 +3855,15 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
           adminValidationNote: note
         };
         adminStore.users[userIndex].updatedAt = now.toISOString();
+        adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
         subscriptionActivated = true;
+      }
+    } else if (isRecharge) {
+      const userIndex = adminStore.users.findIndex(u => u.uid === tx.userId || ((tx as any).userEmail && u.email.toLowerCase() === (tx as any).userEmail.toLowerCase()));
+      if (userIndex !== -1) {
+        adminStore.users[userIndex].balance = (adminStore.users[userIndex].balance || 0) + targetAmount;
+        adminStore.users[userIndex].ordersCount = (adminStore.users[userIndex].ordersCount || 0) + 1;
+        credited = true;
       }
     }
 
@@ -3847,8 +3871,8 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
       'payment',
       'TRANSACTION_MANUALLY_VALIDATED',
       adminEmail,
-      `Validation manuelle de la transaction ${tx.id} (${(tx as any).transactionId || 'Sans Ref'}) pour ${(tx as any).userEmail || tx.userId} - Montant: ${targetAmount.toLocaleString('fr-FR')} FCFA.${subscriptionActivated ? ' Pass VIP activé.' : ''} Note: ${note}`,
-      { transactionId: tx.id, rawTxId: (tx as any).transactionId, amount: targetAmount, credited, subscriptionActivated },
+      `Validation manuelle de la transaction ${tx.id} (${(tx as any).transactionId || 'Sans Ref'}) pour ${(tx as any).userEmail || tx.userId} - Montant: ${targetAmount.toLocaleString('fr-FR')} FCFA.${documentUnlocked ? ' Document direct débloqué.' : ''}${subscriptionActivated ? ' Pass VIP activé.' : ''}${credited ? ' Solde crédité.' : ''} Note: ${note}`,
+      { transactionId: tx.id, rawTxId: (tx as any).transactionId, amount: targetAmount, credited, subscriptionActivated, documentUnlocked },
       (tx as any).userEmail,
       tx.userId,
       'success'
@@ -3859,7 +3883,8 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
       transaction: tx,
       credited,
       subscriptionActivated,
-      message: `Transaction ${tx.id} validée manuellement avec succès.${credited ? ' Le solde utilisateur a été crédité.' : ''}${subscriptionActivated ? ' Le Pass VIP a été activé pour l\'utilisateur.' : ''}`
+      documentUnlocked,
+      message: `Transaction ${tx.id} validée manuellement avec succès.${documentUnlocked ? ' Le document a été débloqué.' : ''}${credited ? ' Le solde utilisateur a été crédité.' : ''}${subscriptionActivated ? ' Le Pass VIP a été activé pour l\'utilisateur.' : ''}`
     });
   } catch (err: any) {
     console.error('[Admin Validate Transaction Error]:', err);

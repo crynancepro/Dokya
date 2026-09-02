@@ -439,13 +439,13 @@ export interface TransactionRecord {
   userId: string;
   userEmail?: string;
   userName?: string;
-  type: 'recharge' | 'document_purchase' | 'subscription_purchase' | 'debit' | 'admin_adjustment';
+  type: 'recharge' | 'document_purchase' | 'subscription_purchase' | 'debit' | 'admin_adjustment' | 'DIRECT_PURCHASE' | 'WALLET_RECHARGE';
   amount: number; // e.g. +3000 FCFA for recharge, -1000 FCFA for purchase
   expectedAmount?: number;
   extractedAmount?: number;
   currency: string;
   description: string;
-  status: 'success' | 'COMPLETED' | 'pending' | 'PENDING_APPROVAL' | 'cancel' | 'failed' | 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'REJECTED';
+  status: 'success' | 'COMPLETED' | 'pending' | 'PENDING_APPROVAL' | 'cancel' | 'failed' | 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'REJECTED' | 'APPROVED';
   aiStatus?: 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'PENDING' | 'PENDING_APPROVAL' | 'COMPLETED';
   createdAt: string;
   paymentMethod?: 'wallet' | 'wave' | 'orange_money' | 'free_money' | 'card' | 'receipt_ai' | 'admin_manual' | 'free';
@@ -458,6 +458,11 @@ export interface TransactionRecord {
   senderPhone?: string;
   countryCode?: string;
   countryName?: string;
+  targetDocId?: string;
+  unlockedDocId?: string;
+  targetDocType?: string;
+  approvedAt?: string;
+  approvedBy?: string;
   extractedData?: {
     recipient_phone?: string;
     recipient_name?: string;

@@ -294,6 +294,27 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </span>
             </button>
 
+            {/* 2.2 Mes Commandes & Suivi Paiements */}
+            <button
+              id="nav-orders-tracking"
+              type="button"
+              onClick={() => handleNavClick('transactions')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'transactions' || activeTab === 'orders'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Receipt className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>Mes Commandes & Paiements</span>
+              </div>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>Suivi</span>
+              </span>
+            </button>
+
             {/* 3. Générateur AI (Dropdown / Accordion) */}
             <div className="space-y-1 pt-1">
               <button

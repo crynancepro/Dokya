@@ -14,13 +14,15 @@ import {
 import { 
   fetchUserProfile, saveCandidateProfile, fetchUserDocuments, 
   deleteUserDocument, fetchUserOrders, saveOrderRecord, OrderRecord,
-  saveTransactionRecord, fetchUserTransactions, subscribeToUserProfile
+  saveTransactionRecord, fetchUserTransactions, subscribeToUserProfile,
+  subscribeToUserTransactions
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { DokyaSidebar, SidebarTab, calculateProfileCompletion } from './DokyaSidebar';
 import { PricingOffersView } from './PricingOffersView';
 import { MySubscriptionView } from './MySubscriptionView';
+import { OrdersTrackingView } from './OrdersTrackingView';
 import { SubscriptionModal } from './SubscriptionModal';
 import { RechargeWalletModal } from './RechargeWalletModal';
 import { PaymentModal } from './PaymentModal';
@@ -160,16 +162,17 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingDocx, setIsExportingDocx] = useState(false);
 
-  // Listen to auth & Real-Time Firestore User Profile Subscription
+  // Listen to auth & Real-Time Firestore User Profile and Transactions Subscription
   useEffect(() => {
     let unsubProfileSnapshot: (() => void) | null = null;
+    let unsubTransactionsSnapshot: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
         setIsLoading(true);
 
-        // Real-time Firestore Profile & Wallet Balance Subscription
+        // 1. Real-time Firestore Profile & Wallet Balance Subscription
         if (unsubProfileSnapshot) unsubProfileSnapshot();
         unsubProfileSnapshot = subscribeToUserProfile(u.uid, (liveProfile) => {
           const liveBalance = liveProfile.walletBalance ?? liveProfile.balance ?? 0;
@@ -191,6 +194,15 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             } catch (_e) {}
             return updated;
           });
+        });
+
+        // 2. Real-time Firestore Transactions & Orders Subscription
+        if (unsubTransactionsSnapshot) unsubTransactionsSnapshot();
+        unsubTransactionsSnapshot = subscribeToUserTransactions(u.uid, (liveTxs) => {
+          setTransactions(liveTxs);
+          try {
+            localStorage.setItem('senegal_cv_transactions', JSON.stringify(liveTxs));
+          } catch (_e) {}
         });
 
         try {
@@ -215,14 +227,60 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           unsubProfileSnapshot();
           unsubProfileSnapshot = null;
         }
+        if (unsubTransactionsSnapshot) {
+          unsubTransactionsSnapshot();
+          unsubTransactionsSnapshot = null;
+        }
       }
     });
 
     return () => {
       unsubscribe();
       if (unsubProfileSnapshot) unsubProfileSnapshot();
+      if (unsubTransactionsSnapshot) unsubTransactionsSnapshot();
     };
   }, []);
+
+  // Global manual refresh handler
+  const handleRefreshAll = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const [remoteProfile, remoteDocs, remoteTxs] = await Promise.all([
+        fetchUserProfile(user.uid),
+        fetchUserDocuments(user.uid),
+        fetchUserTransactions(user.uid)
+      ]);
+
+      if (remoteProfile) {
+        const liveBalance = (remoteProfile as any).walletBalance ?? remoteProfile.balance ?? 0;
+        const isVip = remoteProfile.subscription?.status === 'active' || (remoteProfile.subscription?.status as any) === 'ACTIVE';
+        setProfile(prev => ({
+          ...prev,
+          uid: remoteProfile.uid,
+          email: remoteProfile.email || prev.email,
+          balance: liveBalance,
+          subscriptionStatus: isVip ? ('unlimited' as const) : ('free' as const),
+          subscriptionPlan: remoteProfile.subscription?.planId,
+          subscriptionExpiresAt: remoteProfile.subscription?.expiresAt || undefined
+        }));
+      }
+
+      if (remoteDocs && remoteDocs.length > 0) {
+        setDocuments(remoteDocs);
+        localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(remoteDocs));
+      }
+
+      if (remoteTxs && remoteTxs.length > 0) {
+        setTransactions(remoteTxs);
+        localStorage.setItem('senegal_cv_transactions', JSON.stringify(remoteTxs));
+      }
+    } catch (e) {
+      console.error('Error refreshing dashboard data:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Handle Tab Selection from Sidebar
   const handleSelectTab = (tab: SidebarTab | string) => {
@@ -502,6 +560,12 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     }
   };
 
+  // Direct Card PDF export
+  const handleDirectCardPDF = (docItem: SavedUserDocument) => {
+    setPreviewDoc(docItem);
+    setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
+  };
+
   // Direct Card DOCX export
   const handleDirectCardDocx = async (docItem: SavedUserDocument) => {
     try {
@@ -585,7 +649,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     : activeSidebarTab === 'subscription' ? 'Mon Abonnement & Privilèges VIP'
                     : activeSidebarTab === 'profile' ? 'Mon Profil & Paramètres'
                     : activeSidebarTab === 'wallet' ? 'Mon Portefeuille Wallet'
-                    : activeSidebarTab === 'transactions' ? 'Historique des Opérations'
+                    : activeSidebarTab === 'transactions' || activeSidebarTab === 'orders' ? 'Mes Commandes & Suivi des Paiements'
                     : 'Espace Dokya AI'}
                 </h2>
                 <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
@@ -1727,72 +1791,29 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* TAB 7: HISTORIQUE DES TRANSACTIONS                                        */}
+          {/* TAB 7: MES COMMANDES & SUIVI DES PAIEMENTS (ORDERS TRACKING VIEW)        */}
           {/* ========================================================================= */}
-          {activeSidebarTab === 'transactions' && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-base font-extrabold text-white flex items-center gap-2">
-                      <History className="w-5 h-5 text-emerald-400" />
-                      <span>Historique de vos Opérations ({transactions.length})</span>
-                    </h4>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Retrouvez le détail de toutes vos recharges de solde et achats de documents.
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-xs text-slate-400">Solde Actuel</span>
-                    <p className="text-lg font-black text-emerald-400">{(profile.balance ?? 0).toLocaleString('fr-FR')} FCFA</p>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto pt-2">
-                  <table className="w-full text-left text-xs text-slate-300">
-                    <thead className="text-[11px] uppercase bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
-                      <tr>
-                        <th className="p-3">Référence</th>
-                        <th className="p-3">Date</th>
-                        <th className="p-3">Type</th>
-                        <th className="p-3">Description</th>
-                        <th className="p-3 text-right">Montant</th>
-                        <th className="p-3 text-center">Statut</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/80">
-                      {transactions.map((tx) => (
-                        <tr key={tx.id} className="hover:bg-slate-800/40 transition-colors">
-                          <td className="p-3 font-mono text-[11px] text-slate-400">{tx.id}</td>
-                          <td className="p-3 font-medium">{new Date(tx.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
-                              tx.type === 'recharge' 
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' 
-                                : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
-                            }`}>
-                              {tx.type === 'recharge' ? 'Recharge Solde' : 'Achat Document'}
-                            </span>
-                          </td>
-                          <td className="p-3 font-semibold text-white">{tx.description}</td>
-                          <td className={`p-3 text-right font-black ${
-                            (Number(tx.amount) || 0) > 0 ? 'text-emerald-400' : 'text-rose-400'
-                          }`}>
-                            {(Number(tx.amount) || 0) > 0 ? `+${(Number(tx.amount) || 0).toLocaleString('fr-FR')}` : (Number(tx.amount) || 0).toLocaleString('fr-FR')} FCFA
-                          </td>
-                          <td className="p-3 text-center">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              Validé
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+          {(activeSidebarTab === 'transactions' || activeSidebarTab === 'orders') && (
+            <OrdersTrackingView
+              transactions={transactions}
+              documents={documents}
+              profile={profile}
+              onRefresh={handleRefreshAll}
+              isLoading={isLoading}
+              onOpenDocumentPreview={(doc) => setPreviewDoc(doc)}
+              onOpenInterviewPrep={(prepData) => {
+                if (onOpenInterviewPrepDocument) {
+                  onOpenInterviewPrepDocument(prepData);
+                }
+              }}
+              onOpenRechargeModal={() => setIsRechargeModalOpen(true)}
+              onSelectService={(srv) => {
+                if (onSelectService) onSelectService(srv);
+                else handleSelectTab(`gen_${srv}`);
+              }}
+              onDirectExportPDF={handleDirectCardPDF}
+              onDirectExportDocx={handleDirectCardDocx}
+            />
           )}
 
         </main>

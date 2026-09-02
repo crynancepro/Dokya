@@ -7,6 +7,7 @@ export interface PaymentModalProps {
   onClose: () => void;
   documentTitle: string;
   documentTypeLabel: string;
+  targetDocId?: string;
   price?: number;
   userBalance: number;
   userId?: string;
@@ -17,6 +18,7 @@ export interface PaymentModalProps {
   onOpenRechargeModal: () => void;
   onDownloadPDF?: () => void;
   onDownloadDocx?: () => void;
+  onOpenInterviewPrep?: () => void;
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -24,6 +26,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onClose,
   documentTitle,
   documentTypeLabel,
+  targetDocId,
   price,
   userBalance = 0,
   userId,
@@ -33,7 +36,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onPaymentSuccess,
   onOpenRechargeModal,
   onDownloadPDF,
-  onDownloadDocx
+  onDownloadDocx,
+  onOpenInterviewPrep
 }) => {
   return (
     <DokyaPaymentModal
@@ -42,6 +46,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       mode="document"
       documentTitle={documentTitle}
       documentTypeLabel={documentTypeLabel}
+      targetDocId={targetDocId}
       price={price}
       isAlreadyPaid={isAlreadyPaid}
       userBalance={userBalance}
@@ -52,6 +57,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       onOpenRechargeModal={onOpenRechargeModal}
       onDownloadPDF={onDownloadPDF}
       onDownloadDocx={onDownloadDocx}
+      onOpenInterviewPrep={onOpenInterviewPrep}
     />
   );
 };

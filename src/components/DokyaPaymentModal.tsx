@@ -94,10 +94,12 @@ export interface DokyaPaymentModalProps {
   // Document context
   documentTitle?: string;
   documentTypeLabel?: string;
+  targetDocId?: string;
   price?: number;
   isAlreadyPaid?: boolean;
   onDownloadPDF?: () => void;
   onDownloadDocx?: () => void;
+  onOpenInterviewPrep?: () => void;
   // Recharge context
   initialRechargeAmount?: number;
   onRechargeSuccess?: (addedAmount: number, transaction?: TransactionRecord) => void;
@@ -122,10 +124,12 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   mode = 'document',
   documentTitle = 'Mon Document Professionnel',
   documentTypeLabel = 'Document',
+  targetDocId,
   price,
   isAlreadyPaid = false,
   onDownloadPDF,
   onDownloadDocx,
+  onOpenInterviewPrep,
   initialRechargeAmount = 3000,
   onRechargeSuccess,
   planId = 'monthly',
@@ -715,13 +719,15 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     } catch (_e) {}
 
     // 1. Immediately register PENDING_APPROVAL transaction to DB & Firestore
+    const currentTargetDocId = activeMode === 'document' ? (targetDocId || `DOC-${Date.now()}`) : undefined;
     const pendingTx: TransactionRecord = {
       id: generatedTxId,
       transactionId: txRefCode,
       userId: userId || 'guest',
       userEmail: userEmail || 'candidat@dokya.sn',
       userName: userName || 'Candidat Dokya',
-      type: activeMode === 'recharge' ? 'recharge' : (activeMode === 'subscription' ? 'subscription_purchase' : 'document_purchase'),
+      type: activeMode === 'recharge' ? 'WALLET_RECHARGE' : (activeMode === 'subscription' ? 'subscription_purchase' : 'DIRECT_PURCHASE'),
+      targetDocId: currentTargetDocId,
       amount: activeMode === 'recharge' ? payablePrice : -payablePrice,
       expectedAmount: payablePrice,
       extractedAmount: payablePrice,
@@ -758,6 +764,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         userName: userName || 'Candidat Dokya',
         documentTitle,
         documentTypeLabel,
+        targetDocId: currentTargetDocId,
+        type: pendingTx.type,
         planId,
         planTitle,
         amount: payablePrice,
@@ -784,7 +792,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
     // 3. Real-Time Listener (Firestore onSnapshot + ultra-fast status polling)
     const unsub = subscribeToTransactionStatus(generatedTxId, (status, liveTx) => {
-      const isApproved = status === 'MANUALLY_VALIDATED' || 
+      const isApproved = status === 'APPROVED' ||
+        status === 'MANUALLY_VALIDATED' || 
         status === 'VALIDATED_BY_AI' || 
         status === 'COMPLETED' || 
         status === 'success' || 
@@ -797,6 +806,10 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         status === 'REJECTED';
 
       if (isApproved) {
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+        }
+        setIsAiScanning(false);
         const validatedTx: TransactionRecord = {
           ...pendingTx,
           ...(liveTx || {}),
@@ -810,6 +823,10 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           (liveTx as any)?.newBalance
         );
       } else if (isRejected) {
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+        }
+        setIsAiScanning(false);
         handleCertificationReject(
           (liveTx as any)?.rejectionReason || "Paiement non reconnu ou invalide. Veuillez contacter le support WhatsApp."
         );
@@ -1730,6 +1747,20 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                             >
                               <Download className="w-4 h-4" />
                               <span>📄 Télécharger en Word (.docx)</span>
+                            </button>
+                          )}
+
+                          {onOpenInterviewPrep && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenInterviewPrep();
+                              }}
+                              className="w-full sm:col-span-2 py-3 px-4 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 text-white font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-600/20 transition-all transform active:scale-95"
+                            >
+                              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                              <span>🎙️ Accéder au Module de Simulation d'Entretien RH</span>
                             </button>
                           )}
                         </div>
