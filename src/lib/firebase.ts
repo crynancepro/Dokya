@@ -55,6 +55,31 @@ export interface OrderRecord {
   creditsAdded?: number;
 }
 
+/**
+ * Deeply strips any object or nested field with value `undefined`
+ * to avoid Firestore "Unsupported field value: undefined" errors.
+ */
+export function cleanFirestorePayload<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => (typeof item === 'object' && item !== null ? cleanFirestorePayload(item) : item)) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = typeof value === 'object' && value !== null ? cleanFirestorePayload(value) : value;
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
+
 export async function saveOrderRecord(order: OrderRecord) {
   try {
     const orderDocRef = doc(db, 'orders', order.id);
@@ -94,10 +119,10 @@ export async function fetchUserOrders(userId: string): Promise<OrderRecord[]> {
 export async function saveTransactionRecord(tx: TransactionRecord): Promise<boolean> {
   try {
     const txDocRef = doc(db, 'transactions', tx.id);
-    await setDoc(txDocRef, {
+    await setDoc(txDocRef, cleanFirestorePayload({
       ...tx,
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
     return true;
   } catch (error) {
     console.warn('Could not save transaction to Firestore:', error);
@@ -336,10 +361,10 @@ export async function saveCandidateProfile(profile: CandidateProfile): Promise<b
   const path = `user_profiles/${profile.uid}`;
   try {
     const docRef = doc(db, 'user_profiles', profile.uid);
-    await setDoc(docRef, {
+    await setDoc(docRef, cleanFirestorePayload({
       ...profile,
       updatedAt: new Date().toISOString()
-    });
+    }));
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -369,10 +394,10 @@ export async function saveUserDocument(userDoc: SavedUserDocument): Promise<bool
     // For unauthenticated guest sessions, document is saved in local storage
     return true;
   }
-  const cleanDoc = {
+  const cleanDoc = cleanFirestorePayload({
     ...userDoc,
     userId: auth.currentUser.uid
-  };
+  });
   const path = `user_documents/${cleanDoc.id}`;
   try {
     const docRef = doc(db, 'user_documents', cleanDoc.id);
@@ -436,7 +461,7 @@ export async function saveGeneratedDocumentMetadata(params: SaveDocumentMetadata
 
   try {
     const docRef = doc(db, 'user_documents', docId);
-    await setDoc(docRef, userDoc);
+    await setDoc(docRef, cleanFirestorePayload(userDoc));
     return userDoc;
   } catch (error) {
     console.warn('Could not save user document metadata to Firestore:', error);
@@ -526,10 +551,10 @@ export function subscribeToPricing(
 export async function savePricingToFirestore(pricing: PlatformPricingConfig): Promise<boolean> {
   try {
     const docRef = doc(db, 'settings_pricing', 'global');
-    await setDoc(docRef, {
+    await setDoc(docRef, cleanFirestorePayload({
       ...pricing,
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    }), { merge: true });
     return true;
   } catch (error) {
     console.warn('Could not save pricing to Firestore:', error);
@@ -567,10 +592,10 @@ export function subscribeToPromoCodes(
 export async function savePromoCodeToFirestore(promo: PromoCode): Promise<boolean> {
   try {
     const docRef = doc(db, 'promo_codes', promo.id);
-    await setDoc(docRef, {
+    await setDoc(docRef, cleanFirestorePayload({
       ...promo,
       code: promo.code.trim().toUpperCase()
-    }, { merge: true });
+    }), { merge: true });
     return true;
   } catch (error) {
     console.warn('Could not save promo code to Firestore:', error);
@@ -689,54 +714,114 @@ export function subscribeToAllTransactions(
 }
 
 /**
- * Action [ VALIDER ] - Exécute une transaction atomique Firestore (runTransaction) :
- * 1. Passe le statut de la transaction à 'APPROVED' (et 'MANUALLY_VALIDATED').
- * 2. Accrédite le champ 'walletBalance' du document 'users/{userId}' de la valeur exacte de la recharge (+amount).
- * 3. Si achat d'abonnement, active le Pass VIP 'subscription.status = ACTIVE' pour +30 jours.
- * 4. Enregistre la date d'approbation et l'ID de l'admin.
+ * Action [ VALIDER ] - Exécute une validation atomique Firestore robuste :
+ * 1. Résout la transaction par document ID, champ 'id', 'transactionId' ou objet fourni.
+ * 2. Si le document n'existe pas encore dans Firestore, l'initialise immédiatement pour garantir l'atomicité.
+ * 3. Passe le statut de la transaction à 'APPROVED' (et 'MANUALLY_VALIDATED').
+ * 4. Accrédite le champ 'walletBalance' de 'users/{userId}' (si recharge) ou active le Pass VIP ou débloque le document.
+ * 5. Notifie et synchronise le backend (/api/admin/transactions/:id/validate).
  */
 export async function approveTransactionWithAtomicFirestore(
-  txId: string,
+  txInput: string | TransactionRecord,
   adminEmail: string,
   note: string = 'Validation manuelle effectuée par l\'administrateur'
 ): Promise<{ success: boolean; message: string; newBalance?: number; error?: string }> {
   try {
-    const txRef = doc(db, 'transactions', txId);
+    const rawTxId = typeof txInput === 'string' ? txInput : (txInput.id || (txInput as any).transactionId || `TX-${Date.now()}`);
+    let targetDocRef = doc(db, 'transactions', rawTxId);
+    let resolvedDocSnap = await getDoc(targetDocRef);
 
+    // 1. If document not found by direct doc ID, attempt query lookups
+    if (!resolvedDocSnap.exists()) {
+      try {
+        const qId = query(collection(db, 'transactions'), where('id', '==', rawTxId));
+        const snapId = await getDocs(qId);
+        if (!snapId.empty) {
+          targetDocRef = doc(db, 'transactions', snapId.docs[0].id);
+          resolvedDocSnap = snapId.docs[0];
+        } else {
+          const qRef = query(collection(db, 'transactions'), where('transactionId', '==', rawTxId));
+          const snapRef = await getDocs(qRef);
+          if (!snapRef.empty) {
+            targetDocRef = doc(db, 'transactions', snapRef.docs[0].id);
+            resolvedDocSnap = snapRef.docs[0];
+          }
+        }
+      } catch (_lookupErr) {
+        console.warn('[Tx Lookup Warn]:', _lookupErr);
+      }
+    }
+
+    // 2. If still missing from Firestore (e.g. was held in memory/API store), seed it immediately
+    if (!resolvedDocSnap.exists()) {
+      const fallbackObj: Partial<TransactionRecord> = typeof txInput === 'object' ? txInput : {
+        id: rawTxId,
+        transactionId: rawTxId,
+        userId: 'guest',
+        userEmail: 'candidat@dokya.sn',
+        userName: 'Candidat Dokya',
+        type: 'WALLET_RECHARGE',
+        amount: 2000,
+        expectedAmount: 2000,
+        currency: 'FCFA',
+        description: `Recharge Solde (${rawTxId})`,
+        status: 'PENDING',
+        aiStatus: 'PENDING',
+        paymentMethod: 'wave',
+        createdAt: new Date().toISOString()
+      };
+
+      await setDoc(targetDocRef, cleanFirestorePayload({
+        ...fallbackObj,
+        id: rawTxId,
+        status: 'PENDING',
+        createdAt: fallbackObj.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }), { merge: true });
+    }
+
+    // 3. Run atomic transaction on Firestore
     const result = await runTransaction(db, async (transaction) => {
       // 1. ALL READS FIRST
-      const txDoc = await transaction.get(txRef);
+      const txDoc = await transaction.get(targetDocRef);
       if (!txDoc.exists()) {
-        throw new Error(`Transaction ${txId} introuvable dans Firestore.`);
+        throw new Error(`Transaction ${rawTxId} introuvable dans Firestore après synchronisation.`);
       }
 
       const txData = txDoc.data() as TransactionRecord;
       const targetUserId = txData.userId;
-      const isDirectPurchase = txData.type === 'DIRECT_PURCHASE' || txData.type === 'document_purchase' || (txData as any).purpose === 'document_purchase';
-      const isSubscription = txData.type === 'subscription_purchase' || (txData as any).purpose === 'subscription_purchase';
-      const isRecharge = txData.type === 'WALLET_RECHARGE' || txData.type === 'recharge' || (txData as any).purpose === 'wallet_recharge' || (!isDirectPurchase && !isSubscription);
+      const txTypeUpper = (txData.type || '').toUpperCase();
+      const isDirectPurchase = txTypeUpper === 'DIRECT_PURCHASE' || txTypeUpper === 'DOCUMENT_PURCHASE' || (txData as any).purpose === 'document_purchase' || (txData as any).purpose === 'document_unlock';
+      const isSubscription = txTypeUpper === 'SUBSCRIPTION_PURCHASE' || txTypeUpper === 'VIP_PASS' || txTypeUpper === 'SUBSCRIPTION' || (txData as any).purpose === 'subscription_purchase';
+      const isRecharge = txTypeUpper === 'WALLET_RECHARGE' || txTypeUpper === 'RECHARGE' || (txData as any).purpose === 'wallet_recharge' || (!isDirectPurchase && !isSubscription);
       const targetAmount = Math.abs(Number(txData.expectedAmount || txData.amount || (txData as any).extractedAmount || 0));
       const targetDocId = txData.targetDocId || (txData as any).unlockedDocId;
 
       let userDocSnapshot: any = null;
       let userRef: any = null;
+      let userProfileSnapshot: any = null;
+      let userProfileRef: any = null;
+
       if (targetUserId && targetUserId !== 'guest') {
         userRef = doc(db, 'users', targetUserId);
         userDocSnapshot = await transaction.get(userRef);
+
+        userProfileRef = doc(db, 'user_profiles', targetUserId);
+        userProfileSnapshot = await transaction.get(userProfileRef);
       }
 
       let targetDocSnapshot: any = null;
-      let targetDocRef: any = null;
+      let targetDocItemRef: any = null;
       if (isDirectPurchase && targetDocId) {
-        targetDocRef = doc(db, 'user_documents', targetDocId);
-        targetDocSnapshot = await transaction.get(targetDocRef);
+        targetDocItemRef = doc(db, 'user_documents', targetDocId);
+        targetDocSnapshot = await transaction.get(targetDocItemRef);
       }
 
       // 2. ALL WRITES AFTER ALL READS
       const nowIso = new Date().toISOString();
 
       // Update the transaction atomically to APPROVED
-      transaction.update(txRef, {
+      const txApprovalData: Record<string, any> = {
         status: 'APPROVED',
         aiStatus: 'MANUALLY_VALIDATED',
         approvedAt: nowIso,
@@ -744,23 +829,26 @@ export async function approveTransactionWithAtomicFirestore(
         manuallyValidatedBy: adminEmail,
         manuallyValidatedAt: nowIso,
         adminValidationNote: note,
-        unlockedDocId: targetDocId || undefined,
         updatedAt: nowIso
-      });
+      };
+      if (targetDocId) {
+        txApprovalData.unlockedDocId = targetDocId;
+      }
+      transaction.update(targetDocRef, cleanFirestorePayload(txApprovalData));
 
       let updatedBalance: number | undefined;
 
       // Update Target Document if direct purchase
-      if (targetDocRef && targetDocSnapshot && targetDocSnapshot.exists()) {
-        transaction.update(targetDocRef, {
+      if (targetDocItemRef && targetDocSnapshot && targetDocSnapshot.exists()) {
+        transaction.update(targetDocItemRef, cleanFirestorePayload({
           unlocked: true,
           isPaid: true,
           paidAt: nowIso,
           updatedAt: nowIso
-        });
+        }));
       }
 
-      // Update User Document in 'users/{userId}'
+      // Update User Document in 'users/{userId}' and 'user_profiles/{userId}'
       if (userRef) {
         if (userDocSnapshot && userDocSnapshot.exists()) {
           const userData = userDocSnapshot.data();
@@ -774,44 +862,70 @@ export async function approveTransactionWithAtomicFirestore(
               ? [...currentUnlockedDocs, targetDocId]
               : currentUnlockedDocs;
 
-            transaction.update(userRef, {
+            transaction.update(userRef, cleanFirestorePayload({
               purchasedDocIds: updatedPurchasedDocs,
               ordersCount: (userData.ordersCount || 0) + 1,
               updatedAt: nowIso
-            });
+            }));
+
+            if (userProfileRef && userProfileSnapshot && userProfileSnapshot.exists()) {
+              transaction.update(userProfileRef, cleanFirestorePayload({
+                purchasedDocIds: updatedPurchasedDocs,
+                updatedAt: nowIso
+              }));
+            }
           } else if (isSubscription) {
             // PASS VIP: Activate VIP subscription
             updatedBalance = currentBalance;
             const days = (txData as any).planId === 'weekly' ? 7 : (txData as any).planId === 'annual' ? 365 : 30;
             const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-            transaction.update(userRef, {
-              subscription: {
-                planId: (txData as any).planId || 'VIP',
-                planName: (txData as any).planTitle || 'Pass VIP Dokya',
-                status: 'ACTIVE',
-                startedAt: nowIso,
-                expiresAt,
-                pricePaid: targetAmount,
-                adminValidationNote: note
-              },
+            const subscriptionPayload = cleanFirestorePayload({
+              planId: (txData as any).planId || 'VIP',
+              planName: (txData as any).planTitle || 'Pass VIP Dokya',
+              status: 'ACTIVE',
+              startedAt: nowIso,
+              expiresAt,
+              pricePaid: targetAmount,
+              adminValidationNote: note
+            });
+
+            transaction.update(userRef, cleanFirestorePayload({
+              subscription: subscriptionPayload,
               subscriptionStatus: 'unlimited',
               ordersCount: (userData.ordersCount || 0) + 1,
               updatedAt: nowIso
-            });
+            }));
+
+            if (userProfileRef && userProfileSnapshot && userProfileSnapshot.exists()) {
+              transaction.update(userProfileRef, cleanFirestorePayload({
+                subscription: subscriptionPayload,
+                subscriptionStatus: 'unlimited',
+                updatedAt: nowIso
+              }));
+            }
           } else {
             // WALLET RECHARGE: Credit user balance
             updatedBalance = currentBalance + targetAmount;
-            transaction.update(userRef, {
+            transaction.update(userRef, cleanFirestorePayload({
               walletBalance: updatedBalance,
               balance: updatedBalance,
               currency: 'FCFA',
               ordersCount: (userData.ordersCount || 0) + 1,
               updatedAt: nowIso
-            });
+            }));
+
+            if (userProfileRef && userProfileSnapshot && userProfileSnapshot.exists()) {
+              transaction.update(userProfileRef, cleanFirestorePayload({
+                walletBalance: updatedBalance,
+                balance: updatedBalance,
+                currency: 'FCFA',
+                updatedAt: nowIso
+              }));
+            }
           }
         } else if (targetUserId && targetUserId !== 'guest') {
           updatedBalance = isRecharge ? targetAmount : 0;
-          transaction.set(userRef, {
+          const initialUserObj = cleanFirestorePayload({
             uid: targetUserId,
             email: txData.userEmail || '',
             displayName: txData.userName || 'Candidat',
@@ -838,6 +952,12 @@ export async function approveTransactionWithAtomicFirestore(
             updatedAt: nowIso,
             role: 'candidate'
           });
+
+          transaction.set(userRef, initialUserObj);
+
+          if (userProfileRef) {
+            transaction.set(userProfileRef, initialUserObj, { merge: true });
+          }
         }
       }
 
@@ -853,7 +973,7 @@ export async function approveTransactionWithAtomicFirestore(
     });
 
     // Also notify backend store
-    fetch(`/api/admin/transactions/${encodeURIComponent(txId)}/validate`, {
+    fetch(`/api/admin/transactions/${encodeURIComponent(rawTxId)}/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -878,25 +998,58 @@ export async function approveTransactionWithAtomicFirestore(
  * Action [ REJETER ] - Passe le statut à 'REJECTED' avec un motif dans Firestore
  */
 export async function rejectTransactionWithFirestore(
-  txId: string,
+  txInput: string | TransactionRecord,
   adminEmail: string,
   reason: string = 'Rejet confirmé par l\'administrateur'
 ): Promise<{ success: boolean; message: string; error?: string }> {
   try {
-    const txRef = doc(db, 'transactions', txId);
+    const rawTxId = typeof txInput === 'string' ? txInput : (txInput.id || (txInput as any).transactionId || `TX-${Date.now()}`);
+    let targetDocRef = doc(db, 'transactions', rawTxId);
+    let resolvedDocSnap = await getDoc(targetDocRef);
+
+    if (!resolvedDocSnap.exists()) {
+      try {
+        const qId = query(collection(db, 'transactions'), where('id', '==', rawTxId));
+        const snapId = await getDocs(qId);
+        if (!snapId.empty) {
+          targetDocRef = doc(db, 'transactions', snapId.docs[0].id);
+          resolvedDocSnap = snapId.docs[0];
+        }
+      } catch (_lookupErr) {}
+    }
+
     const nowIso = new Date().toISOString();
 
-    await updateDoc(txRef, {
-      status: 'REJECTED',
-      aiStatus: 'REJECTED_BY_ADMIN',
-      rejectionReason: reason,
-      rejectedBy: adminEmail,
-      rejectedAt: nowIso,
-      updatedAt: nowIso
-    });
+    if (resolvedDocSnap.exists()) {
+      await updateDoc(targetDocRef, cleanFirestorePayload({
+        status: 'REJECTED',
+        aiStatus: 'REJECTED_BY_ADMIN',
+        rejectionReason: reason,
+        rejectedBy: adminEmail,
+        rejectedAt: nowIso,
+        updatedAt: nowIso
+      }));
+    } else {
+      const fallbackObj: Partial<TransactionRecord> = typeof txInput === 'object' ? txInput : {
+        id: rawTxId,
+        userId: 'guest',
+        amount: 0,
+        description: `Transaction ${rawTxId}`
+      };
+      await setDoc(targetDocRef, cleanFirestorePayload({
+        ...fallbackObj,
+        id: rawTxId,
+        status: 'REJECTED',
+        aiStatus: 'REJECTED_BY_ADMIN',
+        rejectionReason: reason,
+        rejectedBy: adminEmail,
+        rejectedAt: nowIso,
+        updatedAt: nowIso
+      }), { merge: true });
+    }
 
     // Sync to backend store
-    fetch(`/api/admin/transactions/${encodeURIComponent(txId)}/reject`, {
+    fetch(`/api/admin/transactions/${encodeURIComponent(rawTxId)}/reject`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -908,7 +1061,7 @@ export async function rejectTransactionWithFirestore(
 
     return {
       success: true,
-      message: `Rejet de la transaction ${txId} enregistré avec succès.`
+      message: `Rejet de la transaction ${rawTxId} enregistré avec succès.`
     };
   } catch (error: any) {
     console.error('[Firestore Reject Error]:', error);

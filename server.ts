@@ -3815,7 +3815,7 @@ app.post('/api/admin/transactions/:id/validate', requireAdmin, (req, res) => {
     let documentUnlocked = false;
 
     const isDirectPurchase = tx.type === 'DIRECT_PURCHASE' || tx.type === 'document_purchase' || (tx as any).purpose === 'document_purchase' || (tx as any).purpose === 'document_unlock';
-    const isSubscription = tx.type === 'subscription_purchase' || (tx as any).purpose === 'subscription_purchase' || ((tx as any).description && (tx as any).description.toLowerCase().includes('souscription'));
+    const isSubscription = tx.type === 'SUBSCRIPTION_PURCHASE' || tx.type === 'subscription_purchase' || tx.type === 'VIP_PASS' || (tx as any).purpose === 'subscription_purchase' || ((tx as any).description && (tx as any).description.toLowerCase().includes('souscription'));
     const isRecharge = tx.type === 'WALLET_RECHARGE' || tx.type === 'recharge' || (tx as any).purpose === 'wallet_recharge' || (!isDirectPurchase && !isSubscription);
 
     if (isDirectPurchase) {

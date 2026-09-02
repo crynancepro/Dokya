@@ -718,32 +718,39 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       });
     } catch (_e) {}
 
-    // 1. Immediately register PENDING_APPROVAL transaction to DB & Firestore
+    // 1. Immediately register PENDING transaction to DB & Firestore
     const currentTargetDocId = activeMode === 'document' ? (targetDocId || `DOC-${Date.now()}`) : undefined;
+    const finalReceiptImage = receiptBase64 ? receiptBase64.slice(0, 500000) : (previewUrl || undefined);
     const pendingTx: TransactionRecord = {
       id: generatedTxId,
       transactionId: txRefCode,
       userId: userId || 'guest',
       userEmail: userEmail || 'candidat@dokya.sn',
       userName: userName || 'Candidat Dokya',
-      type: activeMode === 'recharge' ? 'WALLET_RECHARGE' : (activeMode === 'subscription' ? 'subscription_purchase' : 'DIRECT_PURCHASE'),
+      userPhone: fullPhone,
+      senderPhone: fullPhone,
+      type: activeMode === 'recharge' 
+        ? 'WALLET_RECHARGE' 
+        : (activeMode === 'subscription' ? 'SUBSCRIPTION_PURCHASE' : 'DIRECT_PURCHASE'),
       targetDocId: currentTargetDocId,
-      amount: activeMode === 'recharge' ? payablePrice : -payablePrice,
+      amount: payablePrice,
       expectedAmount: payablePrice,
       extractedAmount: payablePrice,
-      currency: 'XOF',
-      description: `${titleContext} (${selectedMethod === 'wave' ? 'Wave' : 'Orange Money'} - En attente de validation)`,
-      status: 'PENDING_APPROVAL',
+      currency: 'FCFA',
+      description: `${titleContext} (${selectedMethod.toUpperCase() === 'WAVE' ? 'Wave' : 'Orange Money'} - En attente de validation)`,
+      status: 'PENDING',
       aiStatus: 'PENDING',
-      paymentMethod: selectedMethod,
-      senderPhone: fullPhone,
+      paymentMethod: selectedMethod.toUpperCase() === 'WAVE' ? 'WAVE' : 'ORANGE_MONEY',
       countryCode: selectedCountry.dialCode,
       countryName: selectedCountry.name,
       transactionReference: txRefCode,
-      receiptImage: receiptBase64 ? receiptBase64.slice(0, 300000) : (previewUrl || undefined),
+      receiptUrl: finalReceiptImage,
+      receiptImage: finalReceiptImage,
       createdAt: new Date().toISOString(),
       documentTitle: activeMode === 'subscription' ? planTitle : documentTitle,
-      purpose: currentPurpose
+      purpose: currentPurpose,
+      planId: planId || undefined,
+      planTitle: planTitle || undefined
     };
 
     // Save to Firestore & Server DB immediately
@@ -762,6 +769,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         userId: userId || 'guest',
         userEmail: userEmail || 'candidat@dokya.sn',
         userName: userName || 'Candidat Dokya',
+        userPhone: fullPhone,
         documentTitle,
         documentTypeLabel,
         targetDocId: currentTargetDocId,
@@ -769,12 +777,13 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         planId,
         planTitle,
         amount: payablePrice,
-        paymentMethod: selectedMethod,
+        paymentMethod: pendingTx.paymentMethod,
         senderPhone: fullPhone,
         countryCode: selectedCountry.dialCode,
         countryName: selectedCountry.name,
         transactionReference: txRefCode,
-        receiptImage: receiptBase64.slice(0, 300000)
+        receiptUrl: finalReceiptImage,
+        receiptImage: finalReceiptImage
       })
     }).catch((e) => console.warn('[Submit API Warn]:', e));
 

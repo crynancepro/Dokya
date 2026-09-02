@@ -363,21 +363,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const matchesId = t.id.toLowerCase().includes(query);
         const matchesTxId = ((t as any).transactionId || '').toLowerCase().includes(query);
         const matchesDesc = (t.description || '').toLowerCase().includes(query);
-        const matchesUser = (t.userId || '').toLowerCase().includes(query) || ((t as any).userEmail || '').toLowerCase().includes(query) || ((t as any).userName || '').toLowerCase().includes(query);
+        const matchesUser = (t.userId || '').toLowerCase().includes(query) || ((t as any).userEmail || '').toLowerCase().includes(query) || ((t as any).userName || '').toLowerCase().includes(query) || ((t as any).userPhone || (t as any).senderPhone || '').toLowerCase().includes(query);
         if (!matchesId && !matchesTxId && !matchesDesc && !matchesUser) return false;
       }
       if (txStatusFilter !== 'all') {
-        if (txStatusFilter === 'VALIDATED_BY_AI') {
+        const isAppr = t.status === 'APPROVED' || t.status === 'VALIDATED_BY_AI' || t.status === 'success' || t.status === 'COMPLETED' || t.status === 'MANUALLY_VALIDATED';
+        const isRej = t.status === 'REJECTED' || t.status === 'REJECTED_BY_AI' || t.status === 'REJECTED_BY_ADMIN' || t.status === 'failed' || t.status === 'cancel';
+        const isPend = !isAppr && !isRej;
+
+        if (txStatusFilter === 'PENDING') {
+          if (!isPend) return false;
+        } else if (txStatusFilter === 'VALIDATED_BY_AI') {
           if (t.status !== 'VALIDATED_BY_AI' && t.status !== 'success' && t.status !== 'COMPLETED') return false;
         } else if (txStatusFilter === 'REJECTED_BY_AI') {
-          if (t.status !== 'REJECTED_BY_AI' && t.status !== 'REJECTED_BY_ADMIN' && t.status !== 'failed' && t.status !== 'cancel') return false;
+          if (t.status !== 'REJECTED_BY_AI' && t.status !== 'REJECTED_BY_ADMIN' && t.status !== 'failed' && t.status !== 'cancel' && t.status !== 'REJECTED') return false;
         } else if (txStatusFilter === 'MANUALLY_VALIDATED') {
-          if (t.status !== 'MANUALLY_VALIDATED') return false;
+          if (t.status !== 'MANUALLY_VALIDATED' && t.status !== 'APPROVED') return false;
         } else if (t.status !== txStatusFilter) {
           return false;
         }
       }
-      if (txMethodFilter !== 'all' && t.paymentMethod !== txMethodFilter) return false;
+      if (txMethodFilter !== 'all') {
+        const currentMethod = (t.paymentMethod || '').toLowerCase();
+        const targetMethod = txMethodFilter.toLowerCase();
+        if (currentMethod !== targetMethod) return false;
+      }
       return true;
     });
   }, [transactionsList, txSearch, txStatusFilter, txMethodFilter]);
@@ -998,7 +1008,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     try {
       // Run atomic Firestore approval transaction: updates status to 'APPROVED' & credits walletBalance in users/{userId}
-      const result = await approveTransactionWithAtomicFirestore(tx.id, adminEmail, finalNote);
+      const result = await approveTransactionWithAtomicFirestore(tx, adminEmail, finalNote);
 
       if (result.success) {
         setSuccessMsg(result.message || `Transaction ${tx.id} validée et accréditée avec succès !`);
@@ -1024,7 +1034,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setErrorMsg(null);
     try {
       const finalReason = reason || tx.rejectionReason || 'Rejet confirmé par l\'administrateur.';
-      const result = await rejectTransactionWithFirestore(tx.id, adminEmail, finalReason);
+      const result = await rejectTransactionWithFirestore(tx, adminEmail, finalReason);
       if (result.success) {
         setSuccessMsg(result.message || `Rejet confirmé pour la transaction ${tx.id}.`);
         if (selectedTxForInspection && selectedTxForInspection.id === tx.id) {
@@ -2431,10 +2441,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
                 >
                   <option value="all">Tous les Statuts</option>
-                  <option value="VALIDATED_BY_AI">Validés par IA</option>
-                  <option value="REJECTED_BY_AI">Rejetés par IA</option>
-                  <option value="MANUALLY_VALIDATED">Validés Manuellement</option>
-                  <option value="REJECTED_BY_ADMIN">Rejetés par Admin</option>
+                  <option value="PENDING">⏳ En Attente (Reçus à traiter)</option>
+                  <option value="VALIDATED_BY_AI">✅ Validés par IA / Complétés</option>
+                  <option value="MANUALLY_VALIDATED">🛡️ Validés Manuellement</option>
+                  <option value="REJECTED_BY_AI">❌ Rejetés par IA</option>
+                  <option value="REJECTED_BY_ADMIN">🚫 Rejetés par Admin</option>
                 </select>
 
                 <select
@@ -2541,13 +2552,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
                             </td>
 
-                            {/* 4. Service / Document */}
+                            {/* 4. Service / Type */}
                             <td className="py-3.5 px-3">
-                              <div className="font-semibold text-slate-200 text-xs truncate max-w-[160px]">
-                                {tx.description || 'Pack CV + Lettre'}
+                              <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                {((tx.type || '').toUpperCase() === 'WALLET_RECHARGE' || (tx as any).purpose === 'wallet_recharge') ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
+                                    <Wallet className="w-3 h-3 text-emerald-400" />
+                                    <span>Recharge Solde</span>
+                                  </span>
+                                ) : ((tx.type || '').toUpperCase() === 'SUBSCRIPTION_PURCHASE' || (tx.type || '').toUpperCase() === 'VIP_PASS' || (tx as any).purpose === 'subscription_purchase') ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30 whitespace-nowrap">
+                                    <Sparkles className="w-3 h-3 text-purple-400" />
+                                    <span>Pass VIP</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/30 whitespace-nowrap">
+                                    <FileText className="w-3 h-3 text-sky-400" />
+                                    <span>Achat Doc</span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="font-semibold text-slate-200 text-xs truncate max-w-[170px]" title={tx.description || tx.documentTitle || 'Transaction Dokya'}>
+                                {tx.description || tx.documentTitle || 'Pack CV + Lettre'}
                               </div>
                               {txReference && (
-                                <div className="font-mono text-[10px] text-amber-400/90 truncate max-w-[160px]">
+                                <div className="font-mono text-[10px] text-amber-400/90 truncate max-w-[170px]">
                                   Réf: {txReference}
                                 </div>
                               )}
@@ -3278,10 +3307,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </span>
                 </div>
 
-                {selectedTxForInspection.receiptImage ? (
+                {selectedTxForInspection.receiptUrl || selectedTxForInspection.receiptImage || (selectedTxForInspection as any).screenshotUrl ? (
                   <div className="relative rounded-2xl overflow-hidden border border-slate-700 bg-slate-950 shadow-inner group">
                     <img 
-                      src={selectedTxForInspection.receiptImage} 
+                      src={selectedTxForInspection.receiptUrl || selectedTxForInspection.receiptImage || (selectedTxForInspection as any).screenshotUrl} 
                       alt="Reçu original" 
                       className="w-full h-auto max-h-[380px] object-contain mx-auto"
                     />
@@ -3484,7 +3513,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95"
                         >
                           <Check className="w-4 h-4" />
-                          <span>{isValidatingTx ? 'Validation en cours...' : 'Valider & Accréditer le Solde'}</span>
+                          <span>
+                            {isValidatingTx 
+                              ? 'Validation en cours...' 
+                              : (selectedTxForInspection.type || '').toUpperCase() === 'WALLET_RECHARGE' || (selectedTxForInspection as any).purpose === 'wallet_recharge'
+                              ? `Valider & Créditer le Solde (+${(selectedTxForInspection.expectedAmount || Math.abs(selectedTxForInspection.amount)).toLocaleString('fr-FR')} FCFA)`
+                              : (selectedTxForInspection.type || '').toUpperCase() === 'SUBSCRIPTION_PURCHASE' || (selectedTxForInspection.type || '').toUpperCase() === 'VIP_PASS' || (selectedTxForInspection as any).purpose === 'subscription_purchase'
+                              ? 'Valider & Activer le Pass VIP (+30 jours)'
+                              : (selectedTxForInspection.type || '').toUpperCase() === 'DIRECT_PURCHASE' || (selectedTxForInspection as any).purpose === 'document_purchase'
+                              ? 'Valider & Débloquer le Document'
+                              : 'Valider & Accréditer'}
+                          </span>
                         </button>
 
                         <button

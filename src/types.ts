@@ -439,22 +439,24 @@ export interface TransactionRecord {
   userId: string;
   userEmail?: string;
   userName?: string;
-  type: 'recharge' | 'document_purchase' | 'subscription_purchase' | 'debit' | 'admin_adjustment' | 'DIRECT_PURCHASE' | 'WALLET_RECHARGE';
+  userPhone?: string;
+  type: 'recharge' | 'document_purchase' | 'subscription_purchase' | 'debit' | 'admin_adjustment' | 'DIRECT_PURCHASE' | 'WALLET_RECHARGE' | 'SUBSCRIPTION_PURCHASE' | 'VIP_PASS' | string;
   amount: number; // e.g. +3000 FCFA for recharge, -1000 FCFA for purchase
   expectedAmount?: number;
   extractedAmount?: number;
   currency: string;
   description: string;
-  status: 'success' | 'COMPLETED' | 'pending' | 'PENDING_APPROVAL' | 'cancel' | 'failed' | 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'REJECTED' | 'APPROVED';
-  aiStatus?: 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'PENDING' | 'PENDING_APPROVAL' | 'COMPLETED';
+  status: 'success' | 'COMPLETED' | 'pending' | 'PENDING' | 'PENDING_APPROVAL' | 'cancel' | 'failed' | 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'REJECTED' | 'APPROVED' | string;
+  aiStatus?: 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'PENDING' | 'PENDING_APPROVAL' | 'COMPLETED' | string;
   createdAt: string;
-  paymentMethod?: 'wallet' | 'wave' | 'orange_money' | 'free_money' | 'card' | 'receipt_ai' | 'admin_manual' | 'free';
+  paymentMethod?: 'wallet' | 'wave' | 'orange_money' | 'free_money' | 'card' | 'receipt_ai' | 'admin_manual' | 'free' | 'WAVE' | 'ORANGE_MONEY' | string;
   transactionId?: string;
   transactionReference?: string;
   receiptTimestamp?: string;
   rejectionReason?: string;
   rejectionCode?: string;
   receiptImage?: string;
+  receiptUrl?: string;
   senderPhone?: string;
   countryCode?: string;
   countryName?: string;
@@ -463,6 +465,8 @@ export interface TransactionRecord {
   targetDocType?: string;
   approvedAt?: string;
   approvedBy?: string;
+  planId?: string;
+  planTitle?: string;
   extractedData?: {
     recipient_phone?: string;
     recipient_name?: string;
