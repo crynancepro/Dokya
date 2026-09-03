@@ -23,7 +23,7 @@ import {
   Menu,
   X
 } from 'lucide-react';
-import { CandidateProfile, SavedUserDocument } from '../types';
+import { CandidateProfile, SavedUserDocument, isUserVipActive } from '../types';
 import { auth } from '../lib/firebase';
 import { isAdminEmail } from '../lib/adminAuth';
 
@@ -116,9 +116,7 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
 
   const userInitial = displayName.charAt(0).toUpperCase() || 'U';
 
-  const isSubscriptionActive = profile?.subscription?.status === 'active' && (
-    !profile.subscription.expiresAt || new Date(profile.subscription.expiresAt).getTime() > Date.now()
-  );
+  const isSubscriptionActive = isUserVipActive(profile?.subscription) || profile?.subscriptionStatus === 'unlimited';
 
   const isGenTabActive = ['gen_cv', 'gen_letter', 'gen_business', 'gen_ebook'].includes(activeTab);
 
@@ -206,27 +204,42 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </div>
             </div>
 
-            {/* Profile Completion Indicator */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-400 font-medium">Complétion du profil</span>
-                <span className={`font-bold ${completionPercentage >= 80 ? 'text-emerald-400' : completionPercentage >= 50 ? 'text-amber-400' : 'text-indigo-400'}`}>
-                  {completionPercentage}%
+            {/* VIP Status Badge */}
+            {isSubscriptionActive ? (
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-yellow-500/15 to-amber-600/20 border border-amber-400/40 text-amber-300 shadow-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">👑</span>
+                  <span className="text-[11px] font-black tracking-wide bg-gradient-to-r from-amber-200 to-yellow-400 bg-clip-text text-transparent">
+                    Membre Pass VIP
+                  </span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black uppercase">
+                  Actif
                 </span>
               </div>
-              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    completionPercentage >= 80 
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400' 
-                      : completionPercentage >= 50 
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-400' 
-                      : 'bg-gradient-to-r from-indigo-500 to-violet-500'
-                  }`}
-                  style={{ width: `${completionPercentage}%` }}
-                />
+            ) : (
+              /* Profile Completion Indicator */
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400 font-medium">Complétion du profil</span>
+                  <span className={`font-bold ${completionPercentage >= 80 ? 'text-emerald-400' : completionPercentage >= 50 ? 'text-amber-400' : 'text-indigo-400'}`}>
+                    {completionPercentage}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      completionPercentage >= 80 
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400' 
+                        : completionPercentage >= 50 
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-400' 
+                        : 'bg-gradient-to-r from-indigo-500 to-violet-500'
+                    }`}
+                    style={{ width: `${completionPercentage}%` }}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* ========================================================================= */}

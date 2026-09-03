@@ -8,7 +8,9 @@ import {
   EbookData,
   TemplateStyle,
   CoverLetterType,
-  InterviewPrepData
+  InterviewPrepData,
+  UserSubscription,
+  isUserVipActive
 } from './types';
 import { SAMPLE_CV_DATA } from './data/sampleData';
 import { Header } from './components/Header';
@@ -184,6 +186,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
   // Pay-per-document state strictly attached to the current document being crafted
   const [isCurrentDocPaid, setIsCurrentDocPaid] = useState<boolean>(false);
+  const [userSubscription, setUserSubscription] = useState<UserSubscription | null>(null);
+  const isVip = isUserVipActive(userSubscription);
   const [currentDocId, setCurrentDocId] = useState<string>(() => `DOC-${Date.now()}`);
 
   // Post-download modal state
@@ -299,6 +303,9 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           if (typeof liveProfile.walletBalance === 'number') {
             setUserBalance(liveProfile.walletBalance);
           }
+          if (liveProfile.subscription) {
+            setUserSubscription(liveProfile.subscription);
+          }
         });
 
         // If user just logged in and was on landing or auth, navigate to dashboard
@@ -311,6 +318,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           unsubProfile = null;
         }
         setUserBalance(0);
+        setUserSubscription(null);
         // When user logs out / is logged out, redirect immediately to landing page
         if (activeTab !== 'landing') {
           setActiveTab('landing');
@@ -416,6 +424,12 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   // Open Payment Modal Handlers for each service
   // -------------------------------------------------------------
   const handleOpenPaymentModal = (docType: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook') => {
+    if (isVip) {
+      setIsCurrentDocPaid(true);
+      setSuccessMessage('👑 Document débloqué instantanément grâce à votre Pass VIP Actif !');
+      setTimeout(() => setSuccessMessage(null), 4000);
+      return;
+    }
     setPaymentDocType(docType);
     if (docType === 'cv') {
       const title = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - CV Pro ATS`.trim();
@@ -1123,6 +1137,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
               isPaid={isCurrentDocPaid}
+              isVipActive={isVip}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -1190,6 +1205,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
               isPaid={isCurrentDocPaid}
+              isVipActive={isVip}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -1249,6 +1265,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
               isPaid={isCurrentDocPaid}
+              isVipActive={isVip}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -1308,6 +1325,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
               isPaid={isCurrentDocPaid}
+              isVipActive={isVip}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {
@@ -1420,6 +1438,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               businessDocData={businessDocData}
               setBusinessDocData={setBusinessDocData}
               isPaid={isCurrentDocPaid}
+              isVipActive={isVip}
               packBusinessSubTab={packBusinessSubTab}
               setPackBusinessSubTab={setPackBusinessSubTab}
               isEditingDirectly={isEditingDirectly}
@@ -1471,6 +1490,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               ebookData={ebookData}
               setEbookData={setEbookData}
               isPaid={isCurrentDocPaid}
+              isVipActive={isVip}
               isEditingDirectly={isEditingDirectly}
               setIsEditingDirectly={setIsEditingDirectly}
               onEditForm={() => {

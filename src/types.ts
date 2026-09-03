@@ -385,11 +385,12 @@ export interface ThemeOption {
 }
 
 export interface UserSubscription {
-  planId: 'weekly' | 'monthly' | 'annual' | 'none';
-  planName: string;
-  status: 'active' | 'expired' | 'pending' | 'rejected' | 'none';
-  startedAt?: string;
-  expiresAt?: string;
+  planId: 'PASS_VIP' | 'weekly' | 'monthly' | 'annual' | 'none' | string;
+  planName?: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'active' | 'expired' | 'pending' | 'rejected' | 'none';
+  activatedAt?: any; // Firestore Timestamp, string or Date
+  startedAt?: any;
+  expiresAt?: any;   // Firestore Timestamp, string or Date
   autoRenew?: boolean;
   pricePaid?: number;
   paymentMethod?: string;
@@ -401,6 +402,104 @@ export interface UserSubscription {
   countryName?: string;
   submittedAt?: string;
   adminValidationNote?: string;
+  adminNote?: string;
+  updatedBy?: string;
+}
+
+/**
+ * Safely extracts timestamp in milliseconds from Firestore Timestamp, Date, ISO string, or number
+ */
+export function getTimestampMillis(val: any): number | null {
+  if (!val) return null;
+  if (typeof val === 'number') return val;
+  if (val && typeof val.toDate === 'function') {
+    try {
+      return val.toDate().getTime();
+    } catch (_e) {
+      // ignore
+    }
+  }
+  if (val && typeof val.seconds === 'number') {
+    return val.seconds * 1000;
+  }
+  if (typeof val === 'string') {
+    const t = new Date(val).getTime();
+    return isNaN(t) ? null : t;
+  }
+  if (val instanceof Date) {
+    return val.getTime();
+  }
+  return null;
+}
+
+/**
+ * Checks if user has an active VIP Pass (expiresAt > now)
+ * Supports passing CandidateProfile, FirebaseUserProfile, or raw UserSubscription
+ */
+export function isUserVipActive(userOrProfileOrSub?: { subscription?: UserSubscription | any; subscriptionStatus?: string; status?: string; expiresAt?: any } | null): boolean {
+  if (!userOrProfileOrSub) return false;
+  
+  // If user passed a container object with .subscription
+  const sub = (userOrProfileOrSub as any).subscription
+    ? (userOrProfileOrSub as any).subscription
+    : (('status' in userOrProfileOrSub && !('subscription' in userOrProfileOrSub)) ? userOrProfileOrSub : null);
+
+  if (!sub) {
+    return (userOrProfileOrSub as any).subscriptionStatus === 'unlimited';
+  }
+
+  const status = (sub.status || '').toUpperCase();
+  if (status !== 'ACTIVE') {
+    return false;
+  }
+
+  if (!sub.expiresAt) {
+    // Active with no expiration date = lifetime/permanent
+    return true;
+  }
+
+  const expiresMillis = getTimestampMillis(sub.expiresAt);
+  if (expiresMillis === null) return true;
+  return expiresMillis > Date.now();
+}
+
+/**
+ * Formats remaining subscription time (e.g. "Il reste 18 jours", "Expiré", "Accès à vie")
+ */
+export function formatRemainingSubscriptionTime(sub?: UserSubscription | any): string {
+  if (!sub) return 'Aucun abonnement';
+  const status = (sub.status || '').toUpperCase();
+  if (status !== 'ACTIVE') {
+    if (status === 'EXPIRED') return 'Expiré';
+    if (status === 'INACTIVE') return 'Suspendu / Inactif';
+    return 'Inactif';
+  }
+  if (!sub.expiresAt) {
+    return 'Accès permanent (À vie)';
+  }
+  const expiresMillis = getTimestampMillis(sub.expiresAt);
+  if (expiresMillis === null) return 'Accès permanent (À vie)';
+  const diff = expiresMillis - Date.now();
+  if (diff <= 0) return 'Expiré';
+  
+  const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const diffHours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  
+  if (diffDays > 3650) {
+    return 'Accès permanent (À vie)';
+  }
+  if (diffDays > 365) {
+    const years = Math.floor(diffDays / 365);
+    const remDays = diffDays % 365;
+    return `Il reste ${years} an(s)${remDays > 0 ? ` et ${remDays} j` : ''}`;
+  }
+  if (diffDays > 0) {
+    return `Il reste ${diffDays} jour${diffDays > 1 ? 's' : ''}`;
+  }
+  if (diffHours > 0) {
+    return `Il reste ${diffHours} heure${diffHours > 1 ? 's' : ''}`;
+  }
+  return 'Expire dans moins d\'une heure';
 }
 
 export interface CandidateProfile {
@@ -467,6 +566,7 @@ export interface TransactionRecord {
   approvedBy?: string;
   planId?: string;
   planTitle?: string;
+  durationDays?: number;
   extractedData?: {
     recipient_phone?: string;
     recipient_name?: string;
@@ -518,6 +618,7 @@ export interface AdminUserRecord {
   credits: number;
   role: 'admin' | 'candidate';
   subscriptionStatus: 'free' | 'pro' | 'unlimited';
+  subscription?: UserSubscription;
   status?: 'active' | 'suspended';
   suspendedReason?: string;
   documentsCount: number;

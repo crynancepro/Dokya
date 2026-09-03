@@ -18,7 +18,7 @@ import {
   ChevronRight,
   TrendingUp
 } from 'lucide-react';
-import { CandidateProfile, SavedUserDocument } from '../types';
+import { CandidateProfile, SavedUserDocument, isUserVipActive, getTimestampMillis } from '../types';
 
 interface MySubscriptionViewProps {
   profile: CandidateProfile;
@@ -59,10 +59,10 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
   
   // Calculate remaining time
   const calculateRemaining = (): TimeRemaining => {
-    if (!subscription?.expiresAt) {
+    const expireTime = getTimestampMillis(subscription?.expiresAt);
+    if (!expireTime) {
       return { days: 0, hours: 0, minutes: 0, seconds: 0, totalMs: 0, isExpired: true };
     }
-    const expireTime = new Date(subscription.expiresAt).getTime();
     const diff = expireTime - now;
 
     if (diff <= 0) {
@@ -78,14 +78,14 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
   };
 
   const remaining = calculateRemaining();
-  const isPending = isSubscriptionDefined && subscription.status === 'pending';
-  const isCurrentlyActive = isSubscriptionDefined && !remaining.isExpired && subscription.status === 'active';
+  const isPending = isSubscriptionDefined && (subscription.status === 'pending' || subscription.status === 'PENDING');
+  const isCurrentlyActive = isUserVipActive(subscription) || (isSubscriptionDefined && !remaining.isExpired && (subscription.status === 'active' || subscription.status === 'ACTIVE'));
 
   // Calculate duration progress percentage
   let durationProgress = 0;
-  if (subscription?.startedAt && subscription?.expiresAt) {
-    const startMs = new Date(subscription.startedAt).getTime();
-    const endMs = new Date(subscription.expiresAt).getTime();
+  const startMs = getTimestampMillis(subscription?.activatedAt) || getTimestampMillis(subscription?.startedAt);
+  const endMs = getTimestampMillis(subscription?.expiresAt);
+  if (startMs && endMs) {
     const totalDuration = endMs - startMs;
     if (totalDuration > 0) {
       const elapsed = now - startMs;
@@ -94,10 +94,12 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
   }
 
   // Format date helper
-  const formatDate = (isoString?: string) => {
-    if (!isoString) return 'Non définie';
+  const formatDate = (rawDate?: any) => {
+    if (!rawDate) return 'Non définie';
     try {
-      const d = new Date(isoString);
+      const millis = getTimestampMillis(rawDate);
+      if (!millis) return 'Non définie';
+      const d = new Date(millis);
       return d.toLocaleDateString('fr-FR', {
         day: '2-digit',
         month: 'long',
@@ -106,7 +108,7 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
         minute: '2-digit'
       });
     } catch {
-      return isoString;
+      return String(rawDate);
     }
   };
 

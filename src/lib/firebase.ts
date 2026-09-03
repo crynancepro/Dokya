@@ -3,10 +3,14 @@ import { getAuth, GoogleAuthProvider, User as FirebaseUser } from 'firebase/auth
 import { 
   initializeFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, 
   collection, query, where, getDocs, onSnapshot, Unsubscribe, runTransaction,
-  serverTimestamp, writeBatch, increment
+  serverTimestamp, writeBatch, increment, Timestamp
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode } from '../types';
+import { 
+  CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, 
+  CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode,
+  UserSubscription, isUserVipActive, getTimestampMillis, formatRemainingSubscriptionTime, AdminUserRecord
+} from '../types';
 
 const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
@@ -33,10 +37,14 @@ export interface FirebaseUserProfile {
   currency?: string; // e.g. "FCFA"
   balance?: number; // legacy alias
   subscription: {
-    planId: string; // "FREE" | "VIP" | "weekly" | "monthly" | "annual"
+    planId: string; // "PASS_VIP" | "FREE" | "weekly" | "monthly" | "annual"
     status: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'active' | 'expired' | 'none';
-    expiresAt?: string | null;
-    startedAt?: string | null;
+    activatedAt?: any;
+    expiresAt?: any;
+    autoRenew?: boolean;
+    startedAt?: any;
+    adminNote?: string;
+    updatedBy?: string;
   };
   createdAt: string;
   updatedAt: string;
@@ -61,6 +69,17 @@ export interface OrderRecord {
  */
 export function cleanFirestorePayload<T>(obj: T): T {
   if (obj === null || obj === undefined) {
+    return obj;
+  }
+  // Preserve Date, Timestamp, FieldValue (serverTimestamp, increment, etc.)
+  if (
+    obj instanceof Date ||
+    obj instanceof Timestamp ||
+    (obj as any)?._delegate ||
+    (obj as any)?._methodName ||
+    (obj as any)?.constructor?.name === 'FieldValue' ||
+    (obj as any)?.constructor?.name === 'Timestamp'
+  ) {
     return obj;
   }
   if (Array.isArray(obj)) {
@@ -152,8 +171,9 @@ export async function initializeUserAccountDoc(
         subscription: {
           planId: 'FREE',
           status: 'INACTIVE',
+          activatedAt: null,
           expiresAt: null,
-          startedAt: null
+          autoRenew: false
         },
         createdAt: nowIso,
         updatedAt: nowIso,
@@ -162,7 +182,52 @@ export async function initializeUserAccountDoc(
       await setDoc(userRef, initialProfile, { merge: true });
       return initialProfile;
     }
-    return snap.data() as FirebaseUserProfile;
+    const data = snap.data();
+    let calculatedStatus: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' = 'INACTIVE';
+    const rawStatus = (data.subscription?.status || '').toUpperCase();
+    const rawPlanId = data.subscription?.planId || (data.subscriptionStatus === 'unlimited' ? 'PASS_VIP' : 'FREE');
+
+    if (rawStatus === 'ACTIVE') {
+      const expiresMillis = getTimestampMillis(data.subscription?.expiresAt);
+      if (expiresMillis === null) {
+        calculatedStatus = 'ACTIVE';
+      } else if (expiresMillis > Date.now()) {
+        calculatedStatus = 'ACTIVE';
+      } else {
+        calculatedStatus = 'EXPIRED';
+        updateDoc(userRef, {
+          'subscription.status': 'EXPIRED',
+          subscriptionStatus: 'free',
+          updatedAt: new Date().toISOString()
+        }).catch(err => console.warn('[Auto-expire subscription warn]:', err));
+      }
+    } else if (rawStatus === 'EXPIRED') {
+      calculatedStatus = 'EXPIRED';
+    } else {
+      calculatedStatus = 'INACTIVE';
+    }
+
+    return {
+      uid: user.uid,
+      email: data.email || user.email || '',
+      displayName: data.displayName || extra?.displayName || user.displayName || 'Candidat',
+      photoURL: data.photoURL || user.photoURL || '',
+      walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : (typeof data.balance === 'number' ? data.balance : 0),
+      currency: data.currency || 'FCFA',
+      subscription: {
+        planId: rawPlanId,
+        status: calculatedStatus,
+        activatedAt: data.subscription?.activatedAt || data.subscription?.startedAt || null,
+        expiresAt: data.subscription?.expiresAt || null,
+        autoRenew: data.subscription?.autoRenew ?? false,
+        adminNote: data.subscription?.adminNote,
+        updatedBy: data.subscription?.updatedBy
+      },
+      createdAt: data.createdAt || new Date().toISOString(),
+      updatedAt: data.updatedAt || new Date().toISOString(),
+      personalInfo: data.personalInfo || undefined,
+      role: data.role || (data.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate')
+    };
   } catch (err) {
     console.warn('[Initialize User Doc Warn]:', err);
     return {
@@ -171,7 +236,7 @@ export async function initializeUserAccountDoc(
       displayName: extra?.displayName || user.displayName || 'Candidat',
       walletBalance: 0,
       currency: 'FCFA',
-      subscription: { planId: 'FREE', status: 'INACTIVE', expiresAt: null, startedAt: null },
+      subscription: { planId: 'FREE', status: 'INACTIVE', activatedAt: null, expiresAt: null, autoRenew: false },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       role: user.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate'
@@ -181,7 +246,7 @@ export async function initializeUserAccountDoc(
 
 /**
  * Real-time listener for user profile from Firestore collection 'users/{userId}'
- * Automatically initializes clean default user document (0 FCFA, INACTIVE) if missing.
+ * Automatically checks expiresAt against Date.now() and updates status accordingly.
  */
 export function subscribeToUserProfile(
   userId: string,
@@ -191,6 +256,31 @@ export function subscribeToUserProfile(
   return onSnapshot(userRef, async (snapshot) => {
     if (snapshot.exists()) {
       const data = snapshot.data();
+      let calculatedStatus: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' = 'INACTIVE';
+      const rawStatus = (data.subscription?.status || '').toUpperCase();
+      const rawPlanId = data.subscription?.planId || (data.subscriptionStatus === 'unlimited' ? 'PASS_VIP' : 'FREE');
+
+      if (rawStatus === 'ACTIVE') {
+        const expiresMillis = getTimestampMillis(data.subscription?.expiresAt);
+        if (expiresMillis === null) {
+          calculatedStatus = 'ACTIVE';
+        } else if (expiresMillis > Date.now()) {
+          calculatedStatus = 'ACTIVE';
+        } else {
+          // EXPIRED: automatically update status in Firestore and revert to free mode
+          calculatedStatus = 'EXPIRED';
+          updateDoc(userRef, {
+            'subscription.status': 'EXPIRED',
+            subscriptionStatus: 'free',
+            updatedAt: new Date().toISOString()
+          }).catch(err => console.warn('[Auto-expire subscription warn]:', err));
+        }
+      } else if (rawStatus === 'EXPIRED') {
+        calculatedStatus = 'EXPIRED';
+      } else {
+        calculatedStatus = 'INACTIVE';
+      }
+
       const profile: FirebaseUserProfile = {
         uid: userId,
         email: data.email || auth.currentUser?.email || '',
@@ -199,10 +289,13 @@ export function subscribeToUserProfile(
         walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : (typeof data.balance === 'number' ? data.balance : 0),
         currency: data.currency || 'FCFA',
         subscription: {
-          planId: data.subscription?.planId || (data.subscriptionStatus === 'unlimited' ? 'VIP' : 'FREE'),
-          status: data.subscription?.status || (data.subscriptionStatus === 'unlimited' ? 'ACTIVE' : 'INACTIVE'),
+          planId: rawPlanId,
+          status: calculatedStatus,
+          activatedAt: data.subscription?.activatedAt || data.subscription?.startedAt || null,
           expiresAt: data.subscription?.expiresAt || null,
-          startedAt: data.subscription?.startedAt || null,
+          autoRenew: data.subscription?.autoRenew ?? false,
+          adminNote: data.subscription?.adminNote,
+          updatedBy: data.subscription?.updatedBy
         },
         createdAt: data.createdAt || new Date().toISOString(),
         updatedAt: data.updatedAt || new Date().toISOString(),
@@ -222,8 +315,9 @@ export function subscribeToUserProfile(
         subscription: {
           planId: 'FREE',
           status: 'INACTIVE',
+          activatedAt: null,
           expiresAt: null,
-          startedAt: null
+          autoRenew: false
         },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -780,6 +874,30 @@ export async function approveTransactionWithAtomicFirestore(
       }), { merge: true });
     }
 
+    // Pre-resolve target user document ID to guarantee userId points directly to users/{userId}
+    let preResolvedUserId = typeof txInput === 'object' ? (txInput.userId || '') : '';
+    let lookupEmail = typeof txInput === 'object' ? (txInput.userEmail || '') : '';
+
+    if (resolvedDocSnap.exists()) {
+      const snapData = resolvedDocSnap.data();
+      if (!preResolvedUserId || preResolvedUserId === 'guest') {
+        preResolvedUserId = snapData.userId || '';
+      }
+      if (!lookupEmail) {
+        lookupEmail = snapData.userEmail || '';
+      }
+    }
+
+    if ((!preResolvedUserId || preResolvedUserId === 'guest') && lookupEmail) {
+      try {
+        const uQ = query(collection(db, 'users'), where('email', '==', lookupEmail));
+        const uSnap = await getDocs(uQ);
+        if (!uSnap.empty) {
+          preResolvedUserId = uSnap.docs[0].id;
+        }
+      } catch (_e) {}
+    }
+
     // 3. Run atomic transaction on Firestore
     const result = await runTransaction(db, async (transaction) => {
       // 1. ALL READS FIRST
@@ -789,10 +907,13 @@ export async function approveTransactionWithAtomicFirestore(
       }
 
       const txData = txDoc.data() as TransactionRecord;
-      const targetUserId = txData.userId;
+      let targetUserId = txData.userId;
+      if ((!targetUserId || targetUserId === 'guest') && preResolvedUserId && preResolvedUserId !== 'guest') {
+        targetUserId = preResolvedUserId;
+      }
       const txTypeUpper = (txData.type || '').toUpperCase();
       const isDirectPurchase = txTypeUpper === 'DIRECT_PURCHASE' || txTypeUpper === 'DOCUMENT_PURCHASE' || (txData as any).purpose === 'document_purchase' || (txData as any).purpose === 'document_unlock';
-      const isSubscription = txTypeUpper === 'SUBSCRIPTION_PURCHASE' || txTypeUpper === 'VIP_PASS' || txTypeUpper === 'SUBSCRIPTION' || (txData as any).purpose === 'subscription_purchase';
+      const isSubscription = txTypeUpper === 'SUBSCRIPTION_PURCHASE' || txTypeUpper === 'PASS_VIP' || txTypeUpper === 'VIP_PASS' || txTypeUpper === 'SUBSCRIPTION' || (txData as any).purpose === 'subscription_purchase' || (txData as any).purpose === 'pass_vip';
       const isRecharge = txTypeUpper === 'WALLET_RECHARGE' || txTypeUpper === 'RECHARGE' || (txData as any).purpose === 'wallet_recharge' || (!isDirectPurchase && !isSubscription);
       const targetAmount = Math.abs(Number(txData.expectedAmount || txData.amount || (txData as any).extractedAmount || 0));
       const targetDocId = txData.targetDocId || (txData as any).unlockedDocId;
@@ -848,6 +969,34 @@ export async function approveTransactionWithAtomicFirestore(
         }));
       }
 
+      // Calculate subscription parameters (30 or 365 days)
+      let days = 30;
+      if (txData.durationDays && typeof txData.durationDays === 'number' && txData.durationDays > 0) {
+        days = txData.durationDays;
+      } else if ((txData as any).planId === 'annual' || (txData as any).billingPeriod === 'year' || targetAmount >= 15000) {
+        days = 365;
+      } else if ((txData as any).planId === 'weekly') {
+        days = 7;
+      } else {
+        days = 30;
+      }
+      const targetExpiresDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+      // Exact subscription structure mandated by user specifications
+      const subscriptionPayload = {
+        planId: "PASS_VIP",
+        status: "ACTIVE",
+        activatedAt: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(targetExpiresDate),
+        autoRenew: false,
+        durationDays: days,
+        planName: (txData as any).planTitle || (days >= 365 ? 'Pass VIP Annuel Dokya' : days <= 7 ? 'Pass VIP Hebdo Dokya' : 'Pass VIP Dokya'),
+        startedAt: nowIso,
+        pricePaid: targetAmount,
+        adminValidationNote: note,
+        updatedBy: adminEmail
+      };
+
       // Update User Document in 'users/{userId}' and 'user_profiles/{userId}'
       if (userRef) {
         if (userDocSnapshot && userDocSnapshot.exists()) {
@@ -875,33 +1024,22 @@ export async function approveTransactionWithAtomicFirestore(
               }));
             }
           } else if (isSubscription) {
-            // PASS VIP: Activate VIP subscription
+            // PASS VIP: Activate VIP subscription with exact mandated structure
             updatedBalance = currentBalance;
-            const days = (txData as any).planId === 'weekly' ? 7 : (txData as any).planId === 'annual' ? 365 : 30;
-            const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-            const subscriptionPayload = cleanFirestorePayload({
-              planId: (txData as any).planId || 'VIP',
-              planName: (txData as any).planTitle || 'Pass VIP Dokya',
-              status: 'ACTIVE',
-              startedAt: nowIso,
-              expiresAt,
-              pricePaid: targetAmount,
-              adminValidationNote: note
-            });
 
-            transaction.update(userRef, cleanFirestorePayload({
+            transaction.update(userRef, {
               subscription: subscriptionPayload,
               subscriptionStatus: 'unlimited',
               ordersCount: (userData.ordersCount || 0) + 1,
               updatedAt: nowIso
-            }));
+            });
 
             if (userProfileRef && userProfileSnapshot && userProfileSnapshot.exists()) {
-              transaction.update(userProfileRef, cleanFirestorePayload({
+              transaction.update(userProfileRef, {
                 subscription: subscriptionPayload,
                 subscriptionStatus: 'unlimited',
                 updatedAt: nowIso
-              }));
+              });
             }
           } else {
             // WALLET RECHARGE: Credit user balance
@@ -925,7 +1063,7 @@ export async function approveTransactionWithAtomicFirestore(
           }
         } else if (targetUserId && targetUserId !== 'guest') {
           updatedBalance = isRecharge ? targetAmount : 0;
-          const initialUserObj = cleanFirestorePayload({
+          const initialUserObj = {
             uid: targetUserId,
             email: txData.userEmail || '',
             displayName: txData.userName || 'Candidat',
@@ -933,25 +1071,19 @@ export async function approveTransactionWithAtomicFirestore(
             balance: updatedBalance,
             currency: 'FCFA',
             purchasedDocIds: targetDocId ? [targetDocId] : [],
-            subscription: isSubscription ? {
-              planId: (txData as any).planId || 'VIP',
-              planName: (txData as any).planTitle || 'Pass VIP Dokya',
-              status: 'ACTIVE',
-              startedAt: nowIso,
-              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-              pricePaid: targetAmount,
-              adminValidationNote: note
-            } : {
+            subscription: isSubscription ? subscriptionPayload : {
               planId: 'FREE',
               status: 'INACTIVE',
+              activatedAt: null,
               expiresAt: null,
-              startedAt: null
+              autoRenew: false
             },
+            subscriptionStatus: isSubscription ? 'unlimited' : 'free',
             ordersCount: 1,
             createdAt: nowIso,
             updatedAt: nowIso,
             role: 'candidate'
-          });
+          };
 
           transaction.set(userRef, initialUserObj);
 
@@ -1111,11 +1243,13 @@ export async function subscribeToVipWithWallet(
         walletBalance: newBalance,
         balance: newBalance,
         subscription: {
-          planId: planId || 'VIP',
+          planId: 'PASS_VIP',
           planName: planId === 'annual' ? 'Pass VIP Annuel' : (planId === 'weekly' ? 'Pass VIP Semaine' : 'Pass VIP Mensuel'),
           status: 'ACTIVE',
+          activatedAt: Timestamp.now(),
+          expiresAt: Timestamp.fromDate(new Date(now.getTime() + days * 24 * 60 * 60 * 1000)),
+          autoRenew: false,
           startedAt: now.toISOString(),
-          expiresAt,
           pricePaid: price,
           paymentMethod: 'wallet'
         },
@@ -1165,6 +1299,218 @@ export async function subscribeToVipWithWallet(
       error: error?.message || 'Erreur lors de l\'activation de l\'abonnement.',
       message: error?.message
     };
+  }
+}
+
+/**
+ * Admin Action: Manage user VIP subscription in Firestore collection 'users/{userId}'
+ * Supports:
+ * - 'activate': activates VIP Pass with durationDays (e.g. 30, 90, or lifetime >= 36500)
+ * - 'extend': extends current valid expiration date by durationDays, or sets now + durationDays
+ * - 'suspend': sets status to 'INACTIVE', leaves expiration date, and revokes unlimited privileges
+ * - 'reset': resets subscription to 'INACTIVE' with null expiration date and reverts to free
+ */
+export async function manageUserSubscriptionInFirestore(
+  userId: string,
+  action: 'activate' | 'extend' | 'suspend' | 'reset',
+  durationDays: number = 30,
+  adminNote?: string,
+  adminEmail: string = 'peter25ngouala@gmail.com'
+): Promise<{ success: boolean; message: string; user?: any; error?: string }> {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+      return { success: false, message: "Utilisateur introuvable dans Firestore.", error: "USER_NOT_FOUND" };
+    }
+
+    const userData = userSnap.data();
+    const nowIso = new Date().toISOString();
+    let updatedSubscription: any = null;
+    let subscriptionStatus: 'free' | 'unlimited' = 'free';
+
+    if (action === 'activate' || action === 'extend') {
+      const isLifetime = durationDays >= 36500;
+      let targetDate: Date;
+      
+      if (action === 'extend' && userData.subscription?.expiresAt) {
+        const currentExpMillis = getTimestampMillis(userData.subscription.expiresAt);
+        const baseMillis = (currentExpMillis && currentExpMillis > Date.now()) ? currentExpMillis : Date.now();
+        targetDate = isLifetime ? new Date('2099-12-31T23:59:59Z') : new Date(baseMillis + durationDays * 86400000);
+      } else {
+        targetDate = isLifetime ? new Date('2099-12-31T23:59:59Z') : new Date(Date.now() + durationDays * 86400000);
+      }
+
+      updatedSubscription = cleanFirestorePayload({
+        planId: 'PASS_VIP',
+        planName: isLifetime ? 'Pass VIP À Vie (Permanent)' : `Pass VIP (${durationDays} jours)`,
+        status: 'ACTIVE',
+        activatedAt: Timestamp.now(),
+        expiresAt: Timestamp.fromDate(targetDate),
+        autoRenew: false,
+        startedAt: nowIso,
+        adminNote: adminNote || (action === 'extend' ? `Prolongation administrative de +${durationDays} jours` : `Activation manuelle de ${durationDays} jours`),
+        updatedBy: adminEmail
+      });
+      subscriptionStatus = 'unlimited';
+    } else if (action === 'suspend') {
+      updatedSubscription = cleanFirestorePayload({
+        planId: userData.subscription?.planId || 'PASS_VIP',
+        planName: userData.subscription?.planName || 'Pass VIP Dokya',
+        status: 'INACTIVE',
+        activatedAt: userData.subscription?.activatedAt || null,
+        expiresAt: userData.subscription?.expiresAt || null,
+        autoRenew: false,
+        adminNote: adminNote || 'Suspension administrative par l\'administrateur',
+        updatedBy: adminEmail
+      });
+      subscriptionStatus = 'free';
+    } else if (action === 'reset') {
+      updatedSubscription = cleanFirestorePayload({
+        planId: 'FREE',
+        planName: 'Compte Gratuit Standard',
+        status: 'INACTIVE',
+        activatedAt: null,
+        expiresAt: null,
+        autoRenew: false,
+        adminNote: adminNote || 'Réinitialisation complète de l\'abonnement par l\'administrateur',
+        updatedBy: adminEmail
+      });
+      subscriptionStatus = 'free';
+    }
+
+    await updateDoc(userRef, cleanFirestorePayload({
+      subscription: updatedSubscription,
+      subscriptionStatus,
+      updatedAt: nowIso
+    }));
+
+    // Mirror to user_profiles if doc exists
+    try {
+      const profileRef = doc(db, 'user_profiles', userId);
+      const profileSnap = await getDoc(profileRef);
+      if (profileSnap.exists()) {
+        await updateDoc(profileRef, cleanFirestorePayload({
+          subscription: updatedSubscription,
+          subscriptionStatus,
+          updatedAt: nowIso
+        }));
+      }
+    } catch (_e) {}
+
+    // Record audit log entry
+    try {
+      const auditRef = doc(collection(db, 'audit_logs'));
+      await setDoc(auditRef, cleanFirestorePayload({
+        id: auditRef.id,
+        action: `SUBSCRIPTION_${action.toUpperCase()}`,
+        adminEmail,
+        targetUserId: userId,
+        targetUserEmail: userData.email,
+        details: adminNote || `Action ${action} effectuée sur l'abonnement VIP (${durationDays} jours)`,
+        timestamp: nowIso
+      }));
+    } catch (_e) {}
+
+    // Notify backend
+    fetch('/api/admin/subscriptions/manage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-email': adminEmail,
+        'x-user-role': 'admin'
+      },
+      body: JSON.stringify({ userId, action, durationDays, adminNote, adminEmail })
+    }).catch(_e => {});
+
+    return {
+      success: true,
+      message: action === 'activate' ? `Abonnement Pass VIP activé pour ${durationDays >= 36500 ? 'une durée permanente' : `${durationDays} jours`} !`
+        : action === 'extend' ? `Abonnement prolongé de +${durationDays} jours avec succès !`
+        : action === 'suspend' ? `Abonnement suspendu (statut INACTIVE).`
+        : `Abonnement réinitialisé au mode gratuit avec succès.`,
+      user: {
+        ...userData,
+        subscription: updatedSubscription,
+        subscriptionStatus
+      }
+    };
+  } catch (error: any) {
+    console.error('[Manage User Subscription Error]:', error);
+    return {
+      success: false,
+      message: error?.message || "Erreur lors de la gestion de l'abonnement.",
+      error: error?.message
+    };
+  }
+}
+
+/**
+ * Fetches all users from Firestore collection 'users' with their parsed subscription statuses
+ */
+export async function fetchAllAdminUsersWithSubscriptions(): Promise<AdminUserRecord[]> {
+  try {
+    const q = query(collection(db, 'users'));
+    const snap = await getDocs(q);
+    const users: AdminUserRecord[] = [];
+
+    snap.forEach((d) => {
+      const data = d.data();
+      let calculatedStatus: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' = 'INACTIVE';
+      const rawStatus = (data.subscription?.status || '').toUpperCase();
+      const rawPlanId = data.subscription?.planId || (data.subscriptionStatus === 'unlimited' ? 'PASS_VIP' : 'FREE');
+
+      if (rawStatus === 'ACTIVE') {
+        const expMillis = getTimestampMillis(data.subscription?.expiresAt);
+        if (expMillis === null || expMillis > Date.now()) {
+          calculatedStatus = 'ACTIVE';
+        } else {
+          calculatedStatus = 'EXPIRED';
+        }
+      } else if (rawStatus === 'EXPIRED') {
+        calculatedStatus = 'EXPIRED';
+      } else {
+        calculatedStatus = 'INACTIVE';
+      }
+
+      const balance = typeof data.walletBalance === 'number' ? data.walletBalance : (typeof data.balance === 'number' ? data.balance : 0);
+
+      users.push({
+        uid: d.id,
+        email: data.email || '',
+        firstName: data.personalInfo?.firstName || data.displayName?.split(' ')[0] || '',
+        lastName: data.personalInfo?.lastName || data.displayName?.split(' ').slice(1).join(' ') || '',
+        phone: data.personalInfo?.phone || data.phone,
+        city: data.personalInfo?.city || data.city,
+        targetJob: data.personalInfo?.targetJob || data.targetJob,
+        balance,
+        credits: data.credits || 0,
+        role: data.role || (data.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate'),
+        subscriptionStatus: calculatedStatus === 'ACTIVE' ? 'unlimited' : 'free',
+        subscription: {
+          planId: rawPlanId,
+          status: calculatedStatus,
+          activatedAt: data.subscription?.activatedAt || data.subscription?.startedAt || null,
+          expiresAt: data.subscription?.expiresAt || null,
+          autoRenew: data.subscription?.autoRenew ?? false,
+          adminNote: data.subscription?.adminNote,
+          updatedBy: data.subscription?.updatedBy
+        },
+        status: data.status || 'active',
+        suspendedReason: data.suspendedReason,
+        documentsCount: data.documentsCount || 0,
+        ordersCount: data.ordersCount || 0,
+        unlockedDocsCount: data.unlockedDocsCount || (data.purchasedDocIds?.length || 0),
+        hasForceUnlockedDocs: data.hasForceUnlockedDocs || false,
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString()
+      });
+    });
+
+    return users.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  } catch (error) {
+    console.warn('[Fetch All Admin Users With Subscriptions Error]:', error);
+    return [];
   }
 }
 

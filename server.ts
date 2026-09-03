@@ -3328,6 +3328,68 @@ app.post('/api/admin/wallet/adjust', requireAdmin, (req, res) => {
   }
 });
 
+// 8b. POST /api/admin/subscriptions/manage - Manage user VIP subscription
+app.post('/api/admin/subscriptions/manage', requireAdmin, (req, res) => {
+  try {
+    const { userId, action, durationDays = 30, adminNote } = req.body || {};
+    const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
+
+    const userIndex = adminStore.users.findIndex(u => u.uid === userId || u.email.toLowerCase() === (userId || '').toLowerCase());
+    if (userIndex >= 0) {
+      const isLifetime = durationDays >= 36500;
+      const targetDate = isLifetime ? new Date('2099-12-31T23:59:59Z') : new Date(Date.now() + durationDays * 86400000);
+      
+      if (action === 'activate' || action === 'extend') {
+        adminStore.users[userIndex].subscriptionStatus = 'unlimited';
+        adminStore.users[userIndex].subscription = {
+          planId: 'PASS_VIP',
+          planName: isLifetime ? 'Pass VIP À Vie (Permanent)' : `Pass VIP (${durationDays} jours)`,
+          status: 'ACTIVE',
+          activatedAt: new Date().toISOString(),
+          expiresAt: targetDate.toISOString(),
+          autoRenew: false,
+          adminNote: adminNote || `Activation manuelle VIP (${durationDays}j)`
+        };
+      } else if (action === 'suspend') {
+        adminStore.users[userIndex].subscriptionStatus = 'free';
+        if (adminStore.users[userIndex].subscription) {
+          adminStore.users[userIndex].subscription.status = 'INACTIVE';
+          adminStore.users[userIndex].subscription.adminNote = adminNote || 'Suspension administrative';
+        }
+      } else if (action === 'reset') {
+        adminStore.users[userIndex].subscriptionStatus = 'free';
+        adminStore.users[userIndex].subscription = {
+          planId: 'FREE',
+          status: 'INACTIVE',
+          activatedAt: null,
+          expiresAt: null,
+          autoRenew: false
+        };
+      }
+      adminStore.users[userIndex].updatedAt = new Date().toISOString();
+    }
+
+    recordAuditLog(
+      'admin_action',
+      `SUBSCRIPTION_${(action || 'UPDATE').toUpperCase()}`,
+      adminEmail,
+      `Action abonnement ${action} (${durationDays} jours) pour ${userId}. Note: ${adminNote || 'N/A'}`,
+      { userId, action, durationDays, adminNote },
+      userIndex >= 0 ? adminStore.users[userIndex].email : userId,
+      userId,
+      'success'
+    );
+
+    return res.json({
+      success: true,
+      message: `Action ${action} effectuée avec succès.`
+    });
+  } catch (err: any) {
+    console.error('[Admin Subscriptions Manage Error]:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Erreur gestion abonnement' });
+  }
+});
+
 // 9. Pricing Configuration Endpoints (Public & Admin)
 app.get('/api/pricing', (req, res) => {
   return res.json({

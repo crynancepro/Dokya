@@ -13,7 +13,7 @@ import {
   Sparkles, CheckCircle2, Eye, Palette, ZoomIn, ZoomOut, 
   RotateCcw, Mail, FileCheck, Receipt, Package, ArrowLeftRight,
   Lock, Unlock, CreditCard, ShieldCheck, Loader2, ChevronDown,
-  X, Check, LayoutGrid, BookOpen
+  X, Check, LayoutGrid, BookOpen, Crown
 } from 'lucide-react';
 
 interface DocumentDedicatedPreviewProps {
@@ -27,6 +27,7 @@ interface DocumentDedicatedPreviewProps {
   aiData: AIOptimizedData | null;
   userBalance?: number;
   isPaid?: boolean;
+  isVipActive?: boolean;
   isEditingDirectly?: boolean;
   setIsEditingDirectly?: (val: boolean) => void;
   onEditForm: () => void;
@@ -55,6 +56,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   aiData,
   userBalance = 0,
   isPaid = false,
+  isVipActive = false,
   isEditingDirectly = false,
   onEditForm,
   onPayToUnlock,
@@ -68,6 +70,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   setPackBusinessSubTab,
   onOpenInterviewPrep
 }) => {
+  const isEffectivePaid = Boolean(isPaid || isVipActive);
   const { pricing } = usePricing();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isBusinessTemplateModalOpen, setIsBusinessTemplateModalOpen] = useState<boolean>(false);
@@ -151,7 +154,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   const IconComponent = meta.icon;
 
   const handlePrintDocument = () => {
-    if (!isPaid) {
+    if (!isEffectivePaid) {
       onPayToUnlock();
       return;
     }
@@ -163,7 +166,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   };
 
   const handleTriggerWord = () => {
-    if (!isPaid) {
+    if (!isEffectivePaid) {
       onPayToUnlock();
       return;
     }
@@ -171,7 +174,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   };
 
   const handleTriggerPDF = () => {
-    if (!isPaid) {
+    if (!isEffectivePaid) {
       onPayToUnlock();
       return;
     }
@@ -226,14 +229,26 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
           {/* Center: Title & Document Badge */}
           <div className="text-left lg:text-center">
             <div className="flex items-center gap-2 flex-wrap lg:justify-center">
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold border ${
-                isPaid ? 'bg-emerald-50 text-emerald-900 border-emerald-300' : meta.badgeColor
-              }`}>
-                {isPaid ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <IconComponent className="w-3.5 h-3.5" />}
-                <span>{isPaid ? `Document Débloqué : ${meta.title}` : `Aperçu : ${meta.title}`}</span>
-              </span>
+              {isVipActive ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border bg-gradient-to-r from-amber-50 to-yellow-50 text-amber-900 border-amber-300 shadow-xs">
+                  <Crown className="w-3.5 h-3.5 text-amber-500" />
+                  <span>👑 Inclus Pass VIP : {meta.title}</span>
+                </span>
+              ) : (
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold border ${
+                  isPaid ? 'bg-emerald-50 text-emerald-900 border-emerald-300' : meta.badgeColor
+                }`}>
+                  {isPaid ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <IconComponent className="w-3.5 h-3.5" />}
+                  <span>{isPaid ? `Document Débloqué : ${meta.title}` : `Aperçu : ${meta.title}`}</span>
+                </span>
+              )}
 
-              {isPaid ? (
+              {isVipActive ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-800 text-xs font-black border border-amber-500/30">
+                  <Crown className="w-3 h-3 text-amber-500" />
+                  <span>Pass VIP Actif</span>
+                </span>
+              ) : isPaid ? (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 text-xs font-black border border-emerald-500/20">
                   <Unlock className="w-3 h-3 text-emerald-600" />
                   <span>Payé & Prêt</span>
@@ -252,9 +267,9 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
           {/* Right: Actions depending on Payment State */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             
-            {isPaid ? (
+            {isEffectivePaid ? (
               /* ================================================================= */
-              /* PAID STATE: PROMINENT WORD AND PDF DOWNLOAD BUTTONS AT THE TOP   */
+              /* PAID / VIP STATE: PROMINENT WORD AND PDF DOWNLOAD BUTTONS         */
               /* ================================================================= */
               <>
                 {/* 1. PDF DOWNLOAD BUTTON */}
@@ -262,7 +277,11 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
                   type="button"
                   onClick={handleTriggerPDF}
                   disabled={isGeneratingPDF}
-                  className="px-4 py-2.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-md shadow-emerald-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black text-white shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95 ${
+                    isVipActive 
+                      ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-600/30 ring-1 ring-amber-400/40'
+                      : 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/30'
+                  }`}
                   title="Télécharger votre document officiel au format PDF"
                 >
                   {isGeneratingPDF ? (
@@ -272,8 +291,8 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
                     </>
                   ) : (
                     <>
-                      <Download className="w-4 h-4 text-emerald-200" />
-                      <span>Télécharger en PDF (.pdf)</span>
+                      {isVipActive ? <Crown className="w-4 h-4 text-amber-300 shrink-0" /> : <Download className="w-4 h-4 text-emerald-200 shrink-0" />}
+                      <span>{isVipActive ? 'Télécharger directement (Inclus Pass VIP)' : 'Télécharger en PDF (.pdf)'}</span>
                     </>
                   )}
                 </button>
@@ -284,7 +303,11 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
                     type="button"
                     onClick={handleTriggerWord}
                     disabled={isGeneratingDocx}
-                    className="px-4 py-2.5 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-md shadow-blue-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+                    className={`px-4 py-2.5 rounded-xl text-xs font-black text-white shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95 ${
+                      isVipActive
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 shadow-blue-600/30 ring-1 ring-amber-400/40'
+                        : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 shadow-blue-600/30'
+                    }`}
                     title="Télécharger une version Word (.docx) modifiable"
                   >
                     {isGeneratingDocx ? (
@@ -294,8 +317,8 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
                       </>
                     ) : (
                       <>
-                        <FileText className="w-4 h-4 text-blue-200" />
-                        <span>Télécharger en Word (.docx)</span>
+                        <FileText className="w-4 h-4 text-blue-200 shrink-0" />
+                        <span>{isVipActive ? 'Télécharger en Word (.docx)' : 'Télécharger en Word (.docx)'}</span>
                       </>
                     )}
                   </button>
@@ -594,7 +617,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
             <div className="w-full flex justify-center">
               <EbookTemplate 
                 data={ebookData} 
-                unlocked={isPaid}
+                unlocked={isEffectivePaid}
                 isEditingDirectly={isEditingDirectly}
                 onUpdateData={(newData) => setEbookData && setEbookData(prev => ({ ...prev, ...newData }))}
               />
@@ -607,7 +630,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
               data={formData} 
               aiData={aiData} 
               isEditingDirectly={isEditingDirectly}
-              unlocked={isPaid}
+              unlocked={isEffectivePaid}
             />
           )}
 
@@ -750,23 +773,25 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         {/* Center: Info */}
         <div className="hidden sm:block text-center">
           <span className="text-[11px] font-medium text-slate-300 block">
-            {isPaid ? "✓ Document Débloqué" : "Aperçu Sécurisé"}
+            {isVipActive ? "👑 Inclus Pass VIP" : isPaid ? "✓ Document Débloqué" : "Aperçu Sécurisé"}
           </span>
           <span className="text-xs font-black text-amber-400">
-            {isPaid ? "Téléchargement Illimité" : `${(meta.price || 0).toLocaleString('fr-FR')} FCFA`}
+            {isEffectivePaid ? "Téléchargement Illimité" : `${(meta.price || 0).toLocaleString('fr-FR')} FCFA`}
           </span>
         </div>
 
         {/* Right: Primary Action depending on payment */}
-        {isPaid ? (
+        {isEffectivePaid ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleTriggerPDF}
               disabled={isGeneratingPDF}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all cursor-pointer active:scale-95"
+              className={`px-3.5 py-2 rounded-xl text-white font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95 ${
+                isVipActive ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-600/30 ring-1 ring-amber-400/40' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
+              }`}
             >
-              <Download className="w-3.5 h-3.5" />
+              {isVipActive ? <Crown className="w-3.5 h-3.5 text-amber-300" /> : <Download className="w-3.5 h-3.5" />}
               <span>PDF (.pdf)</span>
             </button>
 

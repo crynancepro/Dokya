@@ -7,7 +7,7 @@ import {
   Sliders, UserCheck, Eye, Edit3, X, HelpCircle, Tag, ShieldAlert,
   Percent, Clock, Trash2, Ban, Unlock, Check, AlertTriangle, ArrowRight,
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
-  Phone, Globe, Flame
+  Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity
 } from 'lucide-react';
 import { 
   auth, 
@@ -23,14 +23,16 @@ import {
   subscribeToAllTransactions,
   approveTransactionWithAtomicFirestore,
   rejectTransactionWithFirestore,
-  purgeDemoDataInFirestore
+  purgeDemoDataInFirestore,
+  fetchAllAdminUsersWithSubscriptions,
+  manageUserSubscriptionInFirestore
 } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail, PRIMARY_ADMIN_EMAIL, getAdminHeaders } from '../lib/adminAuth';
 import { startImpersonationSession, stopImpersonationSession, getImpersonatedSession } from '../lib/impersonation';
 import { 
   AdminUserRecord, AdminKPIs, TransactionRecord, PlatformPricingConfig, 
-  PromoCode, AuditLogEntry 
+  PromoCode, AuditLogEntry, UserSubscription, isUserVipActive, getTimestampMillis 
 } from '../types';
 
 interface AdminDashboardProps {
@@ -43,7 +45,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenEditor 
 }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(auth.currentUser);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pricing' | 'promo' | 'audit' | 'transactions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'subscriptions' | 'pricing' | 'promo' | 'audit' | 'transactions'>('overview');
   
   // Data States
   const [loading, setLoading] = useState<boolean>(true);
@@ -52,6 +54,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   const [kpis, setKpis] = useState<AdminKPIs | null>(null);
   const [usersList, setUsersList] = useState<AdminUserRecord[]>([]);
+
+  // VIP Subscriptions Tab States
+  const [subSearch, setSubSearch] = useState<string>('');
+  const [subStatusFilter, setSubStatusFilter] = useState<'all' | 'ACTIVE' | 'EXPIRED' | 'INACTIVE'>('all');
+  const [selectedUserForSubModal, setSelectedUserForSubModal] = useState<AdminUserRecord | null>(null);
+  const [subAction, setSubAction] = useState<'activate' | 'extend' | 'suspend' | 'reset'>('activate');
+  const [subDurationDays, setSubDurationDays] = useState<number>(30);
+  const [subAdminNote, setSubAdminNote] = useState<string>('');
+  const [isSavingSub, setIsSavingSub] = useState<boolean>(false);
+  const [isLoadingSubs, setIsLoadingSubs] = useState<boolean>(false);
   const [transactionsList, setTransactionsList] = useState<TransactionRecord[]>([]);
   const [pricingConfig, setPricingConfig] = useState<PlatformPricingConfig>({
     cvOnlyPrice: 500,
@@ -201,36 +213,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setKpis(statsData.stats);
       }
 
-      // 2. Users
-      if (usersData?.success && Array.isArray(usersData.users) && usersData.users.length > 0) {
-        setUsersList(usersData.users);
-      } else {
-        // Fallback to Firestore user profiles
-        try {
-          const firestoreUsers = await fetchAllFirestoreUserProfiles();
-          if (firestoreUsers.length > 0) {
-            const mapped: AdminUserRecord[] = firestoreUsers.map(p => ({
-              uid: p.uid,
-              email: p.email || 'candidat@dokya.sn',
-              firstName: p.personalInfo?.firstName || '',
-              lastName: p.personalInfo?.lastName || '',
-              phone: p.personalInfo?.phone,
-              city: p.personalInfo?.city,
-              targetJob: p.personalInfo?.targetJob,
-              balance: p.balance || 0,
-              credits: p.credits || 0,
-              subscriptionStatus: p.subscriptionStatus || 'free',
-              ordersCount: 0,
-              documentsCount: 0,
-              createdAt: (p as any).createdAt || p.updatedAt || new Date().toISOString(),
-              updatedAt: p.updatedAt || new Date().toISOString(),
-              status: 'active',
-              role: (p as any).role === 'admin' ? 'admin' : 'candidate'
-            }));
-            setUsersList(mapped);
+      // 2. Users & Realtime VIP Subscriptions from Firestore
+      try {
+        const adminUsers = await fetchAllAdminUsersWithSubscriptions();
+        if (adminUsers.length > 0) {
+          setUsersList(adminUsers);
+        } else if (usersData?.success && Array.isArray(usersData.users) && usersData.users.length > 0) {
+          setUsersList(usersData.users);
+        }
+      } catch (subErr) {
+        console.warn('fetchAllAdminUsersWithSubscriptions error, falling back:', subErr);
+        if (usersData?.success && Array.isArray(usersData.users) && usersData.users.length > 0) {
+          setUsersList(usersData.users);
+        } else {
+          // Fallback to Firestore user profiles
+          try {
+            const firestoreUsers = await fetchAllFirestoreUserProfiles();
+            if (firestoreUsers.length > 0) {
+              const mapped: AdminUserRecord[] = firestoreUsers.map(p => ({
+                uid: p.uid,
+                email: p.email || 'candidat@dokya.sn',
+                firstName: p.personalInfo?.firstName || '',
+                lastName: p.personalInfo?.lastName || '',
+                phone: p.personalInfo?.phone,
+                city: p.personalInfo?.city,
+                targetJob: p.personalInfo?.targetJob,
+                balance: p.balance || 0,
+                credits: p.credits || 0,
+                subscriptionStatus: p.subscriptionStatus || 'free',
+                ordersCount: 0,
+                documentsCount: 0,
+                createdAt: (p as any).createdAt || p.updatedAt || new Date().toISOString(),
+                updatedAt: p.updatedAt || new Date().toISOString(),
+                status: 'active',
+                role: (p as any).role === 'admin' ? 'admin' : 'candidate'
+              }));
+              setUsersList(mapped);
+            }
+          } catch (e) {
+            console.warn('Firestore users fallback notice:', e);
           }
-        } catch (e) {
-          console.warn('Firestore users fallback notice:', e);
         }
       }
 
@@ -741,6 +763,154 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     } catch (e) {
       setErrorMsg('Erreur lors de l\'attribution du bonus.');
+    }
+  };
+
+  // -------------------------------------------------------------
+  // VIP Subscriptions Calculations & Handlers
+  // -------------------------------------------------------------
+  const vipStats = useMemo(() => {
+    let active = 0;
+    let expired = 0;
+    let inactive = 0;
+
+    usersList.forEach(u => {
+      const isVip = isUserVipActive(u.subscription) || u.subscriptionStatus === 'unlimited';
+      if (isVip) {
+        active++;
+      } else if (u.subscription?.status === 'EXPIRED') {
+        expired++;
+      } else {
+        inactive++;
+      }
+    });
+
+    return {
+      active,
+      expired,
+      inactive,
+      total: usersList.length,
+      conversionRate: usersList.length > 0 ? ((active / usersList.length) * 100).toFixed(1) : '0'
+    };
+  }, [usersList]);
+
+  const filteredSubUsers = useMemo(() => {
+    return usersList.filter(u => {
+      const q = subSearch.toLowerCase().trim();
+      const matchSearch = !q || 
+        (u.firstName && u.firstName.toLowerCase().includes(q)) ||
+        (u.lastName && u.lastName.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q)) ||
+        (u.phone && u.phone.includes(q));
+
+      if (!matchSearch) return false;
+
+      const isVip = isUserVipActive(u.subscription) || u.subscriptionStatus === 'unlimited';
+      if (subStatusFilter === 'ACTIVE') return isVip;
+      if (subStatusFilter === 'EXPIRED') return u.subscription?.status === 'EXPIRED';
+      if (subStatusFilter === 'INACTIVE') return !isVip && u.subscription?.status !== 'EXPIRED';
+
+      return true;
+    });
+  }, [usersList, subSearch, subStatusFilter]);
+
+  const handleRefreshSubscriptions = async () => {
+    setIsLoadingSubs(true);
+    try {
+      const refreshedUsers = await fetchAllAdminUsersWithSubscriptions();
+      if (refreshedUsers.length > 0) {
+        setUsersList(refreshedUsers);
+        setSuccessMsg("Liste des abonnements VIP actualisée en temps réel depuis Firestore.");
+      }
+    } catch (e: any) {
+      setErrorMsg("Erreur lors de l'actualisation des abonnements.");
+    } finally {
+      setIsLoadingSubs(false);
+      setTimeout(() => {
+        setSuccessMsg(null);
+        setErrorMsg(null);
+      }, 4000);
+    }
+  };
+
+  const handleOpenSubscriptionModal = (user: AdminUserRecord, defaultAction: 'activate' | 'extend' | 'suspend' | 'reset' = 'activate') => {
+    setSelectedUserForSubModal(user);
+    setSubAction(defaultAction);
+    setSubDurationDays(30);
+    setSubAdminNote('');
+  };
+
+  const handleConfirmSubscriptionChange = async () => {
+    if (!selectedUserForSubModal) return;
+    setIsSavingSub(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await manageUserSubscriptionInFirestore(
+        selectedUserForSubModal.uid,
+        subAction,
+        subDurationDays,
+        subAdminNote || undefined,
+        adminEmail
+      );
+
+      if (res.success) {
+        setSuccessMsg(res.message || "Abonnement mis à jour avec succès.");
+        const refreshedUsers = await fetchAllAdminUsersWithSubscriptions();
+        if (refreshedUsers.length > 0) {
+          setUsersList(refreshedUsers);
+        }
+        setSelectedUserForSubModal(null);
+      } else {
+        setErrorMsg(res.message || "Échec de la modification de l'abonnement.");
+      }
+    } catch (err: any) {
+      console.error('[Admin Sub Manage Error]:', err);
+      setErrorMsg(err?.message || "Erreur lors de la gestion de l'abonnement.");
+    } finally {
+      setIsSavingSub(false);
+      setTimeout(() => {
+        setSuccessMsg(null);
+        setErrorMsg(null);
+      }, 5000);
+    }
+  };
+
+  const handleQuickSubAction = async (user: AdminUserRecord, action: 'activate' | 'extend' | 'suspend' | 'reset', days: number = 30) => {
+    setIsLoadingSubs(true);
+    setErrorMsg(null);
+    try {
+      const note = action === 'extend' 
+        ? `Prolongation express +${days}j effectuée par l'administrateur`
+        : action === 'activate'
+        ? `Activation express ${days}j par l'administrateur`
+        : `Action express ${action} par l'administrateur`;
+
+      const res = await manageUserSubscriptionInFirestore(
+        user.uid,
+        action,
+        days,
+        note,
+        adminEmail
+      );
+
+      if (res.success) {
+        setSuccessMsg(res.message);
+        const refreshedUsers = await fetchAllAdminUsersWithSubscriptions();
+        if (refreshedUsers.length > 0) {
+          setUsersList(refreshedUsers);
+        }
+      } else {
+        setErrorMsg(res.message);
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Erreur d'action express");
+    } finally {
+      setIsLoadingSubs(false);
+      setTimeout(() => {
+        setSuccessMsg(null);
+        setErrorMsg(null);
+      }, 5000);
     }
   };
 
@@ -1284,6 +1454,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>Candidats & Comptes</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-900/60 text-slate-300 font-bold">
               {usersList.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('subscriptions')}
+            type="button"
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'subscriptions'
+                ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-900/40 font-black ring-2 ring-amber-300'
+                : 'text-amber-300 hover:text-amber-100 hover:bg-amber-950/40 border border-amber-500/20'
+            }`}
+          >
+            <Crown className="w-4 h-4 text-amber-400" />
+            <span>Pass VIP & Abonnements</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+              activeTab === 'subscriptions' ? 'bg-slate-950 text-amber-300' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+            }`}>
+              {vipStats.active}
             </span>
           </button>
 
@@ -1877,6 +2065,330 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 2B: ABONNEMENTS PASS VIP (FIRESTORE REAL-TIME OVERRIDE & MONITORING)   */}
+        {/* ========================================================================= */}
+        {activeTab === 'subscriptions' && (
+          <div className="space-y-6">
+            
+            {/* Header & Refresh */}
+            <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                    <Crown className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-white">Gestion des Abonnements Pass VIP</h2>
+                    <p className="text-xs text-slate-400">
+                      Supervision directe des accès illimités, statut temps réel dans Firestore et surcharges manuelles.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRefreshSubscriptions}
+                  disabled={isLoadingSubs}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSubs ? 'animate-spin text-amber-400' : ''}`} />
+                  <span>Actualiser Firestore</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4 KPIs Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-slate-900/80 border border-amber-500/30 rounded-3xl p-5 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Abonnés VIP Actifs</span>
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                    <Crown className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-3 text-2xl sm:text-3xl font-black text-white">
+                  {vipStats.active}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-300 font-medium">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Accès illimité sans guichet</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/80 border border-rose-500/30 rounded-3xl p-5 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">Abonnements Expirés</span>
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-3 text-2xl sm:text-3xl font-black text-white">
+                  {vipStats.expired}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-rose-300 font-medium">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>Repassés en mode gratuit</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Comptes Sans Pass</span>
+                  <div className="w-8 h-8 rounded-xl bg-slate-800 text-slate-400 flex items-center justify-center">
+                    <Users className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-3 text-2xl sm:text-3xl font-black text-white">
+                  {vipStats.inactive}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+                  <span>Paiement à l'acte (1 000 FCFA)</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/80 border border-emerald-500/30 rounded-3xl p-5 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Taux de Pénétration</span>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="mt-3 text-2xl sm:text-3xl font-black text-white">
+                  {vipStats.conversionRate}%
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-300 font-medium">
+                  <span>Sur {vipStats.total} utilisateurs inscrits</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Filtrer par nom, prénom, email ou téléphone..."
+                  value={subSearch}
+                  onChange={(e) => setSubSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-all"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={subStatusFilter}
+                  onChange={(e: any) => setSubStatusFilter(e.target.value)}
+                  className="px-3 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-amber-500 cursor-pointer"
+                >
+                  <option value="all">Tous les Statuts ({usersList.length})</option>
+                  <option value="ACTIVE">👑 VIP Actif uniquement ({vipStats.active})</option>
+                  <option value="EXPIRED">⚠️ Expiré ({vipStats.expired})</option>
+                  <option value="INACTIVE">Sans Abonnement ({vipStats.inactive})</option>
+                </select>
+
+                <div className="px-3 py-2 bg-slate-950/80 border border-slate-800/60 rounded-xl text-xs text-slate-400 font-medium">
+                  {filteredSubUsers.length} affiché(s)
+                </div>
+              </div>
+            </div>
+
+            {/* Subscriptions Table */}
+            <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-slate-950/80 border-b border-slate-800/80 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="py-4 px-4 sm:px-6">Utilisateur</th>
+                      <th className="py-4 px-3">Formule / Plan</th>
+                      <th className="py-4 px-3">Statut VIP</th>
+                      <th className="py-4 px-3">Activation</th>
+                      <th className="py-4 px-3">Expiration</th>
+                      <th className="py-4 px-3">Notes Admin</th>
+                      <th className="py-4 px-4 sm:px-6 text-right">Actions de Contrôle</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {filteredSubUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-500">
+                          Aucun utilisateur ne correspond aux critères de recherche.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSubUsers.map((user) => {
+                        const isVip = isUserVipActive(user.subscription) || user.subscriptionStatus === 'unlimited';
+                        const status = user.subscription?.status || (isVip ? 'ACTIVE' : 'INACTIVE');
+                        const expMillis = getTimestampMillis(user.subscription?.expiresAt);
+                        const actMillis = getTimestampMillis(user.subscription?.activatedAt);
+                        const isLifetime = expMillis && expMillis > 4000000000000;
+                        const daysLeft = expMillis ? Math.ceil((expMillis - Date.now()) / 86400000) : null;
+
+                        return (
+                          <tr key={user.uid} className="hover:bg-slate-800/30 transition-colors">
+                            {/* User Info */}
+                            <td className="py-4 px-4 sm:px-6">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
+                                  isVip ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                                }`}>
+                                  {user.firstName?.[0] || user.email[0].toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-white flex items-center gap-1.5">
+                                    <span>{user.firstName} {user.lastName}</span>
+                                    {isVip && (
+                                      <Crown className="w-3.5 h-3.5 text-amber-400" />
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-slate-400">{user.email}</div>
+                                  {user.phone && <div className="text-[11px] text-slate-500">{user.phone}</div>}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Plan Name */}
+                            <td className="py-4 px-3">
+                              {isVip ? (
+                                <span className="inline-flex items-center gap-1 font-bold text-amber-300">
+                                  <Sparkles className="w-3 h-3 text-amber-400" />
+                                  <span>{isLifetime ? 'Pass VIP Permanent (À Vie)' : user.subscription?.planName || 'Pass VIP Dokya'}</span>
+                                </span>
+                              ) : status === 'EXPIRED' ? (
+                                <span className="text-rose-400 font-medium">Pass VIP (Expiré)</span>
+                              ) : (
+                                <span className="text-slate-400 font-medium">Gratuit / À l'acte</span>
+                              )}
+                            </td>
+
+                            {/* Status Badge */}
+                            <td className="py-4 px-3">
+                              {isVip ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  ACTIF
+                                </span>
+                              ) : status === 'EXPIRED' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  EXPIRÉ
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                                  INACTIF
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Activated Date */}
+                            <td className="py-4 px-3 text-slate-300">
+                              {actMillis ? (
+                                <span>
+                                  {new Date(actMillis).toLocaleDateString('fr-FR', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  })}
+                                </span>
+                              ) : (
+                                <span className="text-slate-600">-</span>
+                              )}
+                            </td>
+
+                            {/* Expiration Date */}
+                            <td className="py-4 px-3">
+                              {isLifetime ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                                  <Infinity className="w-3.5 h-3.5" />
+                                  <span>Permanent (À Vie)</span>
+                                </span>
+                              ) : expMillis ? (
+                                <div>
+                                  <div className={`font-semibold ${daysLeft && daysLeft <= 3 ? 'text-rose-400' : 'text-slate-200'}`}>
+                                    {new Date(expMillis).toLocaleDateString('fr-FR', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric'
+                                    })}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400">
+                                    {daysLeft && daysLeft > 0 ? (
+                                      <span className={daysLeft <= 3 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>
+                                        {daysLeft} jour{daysLeft > 1 ? 's' : ''} restant{daysLeft > 1 ? 's' : ''}
+                                      </span>
+                                    ) : (
+                                      <span className="text-rose-400 font-bold">Échu</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-600">-</span>
+                              )}
+                            </td>
+
+                            {/* Admin Notes */}
+                            <td className="py-4 px-3 text-slate-400 max-w-xs truncate">
+                              {user.subscription?.adminNote ? (
+                                <span className="text-xs bg-slate-950 px-2 py-1 rounded-md border border-slate-800 text-slate-300" title={user.subscription.adminNote}>
+                                  {user.subscription.adminNote}
+                                </span>
+                              ) : (
+                                <span className="text-slate-600 text-xs italic">Aucune note</span>
+                              )}
+                            </td>
+
+                            {/* Action Buttons */}
+                            <td className="py-4 px-4 sm:px-6 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenSubscriptionModal(user, isVip ? 'extend' : 'activate')}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-900/30 transition-all cursor-pointer"
+                                  title="Ouvrir le panneau de contrôle complet de l'abonnement"
+                                >
+                                  <Crown className="w-3.5 h-3.5" />
+                                  <span>{isVip ? 'Gérer / Prolonger' : 'Activer Pass VIP'}</span>
+                                </button>
+
+                                {isVip && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickSubAction(user, 'extend', 30)}
+                                    disabled={isLoadingSubs}
+                                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-emerald-950 hover:text-emerald-300 text-slate-300 font-bold text-xs border border-slate-700 transition-all cursor-pointer"
+                                    title="Prolonger immédiatement de 30 jours supplémentaires"
+                                  >
+                                    +30j
+                                  </button>
+                                )}
+
+                                {isVip && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenSubscriptionModal(user, 'suspend')}
+                                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950 hover:text-rose-300 text-slate-400 font-bold text-xs border border-slate-700 transition-all cursor-pointer"
+                                    title="Suspendre l'abonnement"
+                                  >
+                                    <Ban className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
           </div>
@@ -3930,6 +4442,215 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Modal Gestion de l'Abonnement Pass VIP */}
+      {selectedUserForSubModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl space-y-6 my-auto max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black text-white flex items-center gap-2">
+                <Crown className="w-5 h-5 text-amber-400" />
+                <span>Gestion de l'Abonnement Pass VIP</span>
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setSelectedUserForSubModal(null)} 
+                className="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-800/60"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* User details card */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-slate-400">Utilisateur : </span>
+                  <strong className="text-white text-sm">{selectedUserForSubModal.firstName} {selectedUserForSubModal.lastName}</strong>
+                </div>
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                  UID: {selectedUserForSubModal.uid.substring(0, 10)}...
+                </span>
+              </div>
+              <div className="text-slate-400">Email : <span className="text-slate-200">{selectedUserForSubModal.email}</span></div>
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                <span className="text-slate-400">Statut actuel :</span>
+                {isUserVipActive(selectedUserForSubModal.subscription) ? (
+                  <span className="font-bold text-emerald-400 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    👑 Pass VIP Dokya Actif (Illimité)
+                  </span>
+                ) : selectedUserForSubModal.subscription?.status === 'EXPIRED' ? (
+                  <span className="font-bold text-rose-400">⚠️ Abonnement Expiré</span>
+                ) : (
+                  <span className="font-bold text-slate-400">Sans abonnement (Gratuit / À l'acte)</span>
+                )}
+              </div>
+            </div>
+
+            {/* Action selector */}
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-2">Opération à exécuter :</label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setSubAction('activate')}
+                    className={`p-3 rounded-2xl border text-xs text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                      subAction === 'activate'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-md shadow-amber-900/30 font-bold'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <UserPlus className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-white">Activer Pass VIP</div>
+                      <div className="text-[10px] text-slate-400">Nouvel abonnement illimité</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSubAction('extend')}
+                    className={`p-3 rounded-2xl border text-xs text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                      subAction === 'extend'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-md shadow-emerald-900/30 font-bold'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-white">Prolonger</div>
+                      <div className="text-[10px] text-slate-400">Ajouter du temps supplémentaire</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSubAction('suspend')}
+                    className={`p-3 rounded-2xl border text-xs text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                      subAction === 'suspend'
+                        ? 'bg-rose-500/20 border-rose-500 text-rose-300 shadow-md shadow-rose-900/30 font-bold'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Ban className="w-4 h-4 text-rose-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-white">Suspendre</div>
+                      <div className="text-[10px] text-slate-400">Mettre en pause l'accès</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSubAction('reset')}
+                    className={`p-3 rounded-2xl border text-xs text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                      subAction === 'reset'
+                        ? 'bg-slate-800 border-slate-600 text-slate-200 shadow-md font-bold'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <UserMinus className="w-4 h-4 text-slate-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-white">Réinitialiser</div>
+                      <div className="text-[10px] text-slate-400">Repasser en mode gratuit</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Duration selector (only for activate or extend) */}
+              {(subAction === 'activate' || subAction === 'extend') && (
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-2">Durée de validité à accorder :</label>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {[
+                      { days: 7, label: '7 Jours', sub: 'Essai' },
+                      { days: 30, label: '30 Jours', sub: 'Mensuel' },
+                      { days: 90, label: '90 Jours', sub: 'Trimestre' },
+                      { days: 365, label: '365 Jours', sub: 'Annuel' },
+                      { days: 36500, label: 'À Vie', sub: 'Permanent' }
+                    ].map((item) => (
+                      <button
+                        key={item.days}
+                        type="button"
+                        onClick={() => setSubDurationDays(item.days)}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          subDurationDays === item.days
+                            ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-md'
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="text-xs font-bold">{item.label}</div>
+                        <div className={`text-[10px] ${subDurationDays === item.days ? 'text-slate-900 font-semibold' : 'text-slate-500'}`}>
+                          {item.sub}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Admin Note Input */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                  Motif administratif / Note interne (traçabilité Firestore) :
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Paiement Wave direct reçu, Partenaire, Geste commercial..."
+                  value={subAdminNote}
+                  onChange={(e) => setSubAdminNote(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Impact Notice */}
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  {subAction === 'activate' || subAction === 'extend' 
+                    ? "Cette action inscrit immédiatement l'abonnement dans Firestore avec un statut ACTIVE. L'utilisateur aura accès instantané à tous les modules sans guichet de paiement."
+                    : "Cette action révoque ou suspend immédiatement l'accès VIP dans Firestore. L'utilisateur repassera en tarification à l'acte."
+                  }
+                </span>
+              </div>
+
+              {/* Dialog buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForSubModal(null)}
+                  disabled={isSavingSub}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSubscriptionChange}
+                  disabled={isSavingSub}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black shadow-lg shadow-amber-900/30 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingSub ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Enregistrement...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Appliquer la modification</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </div>
+
           </div>
         </div>
       )}
