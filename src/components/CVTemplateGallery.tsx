@@ -16,20 +16,26 @@ interface CVTemplateGalleryProps {
   onGoServices?: () => void;
 }
 
-const CATEGORIES = [
-  'Tous',
-  '⚡ 100% ATS (Sans Photo)',
-  '📸 Avec Photo Pro',
-  'Exécutif & Direction',
-  'Moderne & Design',
-  'Minimal & ATS',
-  'Tech & Digital',
-  'Prestige & Luxe',
-  'Finance & Droit',
-  'Créatif & Studio',
-  'Santé & Sciences',
-  'Industrie & Terrain'
-] as const;
+interface FilterTab {
+  id: string;
+  label: string;
+  count?: number;
+}
+
+const FILTER_TABS: FilterTab[] = [
+  { id: 'all', label: 'Tous', count: 50 },
+  { id: 'ats', label: '⚡ 100% ATS', count: 30 },
+  { id: 'photo', label: '📸 Avec Photo', count: 20 },
+  { id: 'Moderne & Design', label: 'Moderne' },
+  { id: 'Exécutif & Direction', label: 'Exécutif' },
+  { id: 'Tech & Digital', label: 'Tech' },
+  { id: 'Minimal & ATS', label: 'Minimaliste' },
+  { id: 'Finance & Droit', label: 'Finance' },
+  { id: 'Prestige & Luxe', label: 'Prestige' },
+  { id: 'Créatif & Studio', label: 'Créatif' },
+  { id: 'Santé & Sciences', label: 'Santé' },
+  { id: 'Industrie & Terrain', label: 'Industrie' }
+];
 
 // Professional avatar sample for templates with photo
 const SAMPLE_PHOTO_URL = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80';
@@ -201,12 +207,11 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
   selectedTemplateId = 'moderne',
   onGoServices
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState<string>('Tous');
-  const [photoFilter, setPhotoFilter] = useState<'all' | 'no_photo' | 'photo'>('all');
+  const [activeFilter, setActiveFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [fullPreviewTemplate, setFullPreviewTemplate] = useState<CVTemplateMeta | null>(null);
   
-  // Mobile layout switch: 1 column (large, detailed Canva-style) vs 2 columns (compact grid)
+  // Mobile layout switch: 1 column (large Canva-style) vs 2 columns (compact grid)
   const [mobileGridCols, setMobileGridCols] = useState<1 | 2>(1);
   
   // Mobile active tap card id (to reveal overlay on tap without hover)
@@ -229,18 +234,14 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
   // Filter templates list
   const filteredTemplates = useMemo(() => {
     return ALL_CV_TEMPLATES.filter((tpl) => {
-      // Photo filter
-      if (photoFilter === 'no_photo' && tpl.hasPhoto) return false;
-      if (photoFilter === 'photo' && !tpl.hasPhoto) return false;
-
-      // Category filter
-      if (selectedCategory === '⚡ 100% ATS (Sans Photo)' && tpl.hasPhoto) return false;
-      if (selectedCategory === '📸 Avec Photo Pro' && !tpl.hasPhoto) return false;
+      // Filter tab
+      if (activeFilter === 'ats' && tpl.hasPhoto) return false;
+      if (activeFilter === 'photo' && !tpl.hasPhoto) return false;
       if (
-        selectedCategory !== 'Tous' &&
-        selectedCategory !== '⚡ 100% ATS (Sans Photo)' &&
-        selectedCategory !== '📸 Avec Photo Pro' &&
-        tpl.category !== selectedCategory
+        activeFilter !== 'all' &&
+        activeFilter !== 'ats' &&
+        activeFilter !== 'photo' &&
+        tpl.category !== activeFilter
       ) {
         return false;
       }
@@ -253,12 +254,14 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
         const matchDesc = tpl.desc.toLowerCase().includes(q);
         const matchNumber = String(tpl.number).includes(q);
         const matchTag = tpl.badgeTag?.toLowerCase().includes(q);
-        return matchLabel || matchCategory || matchDesc || matchNumber || matchTag;
+        const matchAts = (q === 'ats' || q === 'sans photo') && !tpl.hasPhoto;
+        const matchPhoto = (q === 'photo' || q === 'avec photo') && tpl.hasPhoto;
+        return matchLabel || matchCategory || matchDesc || matchNumber || matchTag || matchAts || matchPhoto;
       }
 
       return true;
     });
-  }, [selectedCategory, photoFilter, searchQuery]);
+  }, [activeFilter, searchQuery]);
 
   // Helper to generate sample data tailored for a template
   const getSampleDataForTemplate = (tpl: CVTemplateMeta): CVFormData => {
@@ -275,119 +278,40 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
 
   return (
     <div 
-      className="space-y-6 sm:space-y-8 animate-in fade-in max-w-7xl mx-auto pb-20 px-2 sm:px-6"
+      className="space-y-4 sm:space-y-6 animate-in fade-in max-w-7xl mx-auto pb-16 px-2 sm:px-6"
       onClick={() => setActiveMobileCardId(null)}
     >
       
-      {/* 1. DISCREET, COMPACT TOP BAR & SEARCH (NO BULKY PROMO BOX) */}
-      <div className="space-y-3 pt-2">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                Galerie des Modèles de CV
-              </h1>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                50 designs A4
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Survolez ou appuyez sur un modèle pour afficher ses options et le sélectionner.
-            </p>
+      {/* 1. ULTRA-COMPACT HEADER & MINIMAL TOOLBAR (REDUCED VERTICAL FOOTPRINT) */}
+      <div className="space-y-2 pt-1">
+        {/* Title row */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h1 className="text-base sm:text-lg font-black text-white tracking-tight">
+              Modèles de CV
+            </h1>
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-800">
+              50 designs
+            </span>
           </div>
 
-          {onGoServices && (
-            <button
-              type="button"
-              onClick={onGoServices}
-              className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold border border-slate-800 transition-all cursor-pointer active:scale-95 shrink-0"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Retour</span>
-            </button>
-          )}
-        </div>
-
-        {/* Search Input + Simplified Filter Badges + Mobile Col Switch */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-          {/* Search bar */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher par titre, ATS, Tech, N°..."
-              className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-900/90 border border-slate-800 text-xs sm:text-sm font-medium text-slate-100 placeholder-slate-500 focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 transition-colors"
-                title="Effacer la recherche"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Quick Filters (Simplified ATS / Photo Toggle) */}
-          <div className="flex items-center gap-2 justify-between sm:justify-end">
-            <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 flex-1 sm:flex-none">
-              <button
-                type="button"
-                onClick={() => setPhotoFilter('all')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  photoFilter === 'all'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Tous (50)
-              </button>
-              <button
-                type="button"
-                onClick={() => setPhotoFilter('no_photo')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  photoFilter === 'no_photo'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>100% ATS</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPhotoFilter('photo')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  photoFilter === 'photo'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Camera className="w-3.5 h-3.5" />
-                <span>Avec Photo</span>
-              </button>
-            </div>
-
-            {/* Mobile Column View Switch (1 Col = large Canva view, 2 Cols = compact) */}
-            <div className="flex sm:hidden items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 shrink-0">
+          <div className="flex items-center gap-1.5">
+            {/* Mobile Column View Switch (1 Col vs 2 Cols) */}
+            <div className="flex sm:hidden items-center bg-slate-900/90 p-0.5 rounded-lg border border-slate-800">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setMobileGridCols(1);
                 }}
-                className={`p-1.5 rounded-lg transition-all ${
+                className={`p-1 rounded-md transition-all ${
                   mobileGridCols === 1
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
-                title="Affichage 1 colonne (Pleine largeur)"
+                title="1 colonne"
               >
-                <Square className="w-4 h-4" />
+                <Square className="w-3.5 h-3.5" />
               </button>
               <button
                 type="button"
@@ -395,55 +319,98 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
                   e.stopPropagation();
                   setMobileGridCols(2);
                 }}
-                className={`p-1.5 rounded-lg transition-all ${
+                className={`p-1 rounded-md transition-all ${
                   mobileGridCols === 2
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
-                title="Affichage 2 colonnes (Compact)"
+                title="2 colonnes"
               >
-                <LayoutGrid className="w-4 h-4" />
+                <LayoutGrid className="w-3.5 h-3.5" />
               </button>
             </div>
+
+            {onGoServices && (
+              <button
+                type="button"
+                onClick={onGoServices}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold border border-slate-800 transition-all cursor-pointer active:scale-95 shrink-0"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                <span>Retour</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Category Pills Row (Airy, Horizontal Scroll) */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar scroll-smooth">
-          {CATEGORIES.map((cat) => {
-            const isActive = selectedCategory === cat;
-            return (
+        {/* Unified Ultra-Compact Filter & Search Bar: 1 line on desktop, 2 slim lines on mobile */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 bg-slate-900/40 p-1 sm:p-1.5 rounded-xl border border-slate-800/60 backdrop-blur-xs">
+          {/* Search bar (slim height 32px) */}
+          <div className="relative w-full sm:w-52 md:w-60 shrink-0">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher (ex: tech, ATS, 12)..."
+              className="w-full h-8 pl-8 pr-7 text-xs rounded-lg bg-slate-950/80 border border-slate-800/90 text-slate-200 placeholder-slate-500 focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+            />
+            {searchQuery && (
               <button
-                key={cat}
                 type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
-                    : 'bg-slate-900/70 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/80'
-                }`}
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 transition-colors"
+                title="Effacer"
               >
-                {cat}
+                <X className="w-3 h-3" />
               </button>
-            );
-          })}
+            )}
+          </div>
+
+          {/* Desktop divider */}
+          <div className="hidden sm:block h-4 w-px bg-slate-800/80 shrink-0" />
+
+          {/* Micro-Pills (Single horizontal scrollable line, no duplication) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 scroll-smooth min-w-0 flex-1">
+            {FILTER_TABS.map((tab) => {
+              const isActive = activeFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveFilter(tab.id)}
+                  className={`h-7 px-2.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-950/50 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 border border-slate-800/70'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  {tab.count !== undefined && (
+                    <span className={`text-[9px] px-1 py-0.2 rounded-sm ${isActive ? 'bg-indigo-700/80 text-white' : 'bg-slate-800/80 text-slate-400'}`}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* 2. FLUID CANVA-STYLE GRID (GENEROUS BLANK SPACE, PURE A4 SHEETS) */}
       {filteredTemplates.length === 0 ? (
-        <div className="p-10 text-center rounded-2xl bg-slate-900/40 border border-slate-800/60 space-y-3">
-          <p className="text-slate-400 text-sm font-medium">
+        <div className="p-8 text-center rounded-2xl bg-slate-900/40 border border-slate-800/60 space-y-3">
+          <p className="text-slate-400 text-xs sm:text-sm font-medium">
             Aucun modèle ne correspond à votre recherche.
           </p>
           <button
             type="button"
             onClick={() => {
               setSearchQuery('');
-              setSelectedCategory('Tous');
-              setPhotoFilter('all');
+              setActiveFilter('all');
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs transition-all cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Réinitialiser les filtres</span>
