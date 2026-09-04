@@ -243,6 +243,14 @@ export type CoverLetterType =
   | 'reconversion' // Reconversion professionnelle
   | 'recommandation'; // Recommandation / Réseau
 
+export type CoverLetterStyle = 
+  | 'moderne_epuree'
+  | 'executive_classique'
+  | 'creative_accent'
+  | 'minimaliste_chic'
+  | 'impact_direct'
+  | 'diplomatique';
+
 export type LetterTone = 'Formelle' | 'Dynamique' | 'Convaincante' | 'Chaleureuse';
 
 export interface CustomSection {

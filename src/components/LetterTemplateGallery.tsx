@@ -1,100 +1,92 @@
-import React, { useState } from 'react';
-import { CoverLetterType, CVFormData } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { CoverLetterStyle, CVFormData, CoverLetterType } from '../types';
 import { SAMPLE_CV_DATA } from '../data/sampleData';
 import { CoverLetterTemplate } from './CoverLetterTemplate';
 import { 
   Sparkles, CheckCircle2, ArrowRight, Eye, 
-  ArrowLeft, Mail, Target, Send, GraduationCap, 
-  RotateCcw, UserCheck, Check, X, Maximize2, ZoomIn, ZoomOut,
-  LayoutGrid, Square
+  ArrowLeft, Check, X, Maximize2, ZoomIn, ZoomOut,
+  Briefcase, Send, Users, UserCheck, Square, LayoutGrid
 } from 'lucide-react';
 
 interface LetterTemplateGalleryProps {
-  onSelectTemplate: (styleId: string, letterType: CoverLetterType) => void;
-  selectedStyleId?: string;
+  onSelectTemplate: (templateId: CoverLetterStyle, letterType?: CoverLetterType) => void;
+  selectedStyleId?: CoverLetterStyle;
   selectedLetterType?: CoverLetterType;
   onGoServices?: () => void;
 }
 
-const LETTER_TEMPLATES = [
-  {
-    id: 'classique_corporate',
-    title: '1. Classique Corporate OHADA',
-    badge: 'Standard RH',
-    desc: 'Format formel et élégant respectant la typologie administrative des grandes entreprises et administrations.',
-    accentColor: '#1e293b',
-    hasHeaderBanner: false
-  },
+const LETTER_TEMPLATES: {
+  id: CoverLetterStyle;
+  title: string;
+  badge: string;
+  desc: string;
+  accentColor: string;
+}[] = [
   {
     id: 'moderne_epuree',
-    title: '2. Moderne & Dynamique',
-    badge: 'Populaire',
-    desc: 'Bannière subtile, typographie contemporaine et accroche percutante pour PME et startups.',
-    accentColor: '#4f46e5',
-    hasHeaderBanner: true
+    title: 'Moderne Épurée',
+    badge: 'Standard International',
+    desc: 'Structure aérée, alignement soigné et typographie nette pour tout profil.',
+    accentColor: '#2563eb'
   },
   {
-    id: 'executive_direction',
-    title: '3. Exécutive & Direction',
-    badge: 'Top Cadres',
-    desc: 'Style autoritaire et sobre orienté stratégie, leadership et réalisations chiffrées.',
-    accentColor: '#0f172a',
-    hasHeaderBanner: true
+    id: 'executive_classique',
+    title: 'Exécutive Classique',
+    badge: 'Direction & Cadres',
+    desc: 'En-tête formel, bordure d’accentuation fine et hiérarchie institutionnelle.',
+    accentColor: '#1e3a8a'
   },
   {
-    id: 'creative_impact',
-    title: '4. Créatif & Studio Impact',
-    badge: 'Design & Médias',
-    desc: 'En-tête stylisé avec lettrine et mise en valeur des compétences clés et motivations.',
-    accentColor: '#d97706',
-    hasHeaderBanner: true
+    id: 'creative_accent',
+    title: 'Créative Accent',
+    badge: 'Tech, Agence & Com',
+    desc: 'Bandeau supérieur dynamique, contrastes colorés et mise en valeur de votre pitch.',
+    accentColor: '#0d9488'
   },
   {
-    id: 'prestige_conseil',
-    title: '5. Prestige & Haute Finance',
-    badge: 'Luxe / Conseil',
-    desc: 'Filet élégant, typographie noble à empattements pour cabinets de conseil et banques.',
-    accentColor: '#881337',
-    hasHeaderBanner: false
+    id: 'minimaliste_chic',
+    title: 'Minimaliste Chic',
+    badge: '100% ATS & Sobre',
+    desc: 'Style dépouillé sans fioritures, centré sur la force et la clarté du propos.',
+    accentColor: '#334155'
   },
   {
-    id: 'minimal_ats',
-    title: '6. Minimaliste ATS Pure',
-    badge: '100% Parsing',
-    desc: 'Structure épurée sans fioritures pour un passage immédiat des filtres automatisés.',
-    accentColor: '#334155',
-    hasHeaderBanner: false
+    id: 'impact_direct',
+    title: 'Impact Direct',
+    badge: 'PME & Startups',
+    desc: 'Blocs d’arguments visuels pour convaincre rapidement les recruteurs pressés.',
+    accentColor: '#7c3aed'
+  },
+  {
+    id: 'diplomatique',
+    title: 'Diplomatique & Institutionnel',
+    badge: 'ONG, État & Droit',
+    desc: 'Protocole strict, respect des formules officielles et présentation prestigieuse.',
+    accentColor: '#0f172a'
   }
 ];
 
-const LETTER_TYPES_LIST = [
+const LETTER_TYPES = [
   {
     id: 'offre' as CoverLetterType,
-    title: "Réponse à une offre",
-    badge: "Offre d'emploi",
-    desc: "Postuler à une annonce ou un appel à candidatures précis",
-    icon: Target
+    title: "Réponse à une Offre d'Emploi",
+    badge: "Classique",
+    desc: "Cibler précisément les exigences du poste",
+    icon: Briefcase
   },
   {
     id: 'spontanee' as CoverLetterType,
-    title: "Candidature spontanée",
-    badge: "Spontanée",
-    desc: "Proposer directement vos compétences à une entreprise ciblée",
+    title: "Candidature Spontanée",
+    badge: "Proactive",
+    desc: "Mettre en avant votre valeur ajoutée",
     icon: Send
   },
   {
-    id: 'stage' as CoverLetterType,
-    title: "Stage / Alternance",
-    badge: "Étudiant & Stage",
-    desc: "Valoriser votre parcours académique, projet d'études et motivation",
-    icon: GraduationCap
-  },
-  {
-    id: 'reconversion' as CoverLetterType,
-    title: "Reconversion pro",
-    badge: "Reconversion",
-    desc: "Mettre en avant votre nouvelle trajectoire et vos atouts",
-    icon: RotateCcw
+    id: 'stage_alternance' as CoverLetterType,
+    title: "Stage & Alternance",
+    badge: "Junior / Étudiant",
+    desc: "Valoriser vos compétences et motivation",
+    icon: Users
   },
   {
     id: 'recommandation' as CoverLetterType,
@@ -105,6 +97,152 @@ const LETTER_TYPES_LIST = [
   }
 ];
 
+// FLUID A4 LETTER THUMBNAIL
+const FluidLetterThumbnail: React.FC<{
+  template: typeof LETTER_TEMPLATES[0];
+  sampleData: CVFormData;
+  isSelected: boolean;
+  isActiveOnMobile: boolean;
+  onSelect: () => void;
+  onOpenPreview: () => void;
+  onCardTap: () => void;
+}> = ({
+  template,
+  sampleData,
+  isSelected,
+  isActiveOnMobile,
+  onSelect,
+  onOpenPreview,
+  onCardTap
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState<number>(0.32);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const updateScale = () => {
+      if (containerRef.current) {
+        const width = containerRef.current.clientWidth;
+        if (width > 0) {
+          setScale(width / 794);
+        }
+      }
+    };
+    updateScale();
+    const observer = new ResizeObserver(() => updateScale());
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      onClick={onCardTap}
+      className={`group relative cursor-pointer select-none transition-all duration-300 rounded-xl sm:rounded-2xl overflow-hidden ${
+        isSelected
+          ? 'ring-3 ring-blue-500 ring-offset-4 ring-offset-slate-950 shadow-2xl shadow-blue-500/25'
+          : 'shadow-xl shadow-black/60 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-1.5'
+      }`}
+    >
+      {/* 1. PURE FLOATING A4 SHEET */}
+      <div 
+        ref={containerRef}
+        className="w-full aspect-[210/297] bg-white overflow-hidden rounded-xl sm:rounded-2xl relative"
+      >
+        <div 
+          className="w-[794px] h-[1123px] origin-top-left pointer-events-none select-none"
+          style={{ transform: `scale(${scale})` }}
+        >
+          <CoverLetterTemplate formData={sampleData} />
+        </div>
+      </div>
+
+      {/* Selected Indicator Badge */}
+      {isSelected && (
+        <div className="absolute top-2.5 right-2.5 z-20 px-2.5 py-1 rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-blue-950/60">
+          <Check className="w-3 h-3 stroke-[3]" />
+          <span>Actif</span>
+        </div>
+      )}
+
+      {/* 2. CANVA-STYLE FADE-IN OVERLAY ON HOVER (DESKTOP) OR TAP (MOBILE) */}
+      <div
+        className={`absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-slate-950/30 backdrop-blur-[2px] transition-all duration-300 flex flex-col justify-between p-3.5 sm:p-5 rounded-xl sm:rounded-2xl ${
+          isActiveOnMobile
+            ? 'opacity-100 pointer-events-auto'
+            : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
+        }`}
+      >
+        {/* Top: Badges & Fullscreen Preview */}
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5">
+            <span 
+              className="px-2 py-0.5 rounded-full text-[10px] font-black text-white shadow-xs"
+              style={{ backgroundColor: template.accentColor }}
+            >
+              {template.badge}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPreview();
+            }}
+            className="p-1.5 sm:p-2 rounded-full bg-white/15 hover:bg-white/30 text-white backdrop-blur-md border border-white/20 transition-all active:scale-90 cursor-pointer shadow-lg"
+            title="Aperçu Plein Écran HD"
+          >
+            <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+        </div>
+
+        {/* Center: Action Button */}
+        <div className="flex flex-col items-center justify-center gap-2 my-auto py-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+            }}
+            className="w-full sm:w-auto px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-black text-xs sm:text-sm shadow-xl shadow-blue-600/50 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>{isSelected ? '✓ Modèle sélectionné' : 'Sélectionner ce modèle'}</span>
+            {!isSelected && <ArrowRight className="w-4 h-4" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPreview();
+            }}
+            className="text-[11px] sm:text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Eye className="w-3.5 h-3.5 text-blue-400" />
+            <span>Aperçu HD zoomable</span>
+          </button>
+        </div>
+
+        {/* Bottom: Title & description */}
+        <div className="space-y-1 text-left">
+          <div className="flex items-center gap-2">
+            <span 
+              className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-white/50"
+              style={{ backgroundColor: template.accentColor }}
+            />
+            <h3 className="text-xs sm:text-sm md:text-base font-black text-white truncate drop-shadow-sm">
+              {template.title}
+            </h3>
+          </div>
+          <p className="text-[11px] sm:text-xs text-slate-300 truncate max-w-full drop-shadow-sm">
+            {template.desc}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const LetterTemplateGallery: React.FC<LetterTemplateGalleryProps> = ({
   onSelectTemplate,
   selectedStyleId = 'moderne_epuree',
@@ -114,7 +252,8 @@ export const LetterTemplateGallery: React.FC<LetterTemplateGalleryProps> = ({
   const [activeLetterType, setActiveLetterType] = useState<CoverLetterType>(selectedLetterType);
   const [previewTemplate, setPreviewTemplate] = useState<typeof LETTER_TEMPLATES[0] | null>(null);
   const [modalZoom, setModalZoom] = useState<number>(0.85);
-  const [mobileGridCols, setMobileGridCols] = useState<1 | 2>(2);
+  const [mobileGridCols, setMobileGridCols] = useState<1 | 2>(1);
+  const [activeMobileCardId, setActiveMobileCardId] = useState<string | null>(null);
 
   const handleOpenPreview = (tpl: typeof LETTER_TEMPLATES[0]) => {
     setPreviewTemplate(tpl);
@@ -136,101 +275,76 @@ export const LetterTemplateGallery: React.FC<LetterTemplateGalleryProps> = ({
     };
   };
 
-  const isMobile2Col = mobileGridCols === 2;
-
   return (
-    <div className="space-y-4 sm:space-y-6 animate-in fade-in max-w-7xl mx-auto pb-16 px-1 sm:px-4">
+    <div 
+      className="space-y-6 sm:space-y-8 animate-in fade-in max-w-7xl mx-auto pb-20 px-2 sm:px-6"
+      onClick={() => setActiveMobileCardId(null)}
+    >
       
-      {/* 1. TOP HEADER BANNER */}
-      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white border border-blue-900/40 shadow-xl p-4 sm:p-7 lg:p-9">
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-blue-500/15 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-black bg-blue-500/25 text-blue-300 border border-blue-400/30 uppercase tracking-wider">
-                <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" />
-                Lettre de Motivation Pro
-              </span>
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+      {/* 1. DISCREET HEADER */}
+      <div className="space-y-3 pt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                Modèles de Lettres de Motivation
+              </h1>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
                 Format Officiel A4
               </span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Choisissez un modèle adapté à votre objectif de candidature.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {/* Mobile Column View Switch */}
+            <div className="flex sm:hidden items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMobileGridCols(1);
+                }}
+                className={`p-1.5 rounded-lg transition-all ${
+                  mobileGridCols === 1 ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400'
+                }`}
+                title="Pleine largeur"
+              >
+                <Square className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMobileGridCols(2);
+                }}
+                className={`p-1.5 rounded-lg transition-all ${
+                  mobileGridCols === 2 ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400'
+                }`}
+                title="2 colonnes"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
             </div>
 
             {onGoServices && (
               <button
                 type="button"
                 onClick={onGoServices}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold border border-slate-700/80 transition-all cursor-pointer active:scale-95 shrink-0"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold border border-slate-800 transition-all cursor-pointer active:scale-95 shrink-0"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Retour</span>
               </button>
             )}
           </div>
-
-          <div>
-            <h1 className="text-xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight">
-              Galerie des Modèles de Lettre
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              Sélectionnez un style de mise en page et l'objectif de votre lettre. L'IA rédigera pour vous une lettre percutante et convaincante.
-            </p>
-          </div>
-
-          <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs border-t border-slate-800/60 text-slate-400">
-            <div className="flex items-center gap-4 text-slate-300 flex-wrap">
-              <span className="flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                Normes formelles Sénégal & International
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                Export PDF HD & Word (.docx)
-              </span>
-            </div>
-
-            <span className="text-blue-300 font-bold bg-blue-950/60 px-2.5 py-0.5 rounded-lg border border-blue-800/40">
-              1 000 FCFA
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. OBJECTIVE / LETTER TYPE SWITCHER (DARK SEAMLESS PANEL) */}
-      <div className="bg-slate-900/90 rounded-2xl p-3 sm:p-4 border border-slate-800/80 shadow-lg space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs font-black text-slate-200 uppercase tracking-wider">
-            Type de Candidature :
-          </h3>
-
-          {/* Mobile Col Switch */}
-          <div className="flex sm:hidden items-center bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
-            <button
-              type="button"
-              onClick={() => setMobileGridCols(2)}
-              className={`p-1.5 rounded-lg transition-all ${
-                mobileGridCols === 2 ? 'bg-blue-600 text-white' : 'text-slate-400'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileGridCols(1)}
-              className={`p-1.5 rounded-lg transition-all ${
-                mobileGridCols === 1 ? 'bg-blue-600 text-white' : 'text-slate-400'
-              }`}
-            >
-              <Square className="w-3.5 h-3.5" />
-            </button>
-          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          {LETTER_TYPES_LIST.map((lt) => {
+        {/* Letter Types Selector (Compact Pills) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+          {LETTER_TYPES.map((lt) => {
             const isSelected = activeLetterType === lt.id;
             const Icon = lt.icon;
             return (
@@ -238,162 +352,79 @@ export const LetterTemplateGallery: React.FC<LetterTemplateGalleryProps> = ({
                 key={lt.id}
                 type="button"
                 onClick={() => setActiveLetterType(lt.id)}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
                   isSelected
                     ? 'border-blue-500 bg-blue-500/20 text-white shadow-xs'
-                    : 'border-slate-800 bg-slate-950/80 hover:bg-slate-800 text-slate-300'
+                    : 'border-slate-800/80 bg-slate-900/60 hover:bg-slate-800 text-slate-300'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                    <Icon className="w-3.5 h-3.5" />
-                  </div>
-                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-300">
-                    {lt.badge}
-                  </span>
+                <div className={`p-1.5 rounded-lg shrink-0 ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  <Icon className="w-3.5 h-3.5" />
                 </div>
-                <div className="text-xs font-black text-white truncate">{lt.title}</div>
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-white truncate">{lt.title}</div>
+                  <div className="text-[10px] text-slate-400 truncate">{lt.badge}</div>
+                </div>
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* 3. TEMPLATES GRID (SEAMLESS CARDS, NO HARSH BORDERS) */}
+      {/* 2. FLUID CANVA-STYLE GRID */}
       <div 
-        className={`grid gap-3 sm:gap-5 ${
-          isMobile2Col ? 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+        className={`grid ${
+          mobileGridCols === 1
+            ? 'grid-cols-1 max-w-sm mx-auto sm:max-w-none sm:grid-cols-2 lg:grid-cols-3 gap-8 sm:gap-8 lg:gap-10'
+            : 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8 lg:gap-10'
         }`}
       >
         {LETTER_TEMPLATES.map((template) => {
           const isSelected = selectedStyleId === template.id;
           const sampleData = getSampleLetterData(template);
+          const isActiveOnMobile = activeMobileCardId === template.id;
 
           return (
-            <div
+            <FluidLetterThumbnail
               key={template.id}
-              className={`group relative rounded-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-md hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-1 ${
-                isSelected
-                  ? 'bg-slate-900 border-2 border-blue-500 ring-2 ring-blue-500/20'
-                  : 'bg-slate-900/80 hover:bg-slate-900 border border-slate-800/80 hover:border-blue-500/40'
-              }`}
-            >
-              {isSelected && (
-                <div className="absolute top-2 right-2 z-20 px-2 py-0.5 rounded-full bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg">
-                  <Check className="w-2.5 h-2.5 stroke-[3]" />
-                  <span>Actif</span>
-                </div>
-              )}
-
-              <div className="p-2 sm:p-3.5 space-y-2 sm:space-y-3 flex-1 flex flex-col">
-                <div className="flex items-center justify-between gap-1.5">
-                  <span 
-                    className="px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-black text-white shrink-0 shadow-xs"
-                    style={{ backgroundColor: template.accentColor }}
-                  >
-                    Style {template.id.split('_')[0]}
-                  </span>
-                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    {template.badge}
-                  </span>
-                </div>
-
-                {/* THUMBNAIL (NATURAL FLOATING PAPER) */}
-                <div 
-                  onClick={() => handleOpenPreview(template)}
-                  className={`relative w-full rounded-xl overflow-hidden cursor-pointer flex items-start justify-center bg-slate-950/60 shadow-inner group/thumb transition-colors ${
-                    isMobile2Col ? 'h-48 sm:h-64 md:h-72' : 'h-80 sm:h-64 md:h-72'
-                  }`}
-                  title="Aperçu HD"
-                >
-                  <div 
-                    className="w-[794px] min-h-[1123px] bg-white origin-top shadow-2xl shadow-black/80 pointer-events-none select-none transition-transform duration-300 group-hover/thumb:scale-[0.28]"
-                    style={{
-                      transform: isMobile2Col ? 'scale(0.185)' : 'scale(0.35)',
-                      transformOrigin: 'top center',
-                      marginTop: '6px'
-                    }}
-                  >
-                    <CoverLetterTemplate formData={sampleData} />
-                  </div>
-
-                  <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-slate-950/80 to-transparent pointer-events-none" />
-
-                  <div className="absolute top-1.5 right-1.5 z-10">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenPreview(template);
-                      }}
-                      className="p-1 sm:p-1.5 rounded-lg bg-slate-950/80 backdrop-blur-xs text-slate-300 hover:text-white hover:bg-blue-600 transition-all shadow-md cursor-pointer active:scale-90"
-                      title="Agrandir ce modèle"
-                    >
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="pt-0.5 space-y-1">
-                  <h3 className="text-xs sm:text-sm font-black text-white group-hover:text-blue-400 transition-colors truncate">
-                    {template.title}
-                  </h3>
-                  {(!isMobile2Col || typeof window !== 'undefined' && window.innerWidth >= 640) && (
-                    <p className="text-[11px] text-slate-400 line-clamp-1 sm:line-clamp-2 leading-relaxed">
-                      {template.desc}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-2 sm:p-3 pt-0">
-                <button
-                  type="button"
-                  onClick={() => onSelectTemplate(template.id, activeLetterType)}
-                  className={`w-full py-2 sm:py-2.5 px-2 rounded-xl font-black text-[11px] sm:text-xs flex items-center justify-center gap-1 transition-all cursor-pointer shadow-md active:scale-95 ${
-                    isSelected
-                      ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/25'
-                      : 'bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white'
-                  }`}
-                >
-                  <span>{isSelected ? '✓ Modèle sélectionné' : isMobile2Col ? 'Choisir' : 'Choisir ce modèle & Rédiger'}</span>
-                  {!isSelected && <ArrowRight className="w-3 h-3 shrink-0" />}
-                </button>
-              </div>
-            </div>
+              template={template}
+              sampleData={sampleData}
+              isSelected={isSelected}
+              isActiveOnMobile={isActiveOnMobile}
+              onSelect={() => onSelectTemplate(template.id, activeLetterType)}
+              onOpenPreview={() => handleOpenPreview(template)}
+              onCardTap={() => {
+                setActiveMobileCardId(prev => (prev === template.id ? null : template.id));
+              }}
+            />
           );
         })}
       </div>
 
-      {/* 4. HIGH-DEFINITION PREVIEW MODAL */}
+      {/* 3. FULL-SCREEN PREVIEW MODAL */}
       {previewTemplate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-4 md:p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
           <div className="relative w-full max-w-5xl h-[94vh] bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-800 flex flex-col overflow-hidden">
             
-            <div className="px-3.5 sm:px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2 text-white shrink-0 z-10">
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="px-4 sm:px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2 text-white shrink-0 z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <span 
-                  className="px-2 py-0.5 sm:py-1 rounded-md text-[11px] sm:text-xs font-black text-white shrink-0"
+                  className="px-2 py-0.5 rounded-md text-xs font-black text-white shrink-0"
                   style={{ backgroundColor: previewTemplate.accentColor }}
                 >
                   {previewTemplate.badge}
                 </span>
-                <div className="min-w-0">
-                  <h3 className="text-sm sm:text-base font-black text-white leading-tight truncate">
-                    {previewTemplate.title}
-                  </h3>
-                  <p className="text-[10px] sm:text-xs text-slate-400 truncate">
-                    Modèle de Lettre Formelle Pro
-                  </p>
-                </div>
+                <h3 className="text-sm sm:text-base font-black text-white truncate">
+                  {previewTemplate.title}
+                </h3>
               </div>
 
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <div className="flex items-center bg-slate-900 rounded-xl p-0.5 border border-slate-800">
                   <button
                     type="button"
                     onClick={() => setModalZoom(prev => Math.max(0.3, prev - 0.08))}
-                    className="p-1 sm:p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                    className="p-1 sm:p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800"
                   >
                     <ZoomOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </button>
@@ -403,7 +434,7 @@ export const LetterTemplateGallery: React.FC<LetterTemplateGalleryProps> = ({
                   <button
                     type="button"
                     onClick={() => setModalZoom(prev => Math.min(1.4, prev + 0.08))}
-                    className="p-1 sm:p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                    className="p-1 sm:p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800"
                   >
                     <ZoomIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </button>
@@ -412,7 +443,7 @@ export const LetterTemplateGallery: React.FC<LetterTemplateGalleryProps> = ({
                 <button
                   type="button"
                   onClick={() => setPreviewTemplate(null)}
-                  className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer"
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800"
                 >
                   <X className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
@@ -429,25 +460,21 @@ export const LetterTemplateGallery: React.FC<LetterTemplateGalleryProps> = ({
                   marginBottom: '80px'
                 }}
               >
-                <CoverLetterTemplate
-                  formData={getSampleLetterData(previewTemplate)}
-                />
+                <CoverLetterTemplate formData={getSampleLetterData(previewTemplate)} />
               </div>
             </div>
 
             <div className="px-4 sm:px-6 py-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3 text-xs text-slate-400 shrink-0">
-              <div className="hidden sm:flex items-center gap-3">
-                <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Format A4 Standard (1 000 FCFA)
-                </span>
-              </div>
+              <span className="hidden sm:flex items-center gap-1 text-emerald-400 font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Format Officiel A4 Réel
+              </span>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                 <button
                   type="button"
                   onClick={() => setPreviewTemplate(null)}
-                  className="px-3 py-2 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer text-xs"
+                  className="px-3 py-2 rounded-xl text-slate-400 hover:text-white text-xs cursor-pointer"
                 >
                   Fermer
                 </button>
@@ -458,9 +485,9 @@ export const LetterTemplateGallery: React.FC<LetterTemplateGalleryProps> = ({
                     setPreviewTemplate(null);
                     onSelectTemplate(tpl.id, activeLetterType);
                   }}
-                  className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-blue-600/30 transition-all cursor-pointer active:scale-95"
+                  className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-blue-600/30 active:scale-95 cursor-pointer"
                 >
-                  <span>Choisir ce modèle (1 000 F)</span>
+                  <span>Sélectionner ce modèle</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
