@@ -234,6 +234,43 @@ export interface BusinessDocData {
   paymentInfo: PaymentInfo;
   currency: string; // 'FCFA'
   status?: 'brouillon' | 'envoye' | 'valide' | 'paye';
+  customerId?: string;
+  paymentStatus?: 'PAID' | 'UNPAID';
+}
+
+export interface Customer {
+  id: string;
+  name: string; // Nom ou Entreprise
+  phone: string; // Numéro WhatsApp (+221...)
+  email: string;
+  address: string;
+  ninea?: string; // Facultatif
+  paymentTerms?: string; // Conditions (ex: Comptant, 15 jours)
+  notes?: string;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface BusinessInvoice {
+  id: string;
+  userId?: string;
+  customerId?: string;
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerNinea?: string;
+  docNumber: string;
+  type: 'devis' | 'facture';
+  totalHT: number;
+  totalTTC: number;
+  currency: string;
+  status: 'PAID' | 'UNPAID';
+  issueDate: string;
+  dueDate?: string;
+  businessDocData?: BusinessDocData;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export type CoverLetterType = 

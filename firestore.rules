@@ -30,6 +30,18 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read, write: if true;
+
+      match /customers/{customerId} {
+        allow read, write, delete: if true;
+      }
+
+      match /invoices/{invoiceId} {
+        allow read, write, delete: if true;
+      }
+
+      match /{allSubcollections=**} {
+        allow read, write, delete: if true;
+      }
     }
 
     match /user_profiles/{userId} {

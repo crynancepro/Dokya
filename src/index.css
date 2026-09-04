@@ -4,43 +4,68 @@
 /* ACCESSIBILITY & HIGH CONTRAST INPUT / TEXTAREA / SELECT STYLES            */
 /* ========================================================================= */
 @layer base {
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]),
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]):not([type="file"]),
   textarea,
   select {
-    color: #0f172a !important; /* slate-900 text on light backgrounds */
-    border-color: #cbd5e1; /* slate-300 crisp border */
+    color: #FFFFFF !important;
+    background-color: #1E293B !important;
+    caret-color: #3B82F6 !important;
+    border-color: #334155 !important;
     font-weight: 500;
   }
 
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"])::placeholder,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]):not([type="file"])::placeholder,
   textarea::placeholder {
-    color: #64748b !important; /* slate-500 medium gray for visible placeholder */
+    color: #9CA3AF !important;
     opacity: 1 !important;
     font-weight: 400;
   }
 
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]):focus,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]):not([type="file"]):focus,
   textarea:focus,
   select:focus {
-    color: #0f172a !important;
-    border-color: #3b82f6 !important; /* blue-500 */
+    color: #FFFFFF !important;
+    background-color: #1E293B !important;
+    border-color: #3B82F6 !important;
     outline: none !important;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important; /* soft blue focus ring */
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important;
+    caret-color: #3B82F6 !important;
   }
 
-  /* Specific handling for dark-mode containers to avoid white-on-dark clashes if any */
-  .bg-slate-900 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-  .bg-slate-950 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-  .bg-black input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  /* Specific handling for all dark-mode containers to guarantee readability */
+  .bg-slate-900 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  .bg-slate-950 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  .bg-neutral-900 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  .bg-neutral-950 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  .bg-black input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
   .dark-input {
-    color: #f8fafc !important;
+    color: #FFFFFF !important;
+    background-color: #1E293B !important;
     border-color: #334155 !important;
+    caret-color: #3B82F6 !important;
   }
+
   .bg-slate-900 input::placeholder,
   .bg-slate-950 input::placeholder,
+  .bg-neutral-900 input::placeholder,
+  .bg-neutral-950 input::placeholder,
   .bg-black input::placeholder,
   .dark-input::placeholder {
-    color: #94a3b8 !important;
+    color: #9CA3AF !important;
+    opacity: 1 !important;
+  }
+
+  /* Dropdown options styling for cross-platform / OS support (Chrome, Safari, Windows, Android) */
+  select option {
+    background-color: #0F172A !important;
+    color: #FFFFFF !important;
+    padding: 8px 12px;
+  }
+
+  select option:checked,
+  select option:hover {
+    background-color: #1E293B !important;
+    color: #FFFFFF !important;
   }
 }
 

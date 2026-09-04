@@ -1119,10 +1119,10 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                           setCustomRechargeInput(e.target.value);
                           setIsCustomRecharge(true);
                         }}
-                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-950 border transition-all ${
+                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-900 border transition-all !text-white !placeholder:text-slate-400 caret-blue-500 ${
                           isCustomRecharge
                             ? 'border-indigo-500 ring-1 ring-indigo-500 text-white'
-                            : 'border-slate-800 text-slate-300'
+                            : 'border-slate-700 text-white'
                         }`}
                       />
                     </div>
@@ -1235,7 +1235,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                             value={promoInput}
                             onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                             placeholder="Ex: PROMO50, VIP100, DAKAR2026..."
-                            className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs uppercase font-mono text-white placeholder:text-slate-500 focus:outline-hidden focus:border-emerald-500"
+                            className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs uppercase font-mono !text-white !placeholder:text-slate-400 focus:outline-hidden focus:border-emerald-500 caret-blue-500"
                             onKeyDown={(e) => e.key === 'Enter' && handleApplyPromo()}
                           />
                           <button
@@ -1494,7 +1494,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         const c = AFRICAN_COUNTRIES.find(item => item.code === e.target.value);
                         if (c) setSelectedCountry(c);
                       }}
-                      className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:outline-hidden focus:border-emerald-500 appearance-none cursor-pointer"
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 !text-white text-xs font-bold focus:outline-hidden focus:border-emerald-500 appearance-none cursor-pointer"
                     >
                       {AFRICAN_COUNTRIES.map((c) => (
                         <option key={c.code} value={c.code} className="bg-slate-900 text-white">
@@ -1502,7 +1502,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         </option>
                       ))}
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400 text-xs">
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-300 text-xs">
                       ▼
                     </div>
                   </div>
@@ -1514,7 +1514,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       value={senderPhoneNumber}
                       onChange={(e) => setSenderPhoneNumber(e.target.value)}
                       placeholder={`Ex: ${selectedCountry.example}`}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono font-bold focus:outline-hidden focus:border-emerald-500 placeholder:text-slate-600"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 !text-white text-xs font-mono font-bold focus:outline-hidden focus:border-emerald-500 !placeholder:text-slate-400 caret-blue-500"
                     />
                   </div>
                 </div>
@@ -1522,16 +1522,16 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
               {/* Optional Reference ID */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-slate-300 flex items-center justify-between">
                   <span>ID de Transaction / Réf (optionnel) :</span>
-                  <span className="text-[10px] text-slate-500">Ex: WW2408..., CI24...</span>
+                  <span className="text-[10px] text-slate-400">Ex: WW2408..., CI24...</span>
                 </label>
                 <input
                   type="text"
                   value={transactionRef}
                   onChange={(e) => setTransactionRef(e.target.value)}
                   placeholder="Si vous souhaitez renseigner la référence du SMS..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:outline-hidden focus:border-emerald-500 placeholder:text-slate-600"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 !text-white text-xs font-mono focus:outline-hidden focus:border-emerald-500 !placeholder:text-slate-400 caret-blue-500"
                 />
               </div>
 

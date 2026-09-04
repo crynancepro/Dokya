@@ -9,7 +9,8 @@ import firebaseConfig from '../../firebase-applet-config.json';
 import { 
   CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, 
   CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode,
-  UserSubscription, isUserVipActive, getTimestampMillis, formatRemainingSubscriptionTime, AdminUserRecord
+  UserSubscription, isUserVipActive, getTimestampMillis, formatRemainingSubscriptionTime, AdminUserRecord,
+  Customer, BusinessInvoice
 } from '../types';
 
 const app = initializeApp(firebaseConfig);
@@ -1625,6 +1626,426 @@ export interface FirestoreErrorInfo {
       email?: string | null;
     }[];
   };
+}
+
+// ============================================================================
+// DOKYA BUSINESS - CUSTOMERS & FINANCIAL TRACKING (INVOICES / DEVIS)
+// ============================================================================
+
+const getLocalCustomersKey = (uid: string) => `dokya_business_customers_${uid}`;
+const getLocalInvoicesKey = (uid: string) => `dokya_business_invoices_${uid}`;
+
+/**
+ * Enregistre ou met à jour un client dans Firestore ('users/{userId}/customers/{customerId}')
+ */
+export async function saveCustomer(userId: string, customerData: Partial<Customer>): Promise<Customer | null> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) {
+    console.warn("Utilisateur non connecté pour sauvegarder le client.");
+    return null;
+  }
+
+  const customerId = customerData.id || `CUST-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+
+  const customer: Customer = {
+    id: customerId,
+    name: customerData.name?.trim() || 'Client sans nom',
+    phone: customerData.phone?.trim() || '',
+    email: customerData.email?.trim() || '',
+    address: customerData.address?.trim() || '',
+    ninea: customerData.ninea?.trim() || '',
+    paymentTerms: customerData.paymentTerms?.trim() || 'Comptant',
+    notes: customerData.notes?.trim() || '',
+    createdAt: customerData.createdAt || now,
+    updatedAt: now,
+  };
+
+  // 1. Sauvegarde locale d'abord pour réactivité immédiate
+  try {
+    const raw = localStorage.getItem(getLocalCustomersKey(currentUid));
+    let list: Customer[] = raw ? JSON.parse(raw) : [];
+    const existingIndex = list.findIndex(c => c.id === customerId);
+    if (existingIndex >= 0) {
+      list[existingIndex] = customer;
+    } else {
+      list.unshift(customer);
+    }
+    localStorage.setItem(getLocalCustomersKey(currentUid), JSON.stringify(list));
+  } catch (e) {
+    console.warn("Erreur cache local clients:", e);
+  }
+
+  // 2. Sauvegarde Firestore
+  const path = `users/${currentUid}/customers/${customerId}`;
+  try {
+    const docRef = doc(db, 'users', currentUid, 'customers', customerId);
+    await setDoc(docRef, cleanFirestorePayload({
+      ...customer,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }), { merge: true });
+    return customer;
+  } catch (error) {
+    console.warn(`Erreur Firestore pour ${path}:`, error);
+    return customer; // Return local representation
+  }
+}
+
+/**
+ * Récupère tous les clients d'un utilisateur
+ */
+export async function fetchCustomers(userId: string): Promise<Customer[]> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return [];
+
+  // Fallback local
+  let localList: Customer[] = [];
+  try {
+    const raw = localStorage.getItem(getLocalCustomersKey(currentUid));
+    if (raw) localList = JSON.parse(raw);
+  } catch (e) {}
+
+  const path = `users/${currentUid}/customers`;
+  try {
+    const colRef = collection(db, 'users', currentUid, 'customers');
+    const snapshot = await getDocs(colRef);
+    if (snapshot.empty && localList.length > 0) {
+      return localList;
+    }
+    const firestoreList: Customer[] = [];
+    snapshot.forEach((d) => {
+      const data = d.data();
+      firestoreList.push({
+        id: d.id,
+        name: data.name || '',
+        phone: data.phone || '',
+        email: data.email || '',
+        address: data.address || '',
+        ninea: data.ninea || '',
+        paymentTerms: data.paymentTerms || '',
+        notes: data.notes || '',
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
+      });
+    });
+
+    // Mettre à jour le cache local
+    if (firestoreList.length > 0) {
+      localStorage.setItem(getLocalCustomersKey(currentUid), JSON.stringify(firestoreList));
+      return firestoreList.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return localList;
+  } catch (error) {
+    console.warn(`Erreur fetchCustomers (${path}):`, error);
+    return localList;
+  }
+}
+
+/**
+ * Écoute en temps réel les clients
+ */
+export function subscribeToCustomers(userId: string, callback: (customers: Customer[]) => void): Unsubscribe {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) {
+    callback([]);
+    return () => {};
+  }
+
+  // Émettre le cache local immédiatement
+  try {
+    const raw = localStorage.getItem(getLocalCustomersKey(currentUid));
+    if (raw) callback(JSON.parse(raw));
+  } catch (e) {}
+
+  const colRef = collection(db, 'users', currentUid, 'customers');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const customers: Customer[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        customers.push({
+          id: d.id,
+          name: data.name || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          address: data.address || '',
+          ninea: data.ninea || '',
+          paymentTerms: data.paymentTerms || '',
+          notes: data.notes || '',
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
+        });
+      });
+      customers.sort((a, b) => a.name.localeCompare(b.name));
+      localStorage.setItem(getLocalCustomersKey(currentUid), JSON.stringify(customers));
+      callback(customers);
+    },
+    (err) => {
+      console.warn("Erreur onSnapshot customers:", err);
+    }
+  );
+}
+
+/**
+ * Supprime un client
+ */
+export async function deleteCustomer(userId: string, customerId: string): Promise<boolean> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return false;
+
+  // Local update
+  try {
+    const raw = localStorage.getItem(getLocalCustomersKey(currentUid));
+    if (raw) {
+      const list: Customer[] = JSON.parse(raw);
+      const filtered = list.filter(c => c.id !== customerId);
+      localStorage.setItem(getLocalCustomersKey(currentUid), JSON.stringify(filtered));
+    }
+  } catch (e) {}
+
+  try {
+    const docRef = doc(db, 'users', currentUid, 'customers', customerId);
+    await deleteDoc(docRef);
+    return true;
+  } catch (error) {
+    console.warn(`Erreur deleteCustomer (${customerId}):`, error);
+    return true;
+  }
+}
+
+/**
+ * Enregistre une facture ou un devis pour suivi financier
+ */
+export async function saveBusinessInvoice(userId: string, invoiceData: Partial<BusinessInvoice>): Promise<BusinessInvoice | null> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return null;
+
+  const invoiceId = invoiceData.id || `INV-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+
+  const invoice: BusinessInvoice = {
+    id: invoiceId,
+    userId: currentUid,
+    customerId: invoiceData.customerId || '',
+    customerName: invoiceData.customerName || 'Client Inconnu',
+    customerPhone: invoiceData.customerPhone || '',
+    customerEmail: invoiceData.customerEmail || '',
+    customerAddress: invoiceData.customerAddress || '',
+    customerNinea: invoiceData.customerNinea || '',
+    docNumber: invoiceData.docNumber || `FAC-${new Date().getFullYear()}-001`,
+    type: invoiceData.type || 'facture',
+    totalHT: Number(invoiceData.totalHT) || 0,
+    totalTTC: Number(invoiceData.totalTTC) || 0,
+    currency: invoiceData.currency || 'FCFA',
+    status: invoiceData.status || 'UNPAID',
+    issueDate: invoiceData.issueDate || now.split('T')[0],
+    dueDate: invoiceData.dueDate || '',
+    businessDocData: invoiceData.businessDocData,
+    createdAt: invoiceData.createdAt || now,
+    updatedAt: now,
+  };
+
+  // Cache local
+  try {
+    const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+    let list: BusinessInvoice[] = raw ? JSON.parse(raw) : [];
+    const existingIndex = list.findIndex(i => i.id === invoiceId || i.docNumber === invoice.docNumber);
+    if (existingIndex >= 0) {
+      list[existingIndex] = invoice;
+    } else {
+      list.unshift(invoice);
+    }
+    localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(list));
+  } catch (e) {}
+
+  try {
+    const docRef = doc(db, 'users', currentUid, 'invoices', invoiceId);
+    await setDoc(docRef, cleanFirestorePayload({
+      ...invoice,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }), { merge: true });
+    return invoice;
+  } catch (error) {
+    console.warn("Erreur saveBusinessInvoice Firestore:", error);
+    return invoice;
+  }
+}
+
+/**
+ * Récupère toutes les factures / devis d'un utilisateur
+ */
+export async function fetchBusinessInvoices(userId: string): Promise<BusinessInvoice[]> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return [];
+
+  let localList: BusinessInvoice[] = [];
+  try {
+    const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+    if (raw) localList = JSON.parse(raw);
+  } catch (e) {}
+
+  try {
+    const colRef = collection(db, 'users', currentUid, 'invoices');
+    const snapshot = await getDocs(colRef);
+    if (snapshot.empty && localList.length > 0) {
+      return localList;
+    }
+    const firestoreList: BusinessInvoice[] = [];
+    snapshot.forEach((d) => {
+      const data = d.data();
+      firestoreList.push({
+        id: d.id,
+        userId: currentUid,
+        customerId: data.customerId || '',
+        customerName: data.customerName || '',
+        customerPhone: data.customerPhone || '',
+        customerEmail: data.customerEmail || '',
+        customerAddress: data.customerAddress || '',
+        customerNinea: data.customerNinea || '',
+        docNumber: data.docNumber || '',
+        type: data.type || 'facture',
+        totalHT: Number(data.totalHT) || 0,
+        totalTTC: Number(data.totalTTC) || 0,
+        currency: data.currency || 'FCFA',
+        status: data.status === 'PAID' ? 'PAID' : 'UNPAID',
+        issueDate: data.issueDate || '',
+        dueDate: data.dueDate || '',
+        businessDocData: data.businessDocData,
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
+      });
+    });
+
+    if (firestoreList.length > 0) {
+      localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(firestoreList));
+      return firestoreList.sort((a, b) => new Date(b.issueDate || b.createdAt).getTime() - new Date(a.issueDate || a.createdAt).getTime());
+    }
+    return localList;
+  } catch (error) {
+    console.warn("Erreur fetchBusinessInvoices Firestore:", error);
+    return localList;
+  }
+}
+
+/**
+ * Écoute en direct les factures et devis d'un utilisateur
+ */
+export function subscribeToBusinessInvoices(userId: string, callback: (invoices: BusinessInvoice[]) => void): Unsubscribe {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) {
+    callback([]);
+    return () => {};
+  }
+
+  // Cache initial
+  try {
+    const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+    if (raw) callback(JSON.parse(raw));
+  } catch (e) {}
+
+  const colRef = collection(db, 'users', currentUid, 'invoices');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const invoices: BusinessInvoice[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        invoices.push({
+          id: d.id,
+          userId: currentUid,
+          customerId: data.customerId || '',
+          customerName: data.customerName || '',
+          customerPhone: data.customerPhone || '',
+          customerEmail: data.customerEmail || '',
+          customerAddress: data.customerAddress || '',
+          customerNinea: data.customerNinea || '',
+          docNumber: data.docNumber || '',
+          type: data.type || 'facture',
+          totalHT: Number(data.totalHT) || 0,
+          totalTTC: Number(data.totalTTC) || 0,
+          currency: data.currency || 'FCFA',
+          status: data.status === 'PAID' ? 'PAID' : 'UNPAID',
+          issueDate: data.issueDate || '',
+          dueDate: data.dueDate || '',
+          businessDocData: data.businessDocData,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
+        });
+      });
+      invoices.sort((a, b) => new Date(b.issueDate || b.createdAt).getTime() - new Date(a.issueDate || a.createdAt).getTime());
+      localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(invoices));
+      callback(invoices);
+    },
+    (err) => {
+      console.warn("Erreur onSnapshot invoices:", err);
+    }
+  );
+}
+
+/**
+ * Met à jour le statut PAYÉE ou IMPAYÉE d'une facture
+ */
+export async function updateInvoicePaymentStatus(userId: string, invoiceId: string, status: 'PAID' | 'UNPAID'): Promise<boolean> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return false;
+
+  // Local update
+  try {
+    const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+    if (raw) {
+      const list: BusinessInvoice[] = JSON.parse(raw);
+      const target = list.find(i => i.id === invoiceId);
+      if (target) {
+        target.status = status;
+        target.updatedAt = new Date().toISOString();
+        if (target.businessDocData) {
+          target.businessDocData.paymentStatus = status;
+        }
+        localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(list));
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const docRef = doc(db, 'users', currentUid, 'invoices', invoiceId);
+    await updateDoc(docRef, {
+      status,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.warn("Erreur updateInvoicePaymentStatus Firestore:", error);
+    return true;
+  }
+}
+
+/**
+ * Supprime une facture
+ */
+export async function deleteBusinessInvoice(userId: string, invoiceId: string): Promise<boolean> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return false;
+
+  try {
+    const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+    if (raw) {
+      const list: BusinessInvoice[] = JSON.parse(raw);
+      const filtered = list.filter(i => i.id !== invoiceId);
+      localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(filtered));
+    }
+  } catch (e) {}
+
+  try {
+    const docRef = doc(db, 'users', currentUid, 'invoices', invoiceId);
+    await deleteDoc(docRef);
+    return true;
+  } catch (error) {
+    console.warn("Erreur deleteBusinessInvoice Firestore:", error);
+    return true;
+  }
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {

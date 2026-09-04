@@ -1833,7 +1833,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="Rechercher par nom, email, ville, téléphone ou métier..."
                   value={userSearch}
                   onChange={(e) => { setUserSearch(e.target.value); setUserPage(1); }}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm !text-white !placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 transition-all caret-blue-500"
                 />
               </div>
 
@@ -1842,21 +1842,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={statusFilter}
                   onChange={(e: any) => { setStatusFilter(e.target.value); setUserPage(1); }}
-                  className="px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
                 >
-                  <option value="all">Tous les Statuts</option>
-                  <option value="active">Actif</option>
-                  <option value="suspended">Suspendu</option>
+                  <option value="all" className="bg-slate-900 text-white">Tous les Statuts</option>
+                  <option value="active" className="bg-slate-900 text-white">Actif</option>
+                  <option value="suspended" className="bg-slate-900 text-white">Suspendu</option>
                 </select>
 
                 <select
                   value={balanceFilter}
                   onChange={(e: any) => { setBalanceFilter(e.target.value); setUserPage(1); }}
-                  className="px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
                 >
-                  <option value="all">Tous les Soldes</option>
-                  <option value="positive">Solde &gt; 0 FCFA</option>
-                  <option value="zero">Solde = 0 FCFA</option>
+                  <option value="all" className="bg-slate-900 text-white">Tous les Soldes</option>
+                  <option value="positive" className="bg-slate-900 text-white">Solde &gt; 0 FCFA</option>
+                  <option value="zero" className="bg-slate-900 text-white">Solde = 0 FCFA</option>
                 </select>
               </div>
 
@@ -2179,7 +2179,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="Filtrer par nom, prénom, email ou téléphone..."
                   value={subSearch}
                   onChange={(e) => setSubSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm !text-white !placeholder:text-slate-400 focus:outline-none focus:border-amber-500 transition-all caret-blue-500"
                 />
               </div>
 
@@ -2187,12 +2187,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={subStatusFilter}
                   onChange={(e: any) => setSubStatusFilter(e.target.value)}
-                  className="px-3 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  className="px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                 >
-                  <option value="all">Tous les Statuts ({usersList.length})</option>
-                  <option value="ACTIVE">👑 VIP Actif uniquement ({vipStats.active})</option>
-                  <option value="EXPIRED">⚠️ Expiré ({vipStats.expired})</option>
-                  <option value="INACTIVE">Sans Abonnement ({vipStats.inactive})</option>
+                  <option value="all" className="bg-slate-900 text-white">Tous les Statuts ({usersList.length})</option>
+                  <option value="ACTIVE" className="bg-slate-900 text-white">👑 VIP Actif uniquement ({vipStats.active})</option>
+                  <option value="EXPIRED" className="bg-slate-900 text-white">⚠️ Expiré ({vipStats.expired})</option>
+                  <option value="INACTIVE" className="bg-slate-900 text-white">Sans Abonnement ({vipStats.inactive})</option>
                 </select>
 
                 <div className="px-3 py-2 bg-slate-950/80 border border-slate-800/60 rounded-xl text-xs text-slate-400 font-medium">
@@ -2786,7 +2786,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="Filtrer le journal par action, utilisateur, email ou mot-clé..."
                   value={auditSearch}
                   onChange={(e) => setAuditSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm !text-white !placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 transition-all caret-blue-500"
                 />
               </div>
 
@@ -2794,17 +2794,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={auditCategoryFilter}
                   onChange={(e: any) => setAuditCategoryFilter(e.target.value)}
-                  className="px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
                 >
-                  <option value="all">Toutes Catégories</option>
-                  <option value="auth">Inscriptions & Auth</option>
-                  <option value="payment">Paiements Mobile Money</option>
-                  <option value="wallet">Soldes & Portefeuilles</option>
-                  <option value="document">Téléchargements Docs</option>
-                  <option value="admin_action">Actions Admin</option>
-                  <option value="pricing">Changements de Prix</option>
-                  <option value="promo">Codes Promo</option>
-                  <option value="security">Sécurité & Impersonation</option>
+                  <option value="all" className="bg-slate-900 text-white">Toutes Catégories</option>
+                  <option value="auth" className="bg-slate-900 text-white">Inscriptions & Auth</option>
+                  <option value="payment" className="bg-slate-900 text-white">Paiements Mobile Money</option>
+                  <option value="wallet" className="bg-slate-900 text-white">Soldes & Portefeuilles</option>
+                  <option value="document" className="bg-slate-900 text-white">Téléchargements Docs</option>
+                  <option value="admin_action" className="bg-slate-900 text-white">Actions Admin</option>
+                  <option value="pricing" className="bg-slate-900 text-white">Changements de Prix</option>
+                  <option value="promo" className="bg-slate-900 text-white">Codes Promo</option>
+                  <option value="security" className="bg-slate-900 text-white">Sécurité & Impersonation</option>
                 </select>
 
                 <button
@@ -2942,7 +2942,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="Rechercher par Réf, TxID extrait, email candidat ou motif..."
                   value={txSearch}
                   onChange={(e) => setTxSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm !text-white !placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 transition-all caret-blue-500"
                 />
               </div>
 
@@ -2950,26 +2950,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={txStatusFilter}
                   onChange={(e: any) => setTxStatusFilter(e.target.value)}
-                  className="px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
+                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
                 >
-                  <option value="all">Tous les Statuts</option>
-                  <option value="PENDING">⏳ En Attente (Reçus à traiter)</option>
-                  <option value="VALIDATED_BY_AI">✅ Validés par IA / Complétés</option>
-                  <option value="MANUALLY_VALIDATED">🛡️ Validés Manuellement</option>
-                  <option value="REJECTED_BY_AI">❌ Rejetés par IA</option>
-                  <option value="REJECTED_BY_ADMIN">🚫 Rejetés par Admin</option>
+                  <option value="all" className="bg-slate-900 text-white">Tous les Statuts</option>
+                  <option value="PENDING" className="bg-slate-900 text-white">⏳ En Attente (Reçus à traiter)</option>
+                  <option value="VALIDATED_BY_AI" className="bg-slate-900 text-white">✅ Validés par IA / Complétés</option>
+                  <option value="MANUALLY_VALIDATED" className="bg-slate-900 text-white">🛡️ Validés Manuellement</option>
+                  <option value="REJECTED_BY_AI" className="bg-slate-900 text-white">❌ Rejetés par IA</option>
+                  <option value="REJECTED_BY_ADMIN" className="bg-slate-900 text-white">🚫 Rejetés par Admin</option>
                 </select>
 
                 <select
                   value={txMethodFilter}
                   onChange={(e: any) => setTxMethodFilter(e.target.value)}
-                  className="px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
+                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
                 >
-                  <option value="all">Toutes Méthodes</option>
-                  <option value="wave">Wave</option>
-                  <option value="orange_money">Orange Money</option>
-                  <option value="wallet">Portefeuille</option>
-                  <option value="admin_manual">Ajustement Manuel</option>
+                  <option value="all" className="bg-slate-900 text-white">Toutes Méthodes</option>
+                  <option value="wave" className="bg-slate-900 text-white">Wave</option>
+                  <option value="orange_money" className="bg-slate-900 text-white">Orange Money</option>
+                  <option value="wallet" className="bg-slate-900 text-white">Portefeuille</option>
+                  <option value="admin_manual" className="bg-slate-900 text-white">Ajustement Manuel</option>
                 </select>
 
                 <button

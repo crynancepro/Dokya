@@ -115,6 +115,86 @@
         }
       },
       "required": ["mode", "price", "createdAt", "paymentStatus"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer record under user profile for Dokya Business",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Nom du client ou Entreprise"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Numéro WhatsApp (+221...)"
+        },
+        "email": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "ninea": {
+          "type": "string"
+        },
+        "paymentTerms": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "phone"]
+    },
+    "BusinessInvoice": {
+      "title": "BusinessInvoice",
+      "description": "Invoice or Quote linked to customer and financial tracking",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "customerId": {
+          "type": "string"
+        },
+        "customerName": {
+          "type": "string"
+        },
+        "customerPhone": {
+          "type": "string"
+        },
+        "docNumber": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["devis", "facture"]
+        },
+        "totalTTC": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PAID", "UNPAID"]
+        },
+        "issueDate": {
+          "type": "string"
+        },
+        "dueDate": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["docNumber", "type", "totalTTC", "status"]
     }
   },
   "firestore": {
@@ -123,6 +203,18 @@
         "$ref": "#/entities/UserProfile"
       },
       "description": "Collection of candidate profiles"
+    },
+    "/users/{userId}/customers/{customerId}": {
+      "schema": {
+        "$ref": "#/entities/Customer"
+      },
+      "description": "Collection of business customers per user"
+    },
+    "/users/{userId}/invoices/{invoiceId}": {
+      "schema": {
+        "$ref": "#/entities/BusinessInvoice"
+      },
+      "description": "Collection of business invoices and quotes per user"
     },
     "/user_documents/{docId}": {
       "schema": {

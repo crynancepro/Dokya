@@ -200,7 +200,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   placeholder="Mamadou Ndiaye"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-neutral-950 border border-neutral-800 text-white text-xs focus:outline-none focus:border-violet-500 transition-all placeholder:text-neutral-600"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-900 border border-slate-700 !text-white text-xs font-medium focus:outline-none focus:border-violet-500 transition-all !placeholder:text-slate-400 caret-blue-500"
                 />
               </div>
             </div>
@@ -216,7 +216,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 placeholder="votre.email@domaine.sn"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-neutral-950 border border-neutral-800 text-white text-xs focus:outline-none focus:border-violet-500 transition-all placeholder:text-neutral-600"
+                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-900 border border-slate-700 !text-white text-xs font-medium focus:outline-none focus:border-violet-500 transition-all !placeholder:text-slate-400 caret-blue-500"
               />
             </div>
           </div>
@@ -231,7 +231,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-neutral-950 border border-neutral-800 text-white text-xs focus:outline-none focus:border-violet-500 transition-all placeholder:text-neutral-600"
+                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-900 border border-slate-700 !text-white text-xs font-medium focus:outline-none focus:border-violet-500 transition-all !placeholder:text-slate-400 caret-blue-500"
               />
             </div>
           </div>
