@@ -15,23 +15,19 @@ interface BusinessDocTemplateGalleryProps {
   onGoServices?: () => void;
 }
 
-// FLUID A4 BUSINESS DOC THUMBNAIL
+// FLUID A4 BUSINESS DOC THUMBNAIL (100% CLICKABLE MOBILE & DESKTOP)
 const FluidBusinessDocThumbnail: React.FC<{
   template: BusinessDocTemplateOption;
   sampleData: BusinessDocData;
   isSelected: boolean;
-  isActiveOnMobile: boolean;
   onSelect: () => void;
   onOpenPreview: () => void;
-  onCardTap: () => void;
 }> = ({
   template,
   sampleData,
   isSelected,
-  isActiveOnMobile,
   onSelect,
-  onOpenPreview,
-  onCardTap
+  onOpenPreview
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState<number>(0.32);
@@ -54,8 +50,17 @@ const FluidBusinessDocThumbnail: React.FC<{
 
   return (
     <div
-      onClick={onCardTap}
-      className={`group relative cursor-pointer select-none transition-all duration-300 rounded-xl sm:rounded-2xl overflow-hidden ${
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      aria-label={`Sélectionner le modèle ${template.name}`}
+      className={`group relative cursor-pointer select-none transition-all duration-300 rounded-xl sm:rounded-2xl overflow-hidden flex flex-col bg-slate-900/60 p-2 sm:p-0 ${
         isSelected
           ? 'ring-3 ring-indigo-500 ring-offset-4 ring-offset-slate-950 shadow-2xl shadow-indigo-500/25'
           : 'shadow-xl shadow-black/60 hover:shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-1.5'
@@ -64,7 +69,7 @@ const FluidBusinessDocThumbnail: React.FC<{
       {/* 1. PURE FLOATING A4 SHEET */}
       <div 
         ref={containerRef}
-        className="w-full aspect-[210/297] bg-white overflow-hidden rounded-xl sm:rounded-2xl relative"
+        className="w-full aspect-[210/297] bg-white overflow-hidden rounded-lg sm:rounded-2xl relative shrink-0"
       >
         <div 
           className="w-[794px] h-[1123px] origin-top-left pointer-events-none select-none"
@@ -72,23 +77,84 @@ const FluidBusinessDocThumbnail: React.FC<{
         >
           <DevisFactureTemplate data={sampleData} />
         </div>
+
+        {/* Top-Left: Discreet Fullscreen Preview Quick-Action Button */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenPreview();
+          }}
+          className="absolute top-2 left-2 z-20 p-2 rounded-full bg-slate-950/80 hover:bg-slate-900 text-white backdrop-blur-md border border-white/20 transition-all active:scale-90 cursor-pointer shadow-lg flex items-center justify-center"
+          title="Aperçu Plein Écran HD"
+          aria-label="Aperçu Plein Écran HD"
+        >
+          <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </button>
+
+        {/* Selected Indicator Badge (Top-Right) */}
+        {isSelected && (
+          <div className="absolute top-2 right-2 z-20 px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-indigo-950/60">
+            <Check className="w-3 h-3 stroke-[3]" />
+            <span>Actif</span>
+          </div>
+        )}
       </div>
 
-      {/* Selected Indicator Badge */}
-      {isSelected && (
-        <div className="absolute top-2.5 right-2.5 z-20 px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-indigo-950/60">
-          <Check className="w-3 h-3 stroke-[3]" />
-          <span>Actif</span>
+      {/* 2. DEDICATED MOBILE ACTION BAR (ALWAYS VISIBLE & 100% TOUCH-CLICKABLE) */}
+      <div className="sm:hidden pt-2.5 pb-1 px-1 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-1.5">
+          <h3 className="text-xs font-black text-white truncate min-w-0">
+            {template.name}
+          </h3>
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-indigo-600 text-white shrink-0">
+            {template.badge}
+          </span>
         </div>
-      )}
 
-      {/* 2. CANVA-STYLE FADE-IN OVERLAY ON HOVER (DESKTOP) OR TAP (MOBILE) */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+            }}
+            className={`flex-1 py-2 px-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md ${
+              isSelected
+                ? 'bg-emerald-600 text-white'
+                : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
+            }`}
+          >
+            {isSelected ? (
+              <>
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Sélectionné</span>
+              </>
+            ) : (
+              <>
+                <span>Choisir ce modèle</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPreview();
+            }}
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all active:scale-90 cursor-pointer shrink-0"
+            title="Aperçu HD"
+            aria-label="Aperçu HD"
+          >
+            <Eye className="w-3.5 h-3.5 text-indigo-400" />
+          </button>
+        </div>
+      </div>
+
+      {/* 3. CANVA-STYLE FADE-IN OVERLAY ON DESKTOP HOVER */}
       <div
-        className={`absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-slate-950/30 backdrop-blur-[2px] transition-all duration-300 flex flex-col justify-between p-3.5 sm:p-5 rounded-xl sm:rounded-2xl ${
-          isActiveOnMobile
-            ? 'opacity-100 pointer-events-auto'
-            : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
-        }`}
+        className="hidden sm:flex absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-slate-950/30 backdrop-blur-[2px] transition-all duration-300 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto flex-col justify-between p-4 md:p-5 rounded-2xl"
       >
         {/* Top: Status Badges & Fullscreen Preview */}
         <div className="flex items-center justify-between gap-1.5">
@@ -107,10 +173,10 @@ const FluidBusinessDocThumbnail: React.FC<{
               e.stopPropagation();
               onOpenPreview();
             }}
-            className="p-1.5 sm:p-2 rounded-full bg-white/15 hover:bg-white/30 text-white backdrop-blur-md border border-white/20 transition-all active:scale-90 cursor-pointer shadow-lg"
+            className="p-2 rounded-full bg-white/15 hover:bg-white/30 text-white backdrop-blur-md border border-white/20 transition-all active:scale-90 cursor-pointer shadow-lg"
             title="Aperçu Plein Écran HD"
           >
-            <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <Maximize2 className="w-4 h-4" />
           </button>
         </div>
 
@@ -122,7 +188,7 @@ const FluidBusinessDocThumbnail: React.FC<{
               e.stopPropagation();
               onSelect();
             }}
-            className="w-full sm:w-auto px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-black text-xs sm:text-sm shadow-xl shadow-indigo-600/50 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-black text-xs sm:text-sm shadow-xl shadow-indigo-600/50 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>{isSelected ? '✓ Modèle sélectionné' : 'Sélectionner ce modèle'}</span>
             {!isSelected && <ArrowRight className="w-4 h-4" />}
@@ -134,7 +200,7 @@ const FluidBusinessDocThumbnail: React.FC<{
               e.stopPropagation();
               onOpenPreview();
             }}
-            className="text-[11px] sm:text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Eye className="w-3.5 h-3.5 text-indigo-400" />
             <span>Aperçu HD zoomable</span>
@@ -143,10 +209,10 @@ const FluidBusinessDocThumbnail: React.FC<{
 
         {/* Bottom: Title & description */}
         <div className="space-y-1 text-left">
-          <h3 className="text-xs sm:text-sm md:text-base font-black text-white truncate drop-shadow-sm">
+          <h3 className="text-sm md:text-base font-black text-white truncate drop-shadow-sm">
             {template.name}
           </h3>
-          <p className="text-[11px] sm:text-xs text-slate-300 truncate max-w-full drop-shadow-sm">
+          <p className="text-xs text-slate-300 truncate max-w-full drop-shadow-sm">
             {template.description}
           </p>
         </div>
@@ -165,7 +231,6 @@ export const BusinessDocTemplateGallery: React.FC<BusinessDocTemplateGalleryProp
   const [previewTemplate, setPreviewTemplate] = useState<BusinessDocTemplateOption | null>(null);
   const [modalZoom, setModalZoom] = useState<number>(0.85);
   const [mobileGridCols, setMobileGridCols] = useState<1 | 2>(1);
-  const [activeMobileCardId, setActiveMobileCardId] = useState<string | null>(null);
 
   const getDocTypeInfo = () => {
     switch (docType) {
@@ -272,7 +337,6 @@ export const BusinessDocTemplateGallery: React.FC<BusinessDocTemplateGalleryProp
   return (
     <div 
       className="space-y-6 sm:space-y-8 animate-in fade-in max-w-7xl mx-auto pb-20 px-2 sm:px-6"
-      onClick={() => setActiveMobileCardId(null)}
     >
       
       {/* 1. DISCREET HEADER */}
@@ -380,7 +444,6 @@ export const BusinessDocTemplateGallery: React.FC<BusinessDocTemplateGalleryProp
         {BUSINESS_DOC_TEMPLATES.map((template) => {
           const isSelected = selectedTemplateId === template.id;
           const sampleData = getSampleDocData(template);
-          const isActiveOnMobile = activeMobileCardId === template.id;
 
           return (
             <FluidBusinessDocThumbnail
@@ -388,12 +451,8 @@ export const BusinessDocTemplateGallery: React.FC<BusinessDocTemplateGalleryProp
               template={template}
               sampleData={sampleData}
               isSelected={isSelected}
-              isActiveOnMobile={isActiveOnMobile}
               onSelect={() => onSelectTemplate(template.id, selectedTheme)}
               onOpenPreview={() => handleOpenPreview(template)}
-              onCardTap={() => {
-                setActiveMobileCardId(prev => (prev === template.id ? null : template.id));
-              }}
             />
           );
         })}
