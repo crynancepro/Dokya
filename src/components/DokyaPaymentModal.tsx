@@ -39,9 +39,16 @@ import {
   Plus
 } from 'lucide-react';
 import { verifyReceiptImage } from '../services/receiptPaymentService';
-import { TransactionRecord, UserSubscription } from '../types';
+import { TransactionRecord, UserSubscription, isUserVipActive } from '../types';
 import { usePricing } from '../contexts/PricingContext';
-import { recordTransactionEverywhere, saveTransactionRecord, subscribeToTransactionStatus, subscribeToVipWithWallet } from '../lib/firebase';
+import { 
+  recordTransactionEverywhere, 
+  saveTransactionRecord, 
+  subscribeToTransactionStatus, 
+  subscribeToVipWithWallet,
+  subscribeToUserProfile,
+  auth
+} from '../lib/firebase';
 
 export interface CountryOption {
   code: string;
@@ -116,6 +123,7 @@ export interface DokyaPaymentModalProps {
   // General callbacks
   onPaymentSuccess?: (method: 'wallet' | 'mobile_money' | 'free', transaction?: TransactionRecord) => void;
   onOpenRechargeModal?: () => void;
+  isUserVip?: boolean;
 }
 
 export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
@@ -141,9 +149,28 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   userEmail,
   userName,
   onPaymentSuccess,
-  onOpenRechargeModal
+  onOpenRechargeModal,
+  isUserVip
 }) => {
   const { pricing, validatePromoCode } = usePricing();
+
+  // VIP State tracking
+  const [currentUserIsVip, setCurrentUserIsVip] = useState<boolean>(Boolean(isUserVip));
+
+  useEffect(() => {
+    if (isUserVip) {
+      setCurrentUserIsVip(true);
+      return;
+    }
+    const currentUid = (userId && userId !== 'guest') ? userId : auth.currentUser?.uid;
+    if (!currentUid || currentUid === 'guest') return;
+
+    const unsub = subscribeToUserProfile(currentUid, (p) => {
+      const vip = isUserVipActive(p.subscription) || (p as any).subscriptionStatus === 'unlimited';
+      setCurrentUserIsVip(vip);
+    });
+    return () => unsub();
+  }, [userId, isUserVip]);
 
   // Mode resolution & pricing
   const [activeMode, setActiveMode] = useState<PaymentCounterMode>(mode);
@@ -721,12 +748,20 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     // 1. Immediately register PENDING transaction to DB & Firestore
     const currentTargetDocId = activeMode === 'document' ? (targetDocId || `DOC-${Date.now()}`) : undefined;
     const finalReceiptImage = receiptBase64 ? receiptBase64.slice(0, 500000) : (previewUrl || undefined);
+    
+    const effectiveUserId = (userId && userId !== 'guest') ? userId : (auth.currentUser?.uid || 'guest');
+    const effectiveUserEmail = userEmail || auth.currentUser?.email || 'candidat@dokya.sn';
+    const effectiveUserName = userName || auth.currentUser?.displayName || 'Candidat Dokya';
+    const computedDurationDays = activeMode === 'subscription' 
+      ? (planId === 'annual' || payablePrice >= 15000 ? 365 : (planId === 'weekly' ? 7 : 30))
+      : undefined;
+
     const pendingTx: TransactionRecord = {
       id: generatedTxId,
       transactionId: txRefCode,
-      userId: userId || 'guest',
-      userEmail: userEmail || 'candidat@dokya.sn',
-      userName: userName || 'Candidat Dokya',
+      userId: effectiveUserId,
+      userEmail: effectiveUserEmail,
+      userName: effectiveUserName,
       userPhone: fullPhone,
       senderPhone: fullPhone,
       type: activeMode === 'recharge' 
@@ -750,7 +785,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       documentTitle: activeMode === 'subscription' ? planTitle : documentTitle,
       purpose: currentPurpose,
       planId: planId || undefined,
-      planTitle: planTitle || undefined
+      planTitle: planTitle || undefined,
+      durationDays: computedDurationDays
     };
 
     // Save to Firestore & Server DB immediately
@@ -766,9 +802,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId: userId || 'guest',
-        userEmail: userEmail || 'candidat@dokya.sn',
-        userName: userName || 'Candidat Dokya',
+        userId: effectiveUserId,
+        userEmail: effectiveUserEmail,
+        userName: effectiveUserName,
         userPhone: fullPhone,
         documentTitle,
         documentTypeLabel,
@@ -776,6 +812,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         type: pendingTx.type,
         planId,
         planTitle,
+        durationDays: computedDurationDays,
         amount: payablePrice,
         paymentMethod: pendingTx.paymentMethod,
         senderPhone: fullPhone,
@@ -924,8 +961,39 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           </button>
         </div>
 
-        {/* 3-Step Progress Header */}
-        <div className="px-5 py-3 bg-slate-950/40 border-b border-slate-800/60 shrink-0">
+        {/* If user already has an active VIP subscription, prevent double purchase and display VIP status */}
+        {activeMode === 'subscription' && currentUserIsVip ? (
+          <div className="p-6 sm:p-10 text-center space-y-6 flex-1 flex flex-col justify-center items-center">
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-400 via-amber-500 to-orange-500 text-slate-950 flex items-center justify-center shadow-2xl shadow-amber-500/30">
+              <Crown className="w-10 h-10 fill-slate-950" />
+            </div>
+            
+            <div className="space-y-3 max-w-md">
+              <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm">
+                👑 Pass VIP Actif
+              </span>
+              <h3 className="text-2xl font-black text-white">
+                Vous disposez déjà du Pass VIP !
+              </h3>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Votre compte bénéficie actuellement d'un abonnement actif. Vos téléchargements de CV, lettres de motivation, devis, factures, livres numériques et préparations d'entretiens RH sont déjà 100% illimités. Le guichet de paiement est masqué pour éviter tout double prélèvement inutile.
+              </p>
+            </div>
+
+            <div className="pt-2 w-full max-w-xs">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
+              >
+                Profiter de mes privilèges VIP
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* 3-Step Progress Header */}
+            <div className="px-5 py-3 bg-slate-950/40 border-b border-slate-800/60 shrink-0">
           <div className="flex items-center justify-between text-xs font-semibold">
             {/* Step 1 Indicator */}
             <div className={`flex items-center gap-1.5 transition-colors ${
@@ -1858,6 +1926,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           )}
 
         </div>
+          </>
+        )}
 
         {/* Security & Guarantee Footer */}
         <div className="px-5 py-3 bg-slate-950 border-t border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-between shrink-0">

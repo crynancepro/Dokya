@@ -12,6 +12,7 @@ export interface SubscriptionModalProps {
   userId?: string;
   userEmail?: string;
   userName?: string;
+  isUserVip?: boolean;
   onSuccess: (sub: UserSubscription, method: 'wallet' | 'mobile_money' | 'card') => void;
   onOpenRecharge: () => void;
 }
@@ -26,6 +27,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   userId,
   userEmail,
   userName,
+  isUserVip,
   onSuccess,
   onOpenRecharge
 }) => {
@@ -41,6 +43,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       userId={userId}
       userEmail={userEmail}
       userName={userName}
+      isUserVip={isUserVip}
       onSubscriptionSuccess={(sub, method) => onSuccess(sub, method)}
       onOpenRechargeModal={onOpenRecharge}
     />

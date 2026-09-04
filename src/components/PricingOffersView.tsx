@@ -20,7 +20,7 @@ import {
   Smartphone,
   ChevronDown
 } from 'lucide-react';
-import { CandidateProfile } from '../types';
+import { CandidateProfile, isUserVipActive } from '../types';
 
 interface PricingOffersViewProps {
   userBalance: number;
@@ -40,9 +40,11 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
   const [selectedBillingTab, setSelectedBillingTab] = useState<'all' | 'single' | 'subscription'>('all');
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
-  const isSubscriptionActive = profile?.subscription?.status === 'active' && (
-    !profile.subscription.expiresAt || new Date(profile.subscription.expiresAt).getTime() > Date.now()
-  );
+  const isSubscriptionActive = isUserVipActive(profile?.subscription) || 
+    profile?.subscriptionStatus === 'unlimited' ||
+    (profile?.subscription?.status?.toUpperCase() === 'ACTIVE' && (
+      !profile.subscription.expiresAt || new Date(profile.subscription.expiresAt).getTime() > Date.now()
+    ));
 
   const singleProducts = [
     {
@@ -288,6 +290,28 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
       {/* ========================================================================= */}
       {(selectedBillingTab === 'all' || selectedBillingTab === 'subscription') && (
         <div className="space-y-6">
+          {/* Active VIP Status notice */}
+          {isSubscriptionActive && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-emerald-500/10 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <Crown className="w-5 h-5 fill-amber-300" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white flex items-center gap-2">
+                    <span>👑 Vous êtes déjà membre Pass VIP Actif</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                      Privilèges Illimités
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Tous vos téléchargements sont 100% gratuits. Vous n'avez pas besoin de souscrire un nouvel abonnement tant que le vôtre est valide.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-3 flex-wrap">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
@@ -355,15 +379,21 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                 <div className="pt-6">
                   <button
                     type="button"
-                    onClick={() => onSubscribePlan(plan.id, plan.priceNum, plan.title)}
-                    className={`w-full py-3.5 px-4 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 ${
-                      plan.popular
-                        ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/20'
-                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+                    onClick={() => {
+                      if (isSubscriptionActive) return;
+                      onSubscribePlan(plan.id, plan.priceNum, plan.title);
+                    }}
+                    disabled={isSubscriptionActive}
+                    className={`w-full py-3.5 px-4 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${
+                      isSubscriptionActive
+                        ? 'bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed opacity-80'
+                        : plan.popular
+                          ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/20 cursor-pointer active:scale-95'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 cursor-pointer active:scale-95'
                     }`}
                   >
-                    <span>{plan.cta}</span>
-                    <ArrowRight className="w-4 h-4 shrink-0" />
+                    <span>{isSubscriptionActive ? '👑 Pass VIP Déjà Actif' : plan.cta}</span>
+                    {!isSubscriptionActive && <ArrowRight className="w-4 h-4 shrink-0" />}
                   </button>
                 </div>
               </div>

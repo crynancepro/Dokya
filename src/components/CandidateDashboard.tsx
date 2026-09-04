@@ -9,7 +9,7 @@ import {
 import { 
   CandidateProfile, SavedUserDocument, CVFormData, Experience, Education, 
   SkillCategory, Language, PersonalInfo, TransactionRecord, UserSubscription,
-  InterviewPrepData
+  InterviewPrepData, isUserVipActive, getTimestampMillis
 } from '../types';
 import { 
   fetchUserProfile, saveCandidateProfile, fetchUserDocuments, 
@@ -176,7 +176,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         if (unsubProfileSnapshot) unsubProfileSnapshot();
         unsubProfileSnapshot = subscribeToUserProfile(u.uid, (liveProfile) => {
           const liveBalance = liveProfile.walletBalance ?? liveProfile.balance ?? 0;
-          const isVip = liveProfile.subscription?.status === 'ACTIVE' || liveProfile.subscription?.status === 'active';
+          const isVip = isUserVipActive(liveProfile.subscription) || liveProfile.subscription?.status === 'ACTIVE' || liveProfile.subscription?.status === 'active';
           
           setProfile(prev => {
             const updated = {
@@ -185,6 +185,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               email: liveProfile.email || prev.email,
               displayName: liveProfile.displayName || prev.displayName,
               balance: liveBalance,
+              subscription: liveProfile.subscription,
               subscriptionStatus: isVip ? ('unlimited' as const) : ('free' as const),
               subscriptionPlan: liveProfile.subscription?.planId,
               subscriptionExpiresAt: liveProfile.subscription?.expiresAt || undefined
@@ -254,12 +255,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
       if (remoteProfile) {
         const liveBalance = (remoteProfile as any).walletBalance ?? remoteProfile.balance ?? 0;
-        const isVip = remoteProfile.subscription?.status === 'active' || (remoteProfile.subscription?.status as any) === 'ACTIVE';
+        const isVip = isUserVipActive(remoteProfile.subscription) || remoteProfile.subscription?.status === 'active' || (remoteProfile.subscription?.status as any) === 'ACTIVE';
         setProfile(prev => ({
           ...prev,
           uid: remoteProfile.uid,
           email: remoteProfile.email || prev.email,
           balance: liveBalance,
+          subscription: remoteProfile.subscription,
           subscriptionStatus: isVip ? ('unlimited' as const) : ('free' as const),
           subscriptionPlan: remoteProfile.subscription?.planId,
           subscriptionExpiresAt: remoteProfile.subscription?.expiresAt || undefined
@@ -602,9 +604,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   });
 
   const completionPercentage = calculateProfileCompletion(profile);
-  const isSubscriptionActive = profile?.subscription?.status === 'active' && (
-    !profile.subscription.expiresAt || new Date(profile.subscription.expiresAt).getTime() > Date.now()
-  );
+  const isSubscriptionActive = isUserVipActive(profile?.subscription) || 
+    profile.subscriptionStatus === 'unlimited' ||
+    (profile?.subscription?.status?.toUpperCase() === 'ACTIVE' && (
+      !profile.subscription.expiresAt || (getTimestampMillis(profile.subscription.expiresAt) || 0) > Date.now()
+    ));
 
   return (
     <div id="dokya-dashboard-shell" className="min-h-screen bg-slate-950 text-slate-100 flex font-sans">
@@ -664,6 +668,21 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* VIP Status Badge */}
+            {isSubscriptionActive && (
+              <button
+                type="button"
+                onClick={() => handleSelectTab('subscription')}
+                className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/10 border border-amber-400/50 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm hover:border-amber-400 transition-all cursor-pointer"
+                title="Pass VIP Actif - Cliquez pour voir les détails"
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                <span className="text-xs font-black text-amber-300 whitespace-nowrap">
+                  👑 Pass VIP Actif
+                </span>
+              </button>
+            )}
+
             {/* Quick Balance indicator */}
             <div 
               onClick={() => setIsRechargeModalOpen(true)}
@@ -735,14 +754,45 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => handleSelectTab('tarifs')}
+                      onClick={() => handleSelectTab(isSubscriptionActive ? 'subscription' : 'tarifs')}
                       className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                     >
                       <Crown className="w-4 h-4" />
-                      <span>Tarifs & Pass VIP</span>
+                      <span>{isSubscriptionActive ? 'Mon Pass VIP Actif' : 'Tarifs & Pass VIP'}</span>
                     </button>
                   </div>
                 </div>
+
+                {/* VIP ACTIVE BANNER */}
+                {isSubscriptionActive && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-emerald-500/10 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 shadow-inner">
+                        <Crown className="w-6 h-6 fill-amber-400" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-black text-white">
+                            👑 Abonnement Pass VIP Actif
+                          </h3>
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Accès 100% Illimité
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300">
+                          Tous vos téléchargements de CV, lettres de motivation, devis, factures, ebooks et préparations d'entretiens RH sont débloqués sans frais.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTab('subscription')}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 text-slate-950 text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95"
+                    >
+                      Détails de mon Pass →
+                    </button>
+                  </div>
+                )}
 
                 {/* Profile Completion Strip */}
                 <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1982,6 +2032,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         userId={user?.uid || profile.uid}
         userEmail={user?.email || profile.email}
         userName={`${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim()}
+        isUserVip={isSubscriptionActive}
         onSuccess={handleSubscriptionSuccess}
         onOpenRecharge={() => {
           setSubscriptionModalConfig(prev => ({ ...prev, isOpen: false }));

@@ -16,9 +16,13 @@ import {
   CreditCard,
   Layers,
   ChevronRight,
-  TrendingUp
+  TrendingUp,
+  Award,
+  Unlock
 } from 'lucide-react';
-import { CandidateProfile, SavedUserDocument, isUserVipActive, getTimestampMillis } from '../types';
+import { CandidateProfile, SavedUserDocument, isUserVipActive, getTimestampMillis, UserSubscription } from '../types';
+import { auth, db } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 interface MySubscriptionViewProps {
   profile: CandidateProfile;
@@ -45,6 +49,31 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
   onOpenRecharge
 }) => {
   const [now, setNow] = useState<number>(Date.now());
+  const [liveSubscription, setLiveSubscription] = useState<UserSubscription | any>(profile?.subscription || null);
+  const [liveSubscriptionStatus, setLiveSubscriptionStatus] = useState<string>(profile?.subscriptionStatus || 'free');
+
+  // Real-time onSnapshot listener on users/{auth.currentUser.uid}
+  useEffect(() => {
+    const targetUid = auth.currentUser?.uid || profile?.uid;
+    if (!targetUid) return;
+
+    const userDocRef = doc(db, 'users', targetUid);
+    const unsubscribe = onSnapshot(userDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.subscription) {
+          setLiveSubscription(data.subscription);
+        }
+        if (data.subscriptionStatus) {
+          setLiveSubscriptionStatus(data.subscriptionStatus);
+        }
+      }
+    }, (err) => {
+      console.warn('[MySubscriptionView onSnapshot warn]:', err);
+    });
+
+    return () => unsubscribe();
+  }, [profile?.uid]);
 
   // Update real-time countdown every second
   useEffect(() => {
@@ -54,7 +83,7 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const subscription = profile?.subscription;
+  const subscription = liveSubscription || profile?.subscription;
   const isSubscriptionDefined = !!subscription && subscription.planId !== 'none';
   
   // Calculate remaining time
@@ -78,8 +107,9 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
   };
 
   const remaining = calculateRemaining();
-  const isPending = isSubscriptionDefined && (subscription.status === 'pending' || subscription.status === 'PENDING');
-  const isCurrentlyActive = isUserVipActive(subscription) || (isSubscriptionDefined && !remaining.isExpired && (subscription.status === 'active' || subscription.status === 'ACTIVE'));
+  const subStatusUpper = (subscription?.status || '').toUpperCase();
+  const isPending = isSubscriptionDefined && (subStatusUpper === 'PENDING');
+  const isCurrentlyActive = subStatusUpper === 'ACTIVE' || isUserVipActive(subscription) || (isSubscriptionDefined && !remaining.isExpired && subStatusUpper === 'ACTIVE') || liveSubscriptionStatus === 'unlimited';
 
   // Calculate duration progress percentage
   let durationProgress = 0;
@@ -95,10 +125,10 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
 
   // Format date helper
   const formatDate = (rawDate?: any) => {
-    if (!rawDate) return 'Non définie';
+    if (!rawDate) return 'Accès permanent';
     try {
       const millis = getTimestampMillis(rawDate);
-      if (!millis) return 'Non définie';
+      if (!millis) return 'Accès permanent';
       const d = new Date(millis);
       return d.toLocaleDateString('fr-FR', {
         day: '2-digit',
@@ -123,8 +153,8 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
               Mon Abonnement & Privilèges VIP
             </h1>
             {isCurrentlyActive ? (
-              <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">
-                🟢 Actif
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm animate-pulse">
+                👑 Pass VIP Actif
               </span>
             ) : isPending ? (
               <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
@@ -137,7 +167,7 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
             )}
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Gérez votre abonnement, suivez la validité en temps réel et débloquez les fonctionnalités illimitées.
+            Gérez votre abonnement, suivez la validité en temps réel et profitez de l'accès illimité.
           </p>
         </div>
 
@@ -178,10 +208,27 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-emerald-500 text-slate-950 flex items-center gap-1.5 shadow-md">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Pass Actif & Illimité</span>
+                <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-slate-950 flex items-center gap-1.5 shadow-md">
+                  <Crown className="w-4 h-4" />
+                  <span>👑 Pass VIP Actif</span>
                 </span>
+              </div>
+            </div>
+
+            {/* EXPIRATION DATE HIGHLIGHT */}
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Calendar className="w-5 h-5 text-amber-400 shrink-0" />
+                <div>
+                  <p className="text-[11px] text-amber-300/80 font-bold uppercase tracking-wider">Échéance de l'abonnement</p>
+                  <p className="text-sm sm:text-base font-black text-white">
+                    Valable jusqu'au {formatDate(subscription?.expiresAt)}
+                  </p>
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20">
+                <Unlock className="w-3.5 h-3.5" />
+                <span>Tous les documents et entretiens débloqués</span>
               </div>
             </div>
 
@@ -220,7 +267,7 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
               {/* Progress Bar */}
               <div className="space-y-1 pt-1">
                 <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>Activation : {formatDate(subscription?.startedAt)}</span>
+                  <span>Activation : {formatDate(subscription?.startedAt || subscription?.activatedAt)}</span>
                   <span>Expiration : {formatDate(subscription?.expiresAt)}</span>
                 </div>
                 <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
