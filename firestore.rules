@@ -35,6 +35,10 @@ service cloud.firestore {
         allow read, write, delete: if true;
       }
 
+      match /businesses/{businessId} {
+        allow read, write, delete: if true;
+      }
+
       match /invoices/{invoiceId} {
         allow read, write, delete: if true;
       }

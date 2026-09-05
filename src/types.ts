@@ -235,7 +235,21 @@ export interface BusinessDocData {
   currency: string; // 'FCFA'
   status?: 'brouillon' | 'envoye' | 'valide' | 'paye';
   customerId?: string;
+  businessId?: string;
   paymentStatus?: 'PAID' | 'UNPAID';
+}
+
+export interface UserBusiness {
+  id: string;
+  companyName: string;
+  phone: string;
+  email: string;
+  address: string;
+  ninea: string;
+  logoUrl?: string;
+  isDefault: boolean;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface Customer {

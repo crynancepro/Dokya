@@ -10,7 +10,7 @@ import {
   CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, 
   CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode,
   UserSubscription, isUserVipActive, getTimestampMillis, formatRemainingSubscriptionTime, AdminUserRecord,
-  Customer, BusinessInvoice
+  Customer, BusinessInvoice, UserBusiness
 } from '../types';
 
 const app = initializeApp(firebaseConfig);
@@ -1811,6 +1811,239 @@ export async function deleteCustomer(userId: string, customerId: string): Promis
     return true;
   } catch (error) {
     console.warn(`Erreur deleteCustomer (${customerId}):`, error);
+    return true;
+  }
+}
+
+const getLocalBusinessesKey = (uid: string) => `senegal_cv_user_businesses_${uid}`;
+
+/**
+ * Sauvegarde ou met à jour une entreprise émettrice
+ */
+export async function saveUserBusiness(userId: string, businessData: Partial<UserBusiness>): Promise<UserBusiness | null> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return null;
+
+  const businessId = businessData.id || `BIZ-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+
+  const business: UserBusiness = {
+    id: businessId,
+    companyName: businessData.companyName || 'Mon Entreprise',
+    phone: businessData.phone || '',
+    email: businessData.email || '',
+    address: businessData.address || '',
+    ninea: businessData.ninea || '',
+    logoUrl: businessData.logoUrl || '',
+    isDefault: businessData.isDefault ?? false,
+    createdAt: businessData.createdAt || now,
+    updatedAt: now,
+  };
+
+  // 1. Sauvegarde locale d'abord
+  try {
+    const raw = localStorage.getItem(getLocalBusinessesKey(currentUid));
+    let list: UserBusiness[] = raw ? JSON.parse(raw) : [];
+    
+    // Si isDefault ou première entreprise, garantir isDefault
+    if (business.isDefault || list.length === 0) {
+      business.isDefault = true;
+      list = list.map(b => b.id === businessId ? business : { ...b, isDefault: false });
+    }
+    const existingIndex = list.findIndex(b => b.id === businessId);
+    if (existingIndex >= 0) {
+      list[existingIndex] = business;
+    } else {
+      list.unshift(business);
+    }
+    localStorage.setItem(getLocalBusinessesKey(currentUid), JSON.stringify(list));
+  } catch (e) {
+    console.warn("Erreur cache local businesses:", e);
+  }
+
+  // 2. Sauvegarde Firestore
+  const path = `users/${currentUid}/businesses/${businessId}`;
+  try {
+    const docRef = doc(db, 'users', currentUid, 'businesses', businessId);
+    await setDoc(docRef, cleanFirestorePayload({
+      ...business,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }), { merge: true });
+
+    // Si marquée par défaut, désactiver isDefault sur les autres documents Firestore
+    if (business.isDefault) {
+      try {
+        const colRef = collection(db, 'users', currentUid, 'businesses');
+        const snap = await getDocs(colRef);
+        snap.forEach(async (d) => {
+          if (d.id !== businessId && d.data().isDefault) {
+            await updateDoc(doc(db, 'users', currentUid, 'businesses', d.id), { isDefault: false });
+          }
+        });
+      } catch (e) {}
+    }
+
+    return business;
+  } catch (error) {
+    console.warn(`Erreur Firestore pour ${path}:`, error);
+    return business;
+  }
+}
+
+/**
+ * Récupère toutes les entreprises émettrices de l'utilisateur
+ */
+export async function fetchUserBusinesses(userId: string): Promise<UserBusiness[]> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return [];
+
+  let localList: UserBusiness[] = [];
+  try {
+    const raw = localStorage.getItem(getLocalBusinessesKey(currentUid));
+    if (raw) localList = JSON.parse(raw);
+  } catch (e) {}
+
+  const path = `users/${currentUid}/businesses`;
+  try {
+    const colRef = collection(db, 'users', currentUid, 'businesses');
+    const snapshot = await getDocs(colRef);
+    if (snapshot.empty && localList.length > 0) {
+      return localList;
+    }
+    const firestoreList: UserBusiness[] = [];
+    snapshot.forEach((d) => {
+      const data = d.data();
+      firestoreList.push({
+        id: d.id,
+        companyName: data.companyName || '',
+        phone: data.phone || '',
+        email: data.email || '',
+        address: data.address || '',
+        ninea: data.ninea || '',
+        logoUrl: data.logoUrl || '',
+        isDefault: !!data.isDefault,
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
+      });
+    });
+
+    if (firestoreList.length > 0) {
+      firestoreList.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0) || a.companyName.localeCompare(b.companyName));
+      localStorage.setItem(getLocalBusinessesKey(currentUid), JSON.stringify(firestoreList));
+      return firestoreList;
+    }
+    return localList;
+  } catch (error) {
+    console.warn(`Erreur fetchUserBusinesses (${path}):`, error);
+    return localList;
+  }
+}
+
+/**
+ * Écoute en temps réel les entreprises de l'utilisateur
+ */
+export function subscribeToUserBusinesses(userId: string, callback: (businesses: UserBusiness[]) => void): Unsubscribe {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) {
+    callback([]);
+    return () => {};
+  }
+
+  try {
+    const raw = localStorage.getItem(getLocalBusinessesKey(currentUid));
+    if (raw) callback(JSON.parse(raw));
+  } catch (e) {}
+
+  const colRef = collection(db, 'users', currentUid, 'businesses');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const list: UserBusiness[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        list.push({
+          id: d.id,
+          companyName: data.companyName || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          address: data.address || '',
+          ninea: data.ninea || '',
+          logoUrl: data.logoUrl || '',
+          isDefault: !!data.isDefault,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
+        });
+      });
+      list.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0) || a.companyName.localeCompare(b.companyName));
+      localStorage.setItem(getLocalBusinessesKey(currentUid), JSON.stringify(list));
+      callback(list);
+    },
+    (err) => {
+      console.warn("Erreur onSnapshot businesses:", err);
+    }
+  );
+}
+
+/**
+ * Supprime une entreprise émettrice
+ */
+export async function deleteUserBusiness(userId: string, businessId: string): Promise<boolean> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return false;
+
+  try {
+    const raw = localStorage.getItem(getLocalBusinessesKey(currentUid));
+    if (raw) {
+      const list: UserBusiness[] = JSON.parse(raw);
+      const filtered = list.filter(b => b.id !== businessId);
+      if (filtered.length > 0 && !filtered.some(b => b.isDefault)) {
+        filtered[0].isDefault = true;
+      }
+      localStorage.setItem(getLocalBusinessesKey(currentUid), JSON.stringify(filtered));
+    }
+  } catch (e) {}
+
+  try {
+    const docRef = doc(db, 'users', currentUid, 'businesses', businessId);
+    await deleteDoc(docRef);
+    return true;
+  } catch (error) {
+    console.warn(`Erreur deleteUserBusiness (${businessId}):`, error);
+    return true;
+  }
+}
+
+/**
+ * Définit une entreprise comme étant celle par défaut
+ */
+export async function setDefaultUserBusiness(userId: string, businessId: string): Promise<boolean> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return false;
+
+  try {
+    const raw = localStorage.getItem(getLocalBusinessesKey(currentUid));
+    if (raw) {
+      let list: UserBusiness[] = JSON.parse(raw);
+      list = list.map(b => ({ ...b, isDefault: b.id === businessId }));
+      localStorage.setItem(getLocalBusinessesKey(currentUid), JSON.stringify(list));
+    }
+  } catch (e) {}
+
+  try {
+    const colRef = collection(db, 'users', currentUid, 'businesses');
+    const snap = await getDocs(colRef);
+    const promises: Promise<any>[] = [];
+    snap.forEach((d) => {
+      const isTarget = d.id === businessId;
+      if (d.data().isDefault !== isTarget) {
+        promises.push(updateDoc(doc(db, 'users', currentUid, 'businesses', d.id), { isDefault: isTarget }));
+      }
+    });
+    await Promise.all(promises);
+    return true;
+  } catch (error) {
+    console.warn(`Erreur setDefaultUserBusiness:`, error);
     return true;
   }
 }

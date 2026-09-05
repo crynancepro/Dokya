@@ -146,9 +146,21 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
       </div>
 
       <div className="flex justify-between items-center py-2.5 border-b-2 border-slate-900 text-slate-900 mt-2">
-        <span className="text-xs font-black uppercase tracking-wider">
-          {isQuote ? 'MONTANT TOTAL DU DEVIS' : 'NET À PAYER TTC'} :
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-wider">
+            {isQuote ? 'MONTANT TOTAL DU DEVIS' : 'NET À PAYER TTC'} :
+          </span>
+          {!isQuote && (
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
+              data.paymentStatus === 'PAID'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                : 'bg-amber-50 text-amber-700 border-amber-300'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${data.paymentStatus === 'PAID' ? 'bg-emerald-600' : 'bg-amber-600'}`} />
+              <span>{data.paymentStatus === 'PAID' ? 'PAYÉE' : 'IMPAYÉE'}</span>
+            </span>
+          )}
+        </div>
         <span className="text-lg font-black font-mono">
           {totalTTC.toLocaleString('fr-FR')} {currency}
         </span>
@@ -274,6 +286,15 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
         <>
           <div className="flex justify-between items-start gap-6 pb-6 border-b border-slate-200">
             <div className="space-y-1.5 max-w-sm">
+              {data.issuer.logoUrl && (
+                <div className="mb-2">
+                  <img
+                    src={data.issuer.logoUrl}
+                    alt={data.issuer.companyName || 'Logo'}
+                    className="max-h-14 max-w-[180px] object-contain block"
+                  />
+                </div>
+              )}
               <h1 className="text-xl font-black text-slate-900 tracking-tight">
                 {data.issuer.companyName || 'Mon Entreprise / Agence'}
               </h1>
@@ -297,8 +318,20 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
               <div className={`text-sm font-black uppercase tracking-wider ${themeClasses.primaryText}`}>
                 {isQuote ? 'DEVIS PROFESSIONNEL' : 'FACTURE CLIENT'}
               </div>
-              <div className="text-lg font-black text-slate-900 font-mono">
-                N° {data.docNumber || (isQuote ? 'DEV-2026-001' : 'FAC-2026-001')}
+              <div className="flex items-center justify-end gap-2">
+                <span className="text-lg font-black text-slate-900 font-mono">
+                  N° {data.docNumber || (isQuote ? 'DEV-2026-001' : 'FAC-2026-001')}
+                </span>
+                {!isQuote && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
+                    data.paymentStatus === 'PAID'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : 'bg-amber-50 text-amber-700 border-amber-300'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${data.paymentStatus === 'PAID' ? 'bg-emerald-600' : 'bg-amber-600'}`} />
+                    <span>{data.paymentStatus === 'PAID' ? 'PAYÉE' : 'IMPAYÉE'}</span>
+                  </span>
+                )}
               </div>
               <div className="text-[11px] text-slate-600 space-y-0.5 pt-1">
                 <div>Date d'émission : <strong className="text-slate-900">{data.issueDate || new Date().toISOString().split('T')[0]}</strong></div>
@@ -351,6 +384,15 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
         <div className="font-sans font-light">
           <div className="flex justify-between items-start pb-8 border-b border-slate-100">
             <div>
+              {data.issuer.logoUrl && (
+                <div className="mb-3">
+                  <img
+                    src={data.issuer.logoUrl}
+                    alt={data.issuer.companyName || 'Logo'}
+                    className="max-h-14 max-w-[180px] object-contain block"
+                  />
+                </div>
+              )}
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                 {data.issuer.companyName || 'Mon Entreprise'}
               </h1>
@@ -407,6 +449,15 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
         <div>
           <div className={`border-l-4 ${themeClasses.accentBorder} pl-4 pb-4 mb-6 flex justify-between items-start`}>
             <div>
+              {data.issuer.logoUrl && (
+                <div className="mb-2.5">
+                  <img
+                    src={data.issuer.logoUrl}
+                    alt={data.issuer.companyName || 'Logo'}
+                    className="max-h-14 max-w-[180px] object-contain block"
+                  />
+                </div>
+              )}
               <div className="text-2xl font-black text-slate-900 tracking-tight uppercase">
                 {data.issuer.companyName || 'ENTREPRISE EXÉCUTIVE'}
               </div>
@@ -462,6 +513,15 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b border-slate-200">
             <div>
+              {data.issuer.logoUrl && (
+                <div className="mb-2.5">
+                  <img
+                    src={data.issuer.logoUrl}
+                    alt={data.issuer.companyName || 'Logo'}
+                    className="max-h-14 max-w-[180px] object-contain block"
+                  />
+                </div>
+              )}
               <span className={`text-[10px] font-black uppercase tracking-widest ${themeClasses.primaryText} block mb-1`}>
                 DOCUMENT OFFICIEL
               </span>
@@ -522,6 +582,13 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
         <div className="text-[11px]">
           <div className="flex justify-between items-center pb-3 border-b-2 border-slate-900">
             <div className="flex items-center gap-3">
+              {data.issuer.logoUrl && (
+                <img
+                  src={data.issuer.logoUrl}
+                  alt={data.issuer.companyName || 'Logo'}
+                  className="max-h-12 max-w-[130px] object-contain rounded shrink-0 block"
+                />
+              )}
               <div>
                 <h1 className="text-base font-black text-slate-900 leading-tight">
                   {data.issuer.companyName || 'Entreprise Commerciale'}
@@ -574,6 +641,15 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
           <div className="pb-6 border-b border-slate-200">
             <div className="flex justify-between items-start">
               <div>
+                {data.issuer.logoUrl && (
+                  <div className="mb-2">
+                    <img
+                      src={data.issuer.logoUrl}
+                      alt={data.issuer.companyName || 'Logo'}
+                      className="max-h-14 max-w-[180px] object-contain block"
+                    />
+                  </div>
+                )}
                 <span className={`text-xs font-bold uppercase tracking-widest ${themeClasses.primaryText}`}>
                   Studio & Conseil Freelance
                 </span>
@@ -640,6 +716,15 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
 
           <div className="grid grid-cols-2 gap-8 py-6 border-b border-slate-200">
             <div className="space-y-1">
+              {data.issuer.logoUrl && (
+                <div className="mb-2">
+                  <img
+                    src={data.issuer.logoUrl}
+                    alt={data.issuer.companyName || 'Logo'}
+                    className="max-h-12 max-w-[150px] object-contain block"
+                  />
+                </div>
+              )}
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">ÉMETTEUR</span>
               <div className="text-sm font-bold text-slate-900">{data.issuer.companyName || 'Mon Entreprise'}</div>
               <div className="text-xs text-slate-600">{data.issuer.name}</div>
@@ -677,6 +762,15 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
         <div>
           <div className="flex justify-between items-start pb-6 border-b-2 border-slate-900">
             <div>
+              {data.issuer.logoUrl && (
+                <div className="mb-2.5">
+                  <img
+                    src={data.issuer.logoUrl}
+                    alt={data.issuer.companyName || 'Logo'}
+                    className="max-h-14 max-w-[180px] object-contain block"
+                  />
+                </div>
+              )}
               <div className="text-xl font-black text-slate-900 uppercase">
                 {data.issuer.companyName || 'COMPANY NAME'}
               </div>
@@ -733,6 +827,15 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
         <div>
           <div className="flex justify-between items-start pb-6 border-b border-slate-300">
             <div>
+              {data.issuer.logoUrl && (
+                <div className="mb-2">
+                  <img
+                    src={data.issuer.logoUrl}
+                    alt={data.issuer.companyName || 'Logo'}
+                    className="max-h-14 max-w-[180px] object-contain block"
+                  />
+                </div>
+              )}
               <span className="text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white px-2 py-0.5 rounded-xs inline-block mb-1">
                 BTP • TRAVAUX • PRESTATIONS
               </span>
@@ -786,13 +889,22 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
       {templateId === 'elegant_line' && (
         <div>
           <div className="border-t-2 border-b-2 border-slate-900 py-4 mb-6 flex justify-between items-center">
-            <div>
-              <h1 className="text-xl font-black tracking-widest uppercase text-slate-900">
-                {data.issuer.companyName || 'MAISON & CONSEIL'}
-              </h1>
-              <p className="text-xs text-slate-500 tracking-wider">
-                {data.issuer.name} • {data.issuer.city}
-              </p>
+            <div className="flex items-center gap-4">
+              {data.issuer.logoUrl && (
+                <img
+                  src={data.issuer.logoUrl}
+                  alt={data.issuer.companyName || 'Logo'}
+                  className="max-h-12 max-w-[140px] object-contain block shrink-0"
+                />
+              )}
+              <div>
+                <h1 className="text-xl font-black tracking-widest uppercase text-slate-900">
+                  {data.issuer.companyName || 'MAISON & CONSEIL'}
+                </h1>
+                <p className="text-xs text-slate-500 tracking-wider">
+                  {data.issuer.name} • {data.issuer.city}
+                </p>
+              </div>
             </div>
 
             <div className="text-right">

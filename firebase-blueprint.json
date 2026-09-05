@@ -195,6 +195,41 @@
         }
       },
       "required": ["docNumber", "type", "totalTTC", "status"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "Stored issuer businesses per user with contact details and logo",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "companyName": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "ninea": {
+          "type": "string"
+        },
+        "logoUrl": {
+          "type": "string"
+        },
+        "isDefault": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["companyName"]
     }
   },
   "firestore": {
@@ -203,6 +238,12 @@
         "$ref": "#/entities/UserProfile"
       },
       "description": "Collection of candidate profiles"
+    },
+    "/users/{userId}/businesses/{businessId}": {
+      "schema": {
+        "$ref": "#/entities/Business"
+      },
+      "description": "Collection of issuer businesses per user"
     },
     "/users/{userId}/customers/{customerId}": {
       "schema": {

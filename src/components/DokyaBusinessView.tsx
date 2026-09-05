@@ -3,13 +3,14 @@ import {
   Building2, Users, Receipt, Plus, Search, Filter, Phone, Mail, 
   MapPin, CheckCircle2, AlertCircle, Clock, ArrowRight, ExternalLink, 
   Trash2, Edit3, X, Save, MessageSquare, FileText, ChevronRight, 
-  TrendingUp, DollarSign, Eye, RefreshCw, Send, Check
+  TrendingUp, DollarSign, Eye, RefreshCw, Send, Check, Star, Settings
 } from 'lucide-react';
-import { Customer, BusinessInvoice, BusinessDocData } from '../types';
+import { Customer, BusinessInvoice, BusinessDocData, UserBusiness } from '../types';
 import { 
   fetchCustomers, saveCustomer, deleteCustomer, subscribeToCustomers,
   fetchBusinessInvoices, saveBusinessInvoice, updateInvoicePaymentStatus, 
-  deleteBusinessInvoice, subscribeToBusinessInvoices
+  deleteBusinessInvoice, subscribeToBusinessInvoices,
+  subscribeToUserBusinesses, deleteUserBusiness, setDefaultUserBusiness
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
 import { 
@@ -17,9 +18,10 @@ import {
   generateCustomerStatementWhatsAppLink, 
   cleanPhoneNumberForWhatsApp 
 } from '../utils/whatsappUtils';
+import { ManageBusinessesModal } from './ManageBusinessesModal';
 
 interface DokyaBusinessViewProps {
-  onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture') => void;
+  onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture', business?: UserBusiness) => void;
   onLoadInvoiceToEditor?: (data: BusinessDocData) => void;
 }
 
@@ -35,7 +37,12 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Active View Tab inside Business
-  const [activeTab, setActiveTab] = useState<'clients' | 'invoices'>('clients');
+  const [activeTab, setActiveTab] = useState<'clients' | 'invoices' | 'businesses'>('clients');
+
+  // Businesses State
+  const [businesses, setBusinesses] = useState<UserBusiness[]>([]);
+  const [isManageBusinessesModalOpen, setIsManageBusinessesModalOpen] = useState<boolean>(false);
+  const [editingBusinessForModal, setEditingBusinessForModal] = useState<UserBusiness | null>(null);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -79,9 +86,14 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
       setInvoices(data);
     });
 
+    const unsubBusinesses = subscribeToUserBusinesses(currentUid, (data) => {
+      setBusinesses(data);
+    });
+
     return () => {
       unsubCustomers();
       unsubInvoices();
+      unsubBusinesses();
     };
   }, [currentUid]);
 
@@ -307,7 +319,19 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setEditingBusinessForModal(null);
+              setIsManageBusinessesModalOpen(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+          >
+            <Building2 className="w-4 h-4 text-indigo-400" />
+            <span>Mes Entreprises ({businesses.length})</span>
+          </button>
+
           <button
             type="button"
             onClick={handleOpenAddClient}
@@ -421,8 +445,8 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
       {/* ========================================================================= */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-3 rounded-2xl">
         
-        {/* Tabs: Mes Clients vs Factures & Devis */}
-        <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+        {/* Tabs: Mes Clients vs Factures & Devis vs Mes Entreprises */}
+        <div className="flex flex-wrap items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('clients')}
@@ -446,6 +470,18 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
           >
             <Receipt className="w-3.5 h-3.5" />
             <span>Factures & Devis ({invoices.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('businesses')}
+            className={`px-4 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'businesses'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Mes Entreprises ({businesses.length})</span>
           </button>
         </div>
 
@@ -871,6 +907,201 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
       )}
 
       {/* ========================================================================= */}
+      {/* TAB 3: MES ENTREPRISES & LOGOS                                            */}
+      {/* ========================================================================= */}
+      {activeTab === 'businesses' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+            <div>
+              <h3 className="text-sm font-black text-white flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-indigo-400" />
+                <span>Mes Entreprises & Sociétés Émettrices ({businesses.length})</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Chaque entreprise dispose de son propre logo officiel, de son NINEA et de ses coordonnées pour vos devis et factures.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingBusinessForModal(null);
+                setIsManageBusinessesModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-all shadow-md shadow-indigo-600/20 cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Ajouter une entreprise</span>
+            </button>
+          </div>
+
+          {businesses.length === 0 ? (
+            <div className="text-center py-16 px-4 rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/50">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center mx-auto mb-3 border border-indigo-500/20">
+                <Building2 className="w-7 h-7" />
+              </div>
+              <h4 className="text-sm font-black text-white">Aucune entreprise émettrice configurée</h4>
+              <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-5">
+                Ajoutez votre raison sociale (SARL, SUARL, EI, Freelance), votre NINEA sénégalais et téléversez votre logo pour qu'il apparaisse automatiquement sur vos devis et factures.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingBusinessForModal(null);
+                  setIsManageBusinessesModalOpen(true);
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Créer ma première entreprise & logo</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {businesses.map((biz) => (
+                <div
+                  key={biz.id}
+                  className={`p-5 rounded-2xl border transition-all ${
+                    biz.isDefault
+                      ? 'bg-slate-900/90 border-indigo-500/50 shadow-lg shadow-indigo-950/30'
+                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3.5">
+                      {/* Logo or Default Building */}
+                      <div className="w-16 h-16 rounded-xl border border-slate-700 bg-white flex items-center justify-center p-1.5 overflow-hidden shrink-0 shadow-xs">
+                        {biz.logoUrl ? (
+                          <img
+                            src={biz.logoUrl}
+                            alt={biz.companyName}
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <Building2 className="w-8 h-8 text-slate-400" />
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-base font-black text-white tracking-tight">{biz.companyName}</h4>
+                          {biz.isDefault && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-600 text-white shadow-2xs">
+                              <Star className="w-2.5 h-2.5 fill-current" />
+                              <span>Par défaut</span>
+                            </span>
+                          )}
+                        </div>
+                        {biz.ninea ? (
+                          <span className="text-xs font-mono text-indigo-400 block mt-0.5">
+                            NINEA : {biz.ninea}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-500 italic block mt-0.5">
+                            NINEA non renseigné
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingBusinessForModal(biz);
+                          setIsManageBusinessesModalOpen(true);
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        title="Modifier cette entreprise"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (window.confirm(`Supprimer l'entreprise "${biz.companyName}" ?`)) {
+                            await deleteUserBusiness(currentUid, biz.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
+                        title="Supprimer cette entreprise"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Details */}
+                  <div className="space-y-1.5 text-xs text-slate-400 pb-4 border-b border-slate-800/80">
+                    {biz.phone && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span>{biz.phone}</span>
+                      </div>
+                    )}
+                    {biz.email && (
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span>{biz.email}</span>
+                      </div>
+                    )}
+                    {biz.address && (
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span>{biz.address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions footer */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3">
+                    {!biz.isDefault ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await setDefaultUserBusiness(currentUid, biz.id);
+                        }}
+                        className="text-xs font-bold text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Star className="w-3 h-3" />
+                        <span>Définir par défaut</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>Société émettrice principale</span>
+                      </span>
+                    )}
+
+                    {onOpenInvoiceGenerator && (
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => onOpenInvoiceGenerator(undefined, 'devis', biz)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <FileText className="w-3 h-3 text-blue-400" />
+                          <span>Devis</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenInvoiceGenerator(undefined, 'facture', biz)}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                        >
+                          <Receipt className="w-3 h-3 text-emerald-300" />
+                          <span>Facture</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* MODAL 1: FICHE CLIENT DÉTAILLÉE & HISTORIQUE                              */}
       {/* ========================================================================= */}
       {selectedClientForDetails && (() => {
@@ -1278,6 +1509,17 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Multi-Entreprises */}
+      <ManageBusinessesModal
+        isOpen={isManageBusinessesModalOpen}
+        onClose={() => {
+          setIsManageBusinessesModalOpen(false);
+          setEditingBusinessForModal(null);
+        }}
+        businesses={businesses}
+        initialEditingBusiness={editingBusinessForModal}
+      />
 
     </div>
   );

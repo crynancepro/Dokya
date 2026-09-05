@@ -1,17 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Trash2, Sparkles, FileCheck, Calculator, RefreshCw, 
   Building2, User, Phone, Mail, MapPin, Calendar, Clock, 
   CreditCard, Smartphone, CheckCircle2, ArrowRight, Eye, Download,
   Percent, AlertCircle, FileText, Copy, Check,
-  Layers, Palette, Tag, Shield, ArrowLeftRight
+  Layers, Palette, Tag, Shield, ArrowLeftRight, MessageSquare, UserPlus, Users,
+  Upload, Image as ImageIcon, Star, Settings, X
 } from 'lucide-react';
-import { BusinessDocData, BusinessDocItem } from '../types';
+import { BusinessDocData, BusinessDocItem, Customer, UserBusiness } from '../types';
 import { SECTOR_PRESETS, INDIVIDUAL_SERVICES_CATALOG } from '../data/businessPresets';
 import { numberToFrenchWords } from '../utils/numberToWords';
 import { generateBusinessDocWithGemini } from '../lib/geminiService';
 import { AIFormValidationBanner } from './AIFormValidationBanner';
 import { validateBusinessDoc } from '../lib/formValidationUtils';
+import { 
+  auth, subscribeToCustomers, saveCustomer, 
+  subscribeToUserBusinesses, saveUserBusiness 
+} from '../lib/firebase';
+import { generateInvoiceWhatsAppLink } from '../utils/whatsappUtils';
+import { ManageBusinessesModal } from './ManageBusinessesModal';
+import { processImageFileToDataUrl } from '../utils/imageUtils';
 
 interface DevisFactureFormProps {
   data: BusinessDocData;
@@ -38,6 +46,239 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
   const [activeTab, setActiveTab] = useState<'coords' | 'items' | 'payment'>('coords');
   const [isAiPolishing, setIsAiPolishing] = useState(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState<string | null>(null);
+
+  // Customer Management state
+  const [savedCustomers, setSavedCustomers] = useState<Customer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(data.customerId || '');
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const [customerSuccessMsg, setCustomerSuccessMsg] = useState<string | null>(null);
+
+  // Multi-Businesses & Issuer Logo state
+  const [savedBusinesses, setSavedBusinesses] = useState<UserBusiness[]>([]);
+  const [selectedBusinessId, setSelectedBusinessId] = useState<string>(data.businessId || '');
+  const [isManageBusinessesModalOpen, setIsManageBusinessesModalOpen] = useState(false);
+  const [businessSuccessMsg, setBusinessSuccessMsg] = useState<string | null>(null);
+  const [isSavingBusiness, setIsSavingBusiness] = useState(false);
+  const [isProcessingIssuerLogo, setIsProcessingIssuerLogo] = useState(false);
+  const issuerFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Subscribe to businesses
+  useEffect(() => {
+    const currentUid = auth.currentUser?.uid || 'guest';
+    const unsub = subscribeToUserBusinesses(currentUid, (list) => {
+      setSavedBusinesses(list);
+
+      // Auto-apply default business if document has no business selected or only generic name
+      if (!data.businessId && (!data.issuer.companyName || data.issuer.companyName === 'Mon Entreprise / Agence' || data.issuer.companyName === 'Mon Entreprise')) {
+        const defaultBiz = list.find(b => b.isDefault) || list[0];
+        if (defaultBiz) {
+          setSelectedBusinessId(defaultBiz.id);
+          onChange({
+            ...data,
+            businessId: defaultBiz.id,
+            issuer: {
+              ...data.issuer,
+              companyName: defaultBiz.companyName,
+              phone: defaultBiz.phone || data.issuer.phone || '',
+              email: defaultBiz.email || data.issuer.email || '',
+              address: defaultBiz.address || data.issuer.address || '',
+              ninea: defaultBiz.ninea || data.issuer.ninea || '',
+              logoUrl: defaultBiz.logoUrl || data.issuer.logoUrl || ''
+            }
+          });
+        }
+      }
+    });
+    return () => unsub();
+  }, [data.businessId]);
+
+  useEffect(() => {
+    if (data.businessId) {
+      setSelectedBusinessId(data.businessId);
+    }
+  }, [data.businessId]);
+
+  const handleSelectBusiness = (businessId: string) => {
+    setSelectedBusinessId(businessId);
+    if (!businessId) {
+      onChange({
+        ...data,
+        businessId: undefined
+      });
+      return;
+    }
+    const found = savedBusinesses.find(b => b.id === businessId);
+    if (found) {
+      onChange({
+        ...data,
+        businessId: found.id,
+        issuer: {
+          ...data.issuer,
+          companyName: found.companyName,
+          phone: found.phone || '',
+          email: found.email || '',
+          address: found.address || '',
+          ninea: found.ninea || '',
+          logoUrl: found.logoUrl || ''
+        }
+      });
+      setBusinessSuccessMsg(`Entreprise "${found.companyName}" chargée avec son logo !`);
+      setTimeout(() => setBusinessSuccessMsg(null), 3000);
+    }
+  };
+
+  const handleIssuerLogoUpload = async (file: File) => {
+    setIsProcessingIssuerLogo(true);
+    try {
+      const dataUrl = await processImageFileToDataUrl(file, 400, 400);
+      onChange({
+        ...data,
+        issuer: {
+          ...data.issuer,
+          logoUrl: dataUrl
+        }
+      });
+      // If an existing business is linked, update its logo too
+      if (selectedBusinessId) {
+        const currentUid = auth.currentUser?.uid || 'guest';
+        await saveUserBusiness(currentUid, {
+          id: selectedBusinessId,
+          logoUrl: dataUrl
+        });
+      }
+      setBusinessSuccessMsg("Logo mis à jour et injecté sur le document !");
+      setTimeout(() => setBusinessSuccessMsg(null), 3000);
+    } catch (e: any) {
+      console.error(e);
+      setBusinessSuccessMsg(e?.message || "Erreur de chargement du logo");
+      setTimeout(() => setBusinessSuccessMsg(null), 3000);
+    } finally {
+      setIsProcessingIssuerLogo(false);
+      if (issuerFileInputRef.current) issuerFileInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveCurrentAsBusiness = async () => {
+    const compName = (data.issuer.companyName || '').trim();
+    if (!compName || compName === 'Mon Entreprise / Agence') {
+      setBusinessSuccessMsg("Veuillez renseigner le nom de l'entreprise avant d'enregistrer.");
+      setTimeout(() => setBusinessSuccessMsg(null), 3000);
+      return;
+    }
+    setIsSavingBusiness(true);
+    try {
+      const currentUid = auth.currentUser?.uid || 'guest';
+      const saved = await saveUserBusiness(currentUid, {
+        companyName: compName,
+        phone: data.issuer.phone || '',
+        email: data.issuer.email || '',
+        address: data.issuer.address || '',
+        ninea: data.issuer.ninea || '',
+        logoUrl: data.issuer.logoUrl || '',
+        isDefault: savedBusinesses.length === 0
+      });
+      if (saved) {
+        setSelectedBusinessId(saved.id);
+        onChange({
+          ...data,
+          businessId: saved.id
+        });
+        setBusinessSuccessMsg(`Entreprise "${compName}" enregistrée dans vos sociétés émettrices !`);
+        setTimeout(() => setBusinessSuccessMsg(null), 3000);
+      }
+    } catch (e) {
+      console.error(e);
+      setBusinessSuccessMsg("Erreur lors de l'enregistrement de l'entreprise.");
+      setTimeout(() => setBusinessSuccessMsg(null), 3000);
+    } finally {
+      setIsSavingBusiness(false);
+    }
+  };
+
+  useEffect(() => {
+    const currentUid = auth.currentUser?.uid || 'guest';
+    const unsub = subscribeToCustomers(currentUid, (list) => {
+      setSavedCustomers(list);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (data.customerId) {
+      setSelectedCustomerId(data.customerId);
+    }
+  }, [data.customerId]);
+
+  const handleSelectCustomer = (customerId: string) => {
+    setSelectedCustomerId(customerId);
+    if (!customerId) {
+      onChange({
+        ...data,
+        customerId: undefined
+      });
+      return;
+    }
+    const found = savedCustomers.find(c => c.id === customerId);
+    if (found) {
+      onChange({
+        ...data,
+        customerId: found.id,
+        client: {
+          ...data.client,
+          companyName: found.name,
+          phone: found.phone || data.client.phone || '',
+          email: found.email || data.client.email || '',
+          address: found.address || data.client.address || '',
+          ninea: found.ninea || data.client.ninea || ''
+        }
+      });
+      setCustomerSuccessMsg(`Client "${found.name}" associé au document !`);
+      setTimeout(() => setCustomerSuccessMsg(null), 3000);
+    }
+  };
+
+  const handleSaveAsNewCustomer = async () => {
+    const name = (data.client.companyName || data.client.name || '').trim();
+    const phone = (data.client.phone || '').trim();
+    if (!name) {
+      setCustomerSuccessMsg('Veuillez renseigner le nom du client avant d\'enregistrer.');
+      setTimeout(() => setCustomerSuccessMsg(null), 3500);
+      return;
+    }
+    if (!phone) {
+      setCustomerSuccessMsg('Veuillez renseigner le numéro WhatsApp du client.');
+      setTimeout(() => setCustomerSuccessMsg(null), 3500);
+      return;
+    }
+
+    setIsSavingCustomer(true);
+    try {
+      const currentUid = auth.currentUser?.uid || 'guest';
+      const saved = await saveCustomer(currentUid, {
+        name,
+        phone,
+        email: data.client.email || '',
+        address: data.client.address || '',
+        ninea: data.client.ninea || '',
+        paymentTerms: isQuote ? 'Validité 30j' : 'Comptant'
+      });
+      if (saved) {
+        setSelectedCustomerId(saved.id);
+        onChange({
+          ...data,
+          customerId: saved.id
+        });
+        setCustomerSuccessMsg(`Client "${name}" enregistré dans votre répertoire Dokya !`);
+        setTimeout(() => setCustomerSuccessMsg(null), 3500);
+      }
+    } catch (e) {
+      console.error(e);
+      setCustomerSuccessMsg('Erreur lors de l\'enregistrement du client.');
+      setTimeout(() => setCustomerSuccessMsg(null), 3500);
+    } finally {
+      setIsSavingCustomer(false);
+    }
+  };
 
   // Switch Currency
   const handleCurrencyChange = (newCurrency: string) => {
@@ -486,10 +727,140 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
           {/* 2-Column Grid: Émetteur vs Client */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Émetteur */}
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-              <span className="font-black text-indigo-700 uppercase tracking-wider text-[10px] block">
-                1. Émetteur (Votre Société)
-              </span>
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-indigo-700 uppercase tracking-wider text-[10px] block">
+                  1. Émetteur (Votre Société)
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {businessSuccessMsg && (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded animate-in fade-in">
+                      {businessSuccessMsg}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsManageBusinessesModalOpen(true)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-[10px] font-bold text-slate-700 hover:text-indigo-700 transition-all cursor-pointer"
+                    title="Gérer toutes mes entreprises et logos"
+                  >
+                    <Settings className="w-3 h-3 text-slate-500" />
+                    <span>Gérer mes sociétés</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Selector : Sélectionner une entreprise émettrice */}
+              <div className="p-2 bg-indigo-50/60 rounded-lg border border-indigo-100 space-y-1.5">
+                <label className="flex items-center justify-between text-[10px] font-bold text-indigo-900">
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>🏢 Sélectionner une entreprise émettrice</span>
+                  </span>
+                  {savedBusinesses.length > 0 && (
+                    <span className="text-[10px] text-indigo-600 font-semibold font-mono">
+                      {savedBusinesses.length} société{savedBusinesses.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={selectedBusinessId}
+                    onChange={(e) => handleSelectBusiness(e.target.value)}
+                    className="flex-1 px-2 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-medium focus:outline-hidden focus:border-indigo-500"
+                  >
+                    <option value="">-- Saisie manuelle / Autre --</option>
+                    {savedBusinesses.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.companyName} {b.isDefault ? '⭐ (Par défaut)' : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {!selectedBusinessId && (
+                    <button
+                      type="button"
+                      disabled={isSavingBusiness}
+                      onClick={handleSaveCurrentAsBusiness}
+                      className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition-all shadow-2xs shrink-0 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      title="Enregistrer cette entreprise et son logo pour vos prochains devis/factures"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isSavingBusiness ? '...' : 'Enregistrer'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Logo Preview & Quick Upload */}
+              <div className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-12 h-10 rounded-md border border-slate-200 bg-slate-50 flex items-center justify-center p-0.5 overflow-hidden shrink-0">
+                    {data.issuer.logoUrl ? (
+                      <img 
+                        src={data.issuer.logoUrl} 
+                        alt="Logo émetteur" 
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <ImageIcon className="w-4 h-4 text-slate-300" />
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-800 block">
+                      {data.issuer.logoUrl ? "Logo de l'entreprise" : "Aucun logo injecté"}
+                    </span>
+                    <span className="text-[9px] text-slate-400 block">
+                      {data.issuer.logoUrl ? "Sera imprimé en haut du devis/facture PDF" : "PNG ou JPG pour le rendu officiel"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <input
+                    ref={issuerFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleIssuerLogoUpload(e.target.files[0]);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={isProcessingIssuerLogo}
+                    onClick={() => issuerFileInputRef.current?.click()}
+                    className="px-2 py-1 rounded-md bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 text-[10px] font-bold border border-slate-200 transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Upload className="w-3 h-3 text-indigo-600" />
+                    <span>{isProcessingIssuerLogo ? "..." : (data.issuer.logoUrl ? "Changer" : "Ajouter logo")}</span>
+                  </button>
+
+                  {data.issuer.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange({
+                          ...data,
+                          issuer: {
+                            ...data.issuer,
+                            logoUrl: ''
+                          }
+                        });
+                        setBusinessSuccessMsg("Logo retiré");
+                        setTimeout(() => setBusinessSuccessMsg(null), 2000);
+                      }}
+                      className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                      title="Retirer le logo"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <input
                   type="text"
@@ -535,9 +906,44 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
 
             {/* Client */}
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-              <span className="font-black text-indigo-700 uppercase tracking-wider text-[10px] block">
-                2. Client Destinataire
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="font-black text-indigo-700 uppercase tracking-wider text-[10px] block">
+                  2. Client Destinataire
+                </span>
+                {customerSuccessMsg && (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded animate-in fade-in">
+                    {customerSuccessMsg}
+                  </span>
+                )}
+              </div>
+
+              {/* Selector : Associer à un client enregistré */}
+              <div className="p-2 bg-indigo-50/60 rounded-lg border border-indigo-100 space-y-1">
+                <label className="flex items-center justify-between text-[10px] font-bold text-indigo-900">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Associer à un client enregistré</span>
+                  </span>
+                  {savedCustomers.length > 0 && (
+                    <span className="text-[10px] text-indigo-600 font-semibold font-mono">
+                      {savedCustomers.length} en stock
+                    </span>
+                  )}
+                </label>
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => handleSelectCustomer(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white font-medium text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="">-- Saisie libre ou nouveau client --</option>
+                  {savedCustomers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.phone ? `(${c.phone})` : ''} {c.ninea ? `• NINEA ${c.ninea}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <input
                   type="text"
@@ -552,7 +958,7 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
                   type="text"
                   value={data.client.phone}
                   onChange={(e) => onChange({ ...data, client: { ...data.client, phone: e.target.value } })}
-                  placeholder="Téléphone client"
+                  placeholder="Téléphone WhatsApp client *"
                   className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
                 />
                 <input
@@ -563,15 +969,70 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
                   className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
                 />
               </div>
-              <div>
+              <div className="grid grid-cols-2 gap-1.5">
                 <input
                   type="text"
                   value={data.client.address}
                   onChange={(e) => onChange({ ...data, client: { ...data.client, address: e.target.value } })}
-                  placeholder="Adresse / Quartier du Client"
+                  placeholder="Adresse / Quartier"
                   className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
                 />
+                <input
+                  type="text"
+                  value={data.client.ninea || ''}
+                  onChange={(e) => onChange({ ...data, client: { ...data.client, ninea: e.target.value } })}
+                  placeholder="NINEA / RC (optionnel)"
+                  className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono"
+                />
               </div>
+
+              {/* Quick Save as New Client Button */}
+              {(!selectedCustomerId || !savedCustomers.some(c => c.id === selectedCustomerId)) && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSaveAsNewCustomer}
+                    disabled={isSavingCustomer}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{isSavingCustomer ? 'Enregistrement...' : 'Enregistrer comme nouveau client dans mon portefeuille'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Payment status badge toggle for Factures */}
+              {!isQuote && (
+                <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase text-slate-700">
+                    Statut de la facture :
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onChange({ ...data, paymentStatus: 'UNPAID' })}
+                      className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
+                        (data.paymentStatus || 'UNPAID') === 'UNPAID'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-white text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      IMPAYÉE
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onChange({ ...data, paymentStatus: 'PAID' })}
+                      className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
+                        data.paymentStatus === 'PAID'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-white text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      PAYÉE
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -871,16 +1332,47 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
           Format conforme OHADA / UEMOA • Arrêté automatique en lettres
         </div>
 
-        <button
-          type="button"
-          onClick={() => onOpenWizard(isQuote ? 'devis' : 'facture')}
-          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>Télécharger en PDF HD (1 000 F)</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* 1-Click WhatsApp Direct Share */}
+          <a
+            href={generateInvoiceWhatsAppLink({
+              clientName: data.client.companyName || data.client.name || 'Client',
+              phone: data.client.phone || '',
+              docNumber: data.docNumber,
+              type: data.type,
+              totalTTC: totalTTC,
+              currency: currency,
+              dueDate: data.dueDate,
+              isPaid: data.paymentStatus === 'PAID'
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+            title="Envoyer un message pré-rempli au client sur WhatsApp"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Partager via WhatsApp</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={() => onOpenWizard(isQuote ? 'devis' : 'facture')}
+            className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Télécharger en PDF HD (1 000 F)</span>
+          </button>
+        </div>
       </div>
       </div>
+
+      {/* Multi-Businesses Management Modal */}
+      <ManageBusinessesModal
+        isOpen={isManageBusinessesModalOpen}
+        onClose={() => setIsManageBusinessesModalOpen(false)}
+        businesses={savedBusinesses}
+        onSelectBusiness={(b) => handleSelectBusiness(b.id)}
+      />
 
     </div>
   );

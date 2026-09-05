@@ -10,7 +10,8 @@ import {
   CoverLetterType,
   InterviewPrepData,
   UserSubscription,
-  isUserVipActive
+  isUserVipActive,
+  Customer
 } from './types';
 import { SAMPLE_CV_DATA } from './data/sampleData';
 import { Header } from './components/Header';
@@ -32,7 +33,7 @@ import { InterviewPrepView } from './components/InterviewPrepView';
 import { AuthModal } from './components/AuthModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
-import { auth, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, initializeUserAccountDoc } from './lib/firebase';
+import { auth, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, initializeUserAccountDoc, saveBusinessInvoice } from './lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { generateCVWithGemini, generateInterviewPrepWithGemini } from './lib/geminiService';
 
@@ -821,6 +822,35 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   const handleGenerateBusinessDoc = (type: 'devis' | 'facture' | 'pack_business') => {
     setSuccessMessage("Document commercial mis à jour avec succès !");
     setTimeout(() => setSuccessMessage(null), 3000);
+
+    // Save/Sync to Firestore Business Invoices
+    try {
+      const currentUid = auth.currentUser?.uid || 'guest';
+      const itemsSubtotal = (businessDocData.items || []).reduce((acc, it) => acc + ((it.quantity || 0) * (it.unitPrice || 0)), 0);
+      const discount = (itemsSubtotal * (businessDocData.discountPercent || 0)) / 100;
+      const taxable = itemsSubtotal - discount;
+      const vat = businessDocData.applyVat ? (taxable * (businessDocData.vatRate || 18)) / 100 : 0;
+      const totalTTC = taxable + vat;
+
+      saveBusinessInvoice(currentUid, {
+        docNumber: businessDocData.docNumber || (type === 'devis' ? 'DEV-2026-001' : 'FAC-2026-001'),
+        type: type === 'devis' ? 'devis' : 'facture',
+        customerId: businessDocData.customerId,
+        customerName: businessDocData.client?.companyName || businessDocData.client?.name || 'Client',
+        customerPhone: businessDocData.client?.phone || '',
+        customerEmail: businessDocData.client?.email || '',
+        issueDate: businessDocData.issueDate || new Date().toISOString().split('T')[0],
+        dueDate: businessDocData.dueDate || '',
+        totalHT: taxable,
+        totalTTC: totalTTC,
+        currency: businessDocData.currency || 'FCFA',
+        status: businessDocData.paymentStatus || 'UNPAID',
+        businessDocData: businessDocData
+      }).catch(err => console.error('Error auto-saving invoice:', err));
+    } catch (e) {
+      console.error('Error calculating and saving business invoice:', e);
+    }
+
     if (type === 'devis') {
       setActiveTab('devis_preview');
     } else if (type === 'facture') {
@@ -924,7 +954,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   };
 
   const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name || !!ebookData?.title;
-  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription';
+  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || activeTab === 'business' || activeTab === 'clients';
   const isLandingView = activeTab === 'landing';
   const isTemplatesView = activeTab === 'templates';
 
@@ -1006,7 +1036,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       {/* 2. MAIN WORKSPACE */}
       {isDashboardView ? (
         <CandidateDashboard
-          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : activeTab === 'entretiens' ? 'entretiens' : 'dashboard_home'}
+          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : activeTab === 'entretiens' ? 'entretiens' : activeTab === 'business' || activeTab === 'clients' ? 'business' : 'dashboard_home'}
           onApplyProfileToEditor={handleApplyProfileToEditor}
           onLoadDocumentToEditor={handleLoadDocumentToEditor}
           onSelectService={handleSelectService}
@@ -1015,6 +1045,48 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           onOpenInterviewPrepDocument={(prepData) => {
             setInterviewPrepData(prepData);
             setActiveTab('interview_prep');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onLoadBusinessDocToEditor={(docData) => {
+            setBusinessDocData(docData);
+            setActiveTab(docData.type === 'devis' ? 'devis' : 'facture');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onOpenInvoiceGenerator={(customer, type = 'facture', business) => {
+            setBusinessDocData(prev => {
+              let updated = { ...prev, type };
+              if (customer) {
+                updated = {
+                  ...updated,
+                  customerId: customer.id,
+                  client: {
+                    ...updated.client,
+                    companyName: customer.name,
+                    phone: customer.phone || '',
+                    email: customer.email || '',
+                    address: customer.address || '',
+                    ninea: customer.ninea || ''
+                  }
+                };
+              }
+              if (business) {
+                updated = {
+                  ...updated,
+                  businessId: business.id,
+                  issuer: {
+                    ...updated.issuer,
+                    companyName: business.companyName,
+                    phone: business.phone || '',
+                    email: business.email || '',
+                    address: business.address || '',
+                    ninea: business.ninea || '',
+                    logoUrl: business.logoUrl || ''
+                  }
+                };
+              }
+              return updated;
+            });
+            setActiveTab(type);
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />

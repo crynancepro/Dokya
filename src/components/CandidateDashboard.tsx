@@ -4,12 +4,13 @@ import {
   CheckCircle2, Download, Eye, ExternalLink, RefreshCw, AlertCircle, 
   Briefcase, GraduationCap, Award, Globe, Phone, Mail, MapPin, Linkedin, 
   Check, ArrowRight, ShieldCheck, Zap, X, Wallet, History, Menu, Crown,
-  Search, Filter, Wand2, Receipt, BookOpen, Clock, Package, UserCircle2, FileCheck, LogOut, BookmarkCheck
+  Search, Filter, Wand2, Receipt, BookOpen, Clock, Package, UserCircle2, FileCheck, LogOut, BookmarkCheck,
+  Building2, Users
 } from 'lucide-react';
 import { 
   CandidateProfile, SavedUserDocument, CVFormData, Experience, Education, 
   SkillCategory, Language, PersonalInfo, TransactionRecord, UserSubscription,
-  InterviewPrepData, isUserVipActive, getTimestampMillis
+  InterviewPrepData, isUserVipActive, getTimestampMillis, BusinessDocData, Customer, UserBusiness
 } from '../types';
 import { 
   fetchUserProfile, saveCandidateProfile, fetchUserDocuments, 
@@ -34,6 +35,7 @@ import { DevisFactureTemplate } from './DevisFactureTemplate';
 import { EbookTemplate } from './EbookTemplate';
 import { A4PreviewContainer } from './A4PreviewContainer';
 import { isAdminEmail } from '../lib/adminAuth';
+import { DokyaBusinessView } from './DokyaBusinessView';
 
 interface CandidateDashboardProps {
   onLoadDocumentToEditor: (formData: CVFormData, aiData: any) => void;
@@ -44,6 +46,8 @@ interface CandidateDashboardProps {
   onSignOut?: () => void;
   initialTab?: SidebarTab | string;
   onOpenInterviewPrepDocument?: (prepData: InterviewPrepData) => void;
+  onLoadBusinessDocToEditor?: (data: BusinessDocData) => void;
+  onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture', business?: UserBusiness) => void;
 }
 
 export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
@@ -54,7 +58,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   onOpenAdmin,
   onSignOut,
   initialTab = 'dashboard_home',
-  onOpenInterviewPrepDocument
+  onOpenInterviewPrepDocument,
+  onLoadBusinessDocToEditor,
+  onOpenInvoiceGenerator
 }) => {
   const [user, setUser] = useState<FirebaseUser | null>(auth.currentUser);
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab | string>(initialTab);
@@ -649,6 +655,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   {activeSidebarTab === 'dashboard_home' || activeSidebarTab === 'dashboard' ? 'Tableau de bord'
                     : activeSidebarTab === 'documents' ? 'Mes Documents Générés'
                     : activeSidebarTab === 'entretiens' ? 'Mes Fiches de Préparation d\'Entretien RH'
+                    : activeSidebarTab === 'business' || activeSidebarTab === 'clients' ? 'Pôle Dokya Business • Gestion Clients & Ventes'
                     : activeSidebarTab === 'tarifs' ? 'Tarifs & Offres'
                     : activeSidebarTab === 'subscription' ? 'Mon Abonnement & Privilèges VIP'
                     : activeSidebarTab === 'profile' ? 'Mon Profil & Paramètres'
@@ -1406,6 +1413,28 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </div>
               )}
 
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB: DOKYA BUSINESS (GESTION CLIENTS & SUIVI FINANCIER)                  */}
+          {/* ========================================================================= */}
+          {(activeSidebarTab === 'business' || activeSidebarTab === 'clients') && (
+            <div className="space-y-6 animate-in fade-in">
+              <DokyaBusinessView
+                onOpenInvoiceGenerator={(customer, type, business) => {
+                  if (onOpenInvoiceGenerator) {
+                    onOpenInvoiceGenerator(customer, type, business);
+                  } else if (onSelectService) {
+                    onSelectService(type || 'facture');
+                  }
+                }}
+                onLoadInvoiceToEditor={(invoiceDocData) => {
+                  if (onLoadBusinessDocToEditor) {
+                    onLoadBusinessDocToEditor(invoiceDocData);
+                  }
+                }}
+              />
             </div>
           )}
 
