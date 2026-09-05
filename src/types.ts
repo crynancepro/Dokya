@@ -181,6 +181,8 @@ export interface ClientInfo {
   address: string;
   city: string;
   country: string;
+  ninea?: string;
+  rc?: string;
 }
 
 export interface PaymentInfo {
@@ -213,6 +215,7 @@ export interface BusinessDocTemplateOption {
 }
 
 export interface BusinessDocData {
+  id?: string;
   type: 'devis' | 'facture';
   docNumber: string;
   issueDate: string;
@@ -237,6 +240,10 @@ export interface BusinessDocData {
   customerId?: string;
   businessId?: string;
   paymentStatus?: 'PAID' | 'UNPAID';
+  quoteStatus?: 'BROUILLON' | 'EN_ATTENTE' | 'ACCEPTE' | 'REFUSE';
+  paidAt?: string;
+  paymentDate?: string;
+  docId?: string;
 }
 
 export interface UserBusiness {
@@ -261,6 +268,9 @@ export interface Customer {
   ninea?: string; // Facultatif
   paymentTerms?: string; // Conditions (ex: Comptant, 15 jours)
   notes?: string;
+  totalSpent?: number; // Total réglé / encaissé en FCFA
+  totalBilled?: number; // Total facturé
+  totalUnpaid?: number; // Total impayé
   createdAt?: any;
   updatedAt?: any;
 }
@@ -280,6 +290,8 @@ export interface BusinessInvoice {
   totalTTC: number;
   currency: string;
   status: 'PAID' | 'UNPAID';
+  quoteStatus?: 'BROUILLON' | 'EN_ATTENTE' | 'ACCEPTE' | 'REFUSE';
+  paidAt?: string;
   issueDate: string;
   dueDate?: string;
   businessDocData?: BusinessDocData;
@@ -573,6 +585,10 @@ export interface CandidateProfile {
   balance: number; // Solde utilisateur en FCFA (ex: 3 000 FCFA)
   subscriptionStatus: 'free' | 'pro' | 'unlimited';
   subscription?: UserSubscription;
+  referralCode?: string; // Code unique de parrainage (ex: "PETER25")
+  referredBy?: string; // UID du parrain si inscrit via affiliation
+  affiliateBalance?: number; // Solde d'affiliation disponible pour retrait en FCFA
+  totalAffiliateEarnings?: number; // Cumul historique des commissions approuvées en FCFA
   updatedAt: string;
 }
 
@@ -584,8 +600,8 @@ export interface SavedUserDocument {
   createdAt: string;
   updatedAt: string;
   isPaid: boolean;
-  formData: CVFormData;
-  aiData: AIOptimizedData | null;
+  formData?: CVFormData;
+  aiData?: AIOptimizedData | null;
   businessDocData?: BusinessDocData;
   ebookData?: EbookData;
   interviewPrepData?: InterviewPrepData;
@@ -818,6 +834,43 @@ export interface InterviewPrepData {
   behavioralTips: string[]; // 4-6 conseils de posture, communication non-verbale & négociation
   suggestedQuestionsToAskRecruiter: string[]; // 4-5 questions stratégiques intelligentes à poser en fin d'entretien
   strengthsSummary?: string[]; // Synthèse des atouts majeurs détectés
+}
+
+export interface AffiliateCommission {
+  id: string;
+  transactionId: string; // Lien avec la transaction d'achat du client
+  referrerId: string; // UID du parrain (affilié)
+  referrerName: string;
+  referrerPhone?: string;
+  referrerEmail?: string;
+  referrerCode?: string;
+  referredUserId: string; // UID du client apporté
+  referredUserName: string;
+  serviceTitle?: string;
+  totalAmount: number; // Montant payé par le client (ex: 5 000 FCFA)
+  affiliateCommission: number; // Part de l'affilié (ex: 20% = 1 000 FCFA)
+  adminNetGain: number; // Gain net admin (ex: 80% = 4 000 FCFA)
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'; // En attente de validation admin
+  createdAt: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  adminNote?: string;
+}
+
+export interface AffiliatePayoutRequest {
+  id: string;
+  affiliateId: string; // UID de l'affilié demandeur
+  affiliateName: string;
+  affiliatePhone: string;
+  affiliateEmail?: string;
+  network: 'wave' | 'orange_money';
+  phoneNumber: string;
+  amount: number; // minimum 2 000 FCFA
+  status: 'PENDING' | 'PAID' | 'REJECTED';
+  requestedAt: string;
+  paidAt?: string;
+  rejectedAt?: string;
+  adminNote?: string;
 }
 
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import { BusinessDocData, BusinessDocTemplateId } from '../types';
 import { numberToFrenchWords } from '../utils/numberToWords';
 
@@ -14,6 +15,18 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
   const isQuote = data.type === 'devis';
   const currency = data.currency || 'FCFA';
   const templateId: BusinessDocTemplateId = data.templateId || 'classique_ohada';
+
+  const isPaidInvoice = !isQuote && (data.paymentStatus === 'PAID' || data.status === 'paye');
+  const paidDateRaw = data.paidAt || data.paymentDate || data.issueDate || new Date().toISOString();
+  const paidDateFormatted = (() => {
+    try {
+      const d = new Date(paidDateRaw);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      }
+    } catch (e) {}
+    return String(paidDateRaw).split('T')[0];
+  })();
 
   // Calculate totals
   const subtotalHT = (data.items || []).reduce((acc, item) => {
@@ -277,8 +290,30 @@ export const DevisFactureTemplate: React.FC<DevisFactureTemplateProps> = ({
         minHeight: '297mm',
         boxSizing: 'border-box'
       }}
-      className="w-[210mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] mx-auto bg-white text-slate-900 p-10 rounded-none shadow-xl border border-slate-200/90 print:shadow-none print:border-none print:p-0 font-sans text-xs selection:bg-indigo-600 selection:text-white a4-document-root"
+      className="w-[210mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] mx-auto bg-white text-slate-900 p-10 rounded-none shadow-xl border border-slate-200/90 print:shadow-none print:border-none print:p-0 font-sans text-xs selection:bg-indigo-600 selection:text-white a4-document-root relative overflow-hidden"
     >
+      {/* ========================================================================= */}
+      {/* TAMPON VISUEL OFFICIEL : FACTURE PAYÉE EN DATE DU [Date]                   */}
+      {/* ========================================================================= */}
+      {isPaidInvoice && (
+        <div 
+          id="paid-invoice-stamp" 
+          className="absolute top-10 right-10 z-30 pointer-events-none select-none transform rotate-[-12deg] transition-all"
+        >
+          <div className="border-[3.5px] border-emerald-600 rounded-xl px-4 py-2 bg-emerald-50/90 backdrop-blur-xs shadow-md shadow-emerald-900/10 text-center ring-2 ring-emerald-600/30">
+            <div className="flex items-center justify-center gap-1.5 text-emerald-700 font-black text-sm uppercase tracking-wider">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 stroke-[3]" />
+              <span>FACTURE PAYÉE</span>
+            </div>
+            <div className="text-[10px] font-black uppercase tracking-wide text-emerald-800 border-t border-emerald-600/40 mt-1 pt-0.5">
+              PAYÉE EN DATE DU {paidDateFormatted}
+            </div>
+            <div className="text-[8px] font-mono text-emerald-700 font-bold uppercase tracking-widest mt-0.5">
+              ACQUITTÉE • RÈGLEMENT CONFIRMÉ
+            </div>
+          </div>
+        </div>
+      )}
       {/* ------------------------------------------------------------------ */}
       {/* MODÈLE 1 : CLASSIQUE OHADA (Standard UEMOA)                       */}
       {/* ------------------------------------------------------------------ */}

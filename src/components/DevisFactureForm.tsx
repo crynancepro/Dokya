@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Sparkles, FileCheck, Calculator, RefreshCw, 
   Building2, User, Phone, Mail, MapPin, Calendar, Clock, 
   CreditCard, Smartphone, CheckCircle2, ArrowRight, Eye, Download,
-  Percent, AlertCircle, FileText, Copy, Check,
+  Percent, AlertCircle, FileText, Copy, Check, Save,
   Layers, Palette, Tag, Shield, ArrowLeftRight, MessageSquare, UserPlus, Users,
   Upload, Image as ImageIcon, Star, Settings, X
 } from 'lucide-react';
@@ -15,7 +15,9 @@ import { AIFormValidationBanner } from './AIFormValidationBanner';
 import { validateBusinessDoc } from '../lib/formValidationUtils';
 import { 
   auth, subscribeToCustomers, saveCustomer, 
-  subscribeToUserBusinesses, saveUserBusiness 
+  subscribeToUserBusinesses, saveUserBusiness,
+  saveOrUpdateBusinessDocument, updateInvoicePaymentStatus,
+  updateQuoteStatus, convertQuoteToInvoice
 } from '../lib/firebase';
 import { generateInvoiceWhatsAppLink } from '../utils/whatsappUtils';
 import { ManageBusinessesModal } from './ManageBusinessesModal';
@@ -52,6 +54,10 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(data.customerId || '');
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [customerSuccessMsg, setCustomerSuccessMsg] = useState<string | null>(null);
+
+  // Document Saving & Conversion state
+  const [isSavingDocument, setIsSavingDocument] = useState(false);
+  const [docSaveSuccessMsg, setDocSaveSuccessMsg] = useState<string | null>(null);
 
   // Multi-Businesses & Issuer Logo state
   const [savedBusinesses, setSavedBusinesses] = useState<UserBusiness[]>([]);
@@ -304,21 +310,64 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
     });
   };
 
-  // Convert Quote directly to Invoice in 1 click
-  const handleConvertQuoteToInvoice = () => {
+  // Convert Quote directly to Invoice in 1 click (synchro Firestore)
+  const handleConvertQuoteToInvoice = async () => {
     const currentYear = new Date().getFullYear();
     const invoiceNum = data.docNumber 
       ? data.docNumber.replace(/^DEV-/, 'FAC-') 
       : `FAC-${currentYear}-${String(Math.floor(Math.random() * 900) + 100)}`;
     
-    onChange({
-      ...data,
-      type: 'facture',
-      docNumber: invoiceNum,
-      notes: data.notes || 'Facture émise suite à la validation du devis. Règlement à réception.'
-    });
-    setAiSuccessMsg("Converti en Facture Client !");
-    setTimeout(() => setAiSuccessMsg(null), 2500);
+    setIsSavingDocument(true);
+    try {
+      const currentUid = auth.currentUser?.uid || 'guest';
+      const newInvoice = await convertQuoteToInvoice(currentUid, data.id || data.docNumber);
+      if (newInvoice && newInvoice.businessDocData) {
+        onChange(newInvoice.businessDocData);
+        setDocSaveSuccessMsg(`Devis converti en Facture ${newInvoice.docNumber} avec statut initial IMPAYÉE !`);
+        setTimeout(() => setDocSaveSuccessMsg(null), 4000);
+      } else {
+        onChange({
+          ...data,
+          type: 'facture',
+          docNumber: invoiceNum,
+          paymentStatus: 'UNPAID',
+          notes: data.notes || 'Facture émise suite à la validation du devis. Règlement à réception.'
+        });
+        setDocSaveSuccessMsg(`Converti en Facture ${invoiceNum} (Statut: IMPAYÉE)`);
+        setTimeout(() => setDocSaveSuccessMsg(null), 3000);
+      }
+    } catch (err) {
+      console.error(err);
+      onChange({
+        ...data,
+        type: 'facture',
+        docNumber: invoiceNum,
+        paymentStatus: 'UNPAID',
+        notes: data.notes || 'Facture émise suite à la validation du devis. Règlement à réception.'
+      });
+    } finally {
+      setIsSavingDocument(false);
+    }
+  };
+
+  // Sauvegarder ou écraser les modifications dans Firestore
+  const handleSaveDocumentToFirestore = async () => {
+    setIsSavingDocument(true);
+    try {
+      const currentUid = auth.currentUser?.uid || 'guest';
+      const docId = data.id || data.docNumber || `DOC-${Date.now()}`;
+      const updatedDoc = { ...data, id: docId };
+      await saveOrUpdateBusinessDocument(currentUid, docId, updatedDoc);
+      onChange(updatedDoc);
+      setDocSaveSuccessMsg(`Document ${data.docNumber || docId} enregistré dans Firestore !`);
+      setTimeout(() => setDocSaveSuccessMsg(null), 4000);
+    } catch (err) {
+      console.error("Erreur sauvegarde document:", err);
+      setDocSaveSuccessMsg("Erreur lors de l'enregistrement dans Firestore.");
+      setTimeout(() => setDocSaveSuccessMsg(null), 4000);
+    } finally {
+      setIsSavingDocument(false);
+    }
   };
 
   // Add line item
@@ -1002,35 +1051,102 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
               )}
 
               {/* Payment status badge toggle for Factures */}
-              {!isQuote && (
-                <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase text-slate-700">
-                    Statut de la facture :
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onChange({ ...data, paymentStatus: 'UNPAID' })}
-                      className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
-                        (data.paymentStatus || 'UNPAID') === 'UNPAID'
-                          ? 'bg-amber-600 text-white shadow-xs'
-                          : 'bg-white text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      IMPAYÉE
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onChange({ ...data, paymentStatus: 'PAID' })}
-                      className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
-                        data.paymentStatus === 'PAID'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'bg-white text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      PAYÉE
-                    </button>
+              {!isQuote ? (
+                <div className="mt-2 p-2.5 bg-slate-100 rounded-lg border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase text-slate-700">
+                      Statut de règlement :
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onChange({ ...data, paymentStatus: 'UNPAID', paidAt: undefined })}
+                        className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
+                          (data.paymentStatus || 'UNPAID') === 'UNPAID'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        IMPAYÉE
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date().toISOString();
+                          onChange({ 
+                            ...data, 
+                            paymentStatus: 'PAID', 
+                            paidAt: data.paidAt || now 
+                          });
+                        }}
+                        className={`px-2.5 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
+                          data.paymentStatus === 'PAID'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        PAYÉE
+                      </button>
+                    </div>
                   </div>
+
+                  {data.paymentStatus === 'PAID' && (
+                    <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-600 font-medium">Date d'encaissement :</span>
+                      <input
+                        type="date"
+                        value={data.paidAt ? data.paidAt.split('T')[0] : new Date().toISOString().split('T')[0]}
+                        onChange={(e) => onChange({ ...data, paidAt: e.target.value })}
+                        className="px-2 py-1 rounded bg-white border border-slate-300 text-xs font-mono text-slate-800"
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Quote Status Selector for Devis */
+                <div className="mt-2 p-2.5 bg-slate-100 rounded-lg border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase text-slate-700">
+                      Statut du devis :
+                    </span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {(['BROUILLON', 'EN_ATTENTE', 'ACCEPTE', 'REFUSE'] as const).map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => onChange({ ...data, quoteStatus: st })}
+                          className={`px-2 py-1 rounded text-[10px] font-black cursor-pointer transition-all ${
+                            (data.quoteStatus || 'BROUILLON') === st
+                              ? st === 'ACCEPTE' 
+                                ? 'bg-emerald-600 text-white shadow-xs' 
+                                : st === 'REFUSE'
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : st === 'EN_ATTENTE'
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-white text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {st === 'BROUILLON' ? 'Brouillon' : st === 'EN_ATTENTE' ? 'En attente' : st === 'ACCEPTE' ? 'Accepté' : 'Refusé'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {data.quoteStatus === 'ACCEPTE' && (
+                    <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between">
+                      <span className="text-[11px] text-emerald-700 font-bold">Devis validé par le client</span>
+                      <button
+                        type="button"
+                        onClick={handleConvertQuoteToInvoice}
+                        disabled={isSavingDocument}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black rounded-lg flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Convertir en Facture</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1326,6 +1442,14 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
         </div>
       )}
 
+      {/* Notification banner for document saving/conversion */}
+      {docSaveSuccessMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-bold flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{docSaveSuccessMsg}</span>
+        </div>
+      )}
+
       {/* 6. GLOBAL CTA BAR AT BOTTOM */}
       <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2">
         <div className="text-[11px] text-slate-500">
@@ -1333,6 +1457,32 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Bouton Enregistrer / Mettre à jour dans Firestore */}
+          <button
+            type="button"
+            onClick={handleSaveDocumentToFirestore}
+            disabled={isSavingDocument}
+            className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            title="Sauvegarder ou écraser les modifications dans Firestore"
+          >
+            <Save className="w-3.5 h-3.5 text-indigo-400" />
+            <span>{isSavingDocument ? 'Enregistrement...' : 'Enregistrer'}</span>
+          </button>
+
+          {/* Bouton Convertir en Facture pour les devis */}
+          {isQuote && (
+            <button
+              type="button"
+              onClick={handleConvertQuoteToInvoice}
+              disabled={isSavingDocument}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+              title="Convertir ce devis en Facture avec statut initial IMPAYÉE"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-emerald-200" />
+              <span>Convertir en Facture</span>
+            </button>
+          )}
+
           {/* 1-Click WhatsApp Direct Share */}
           <a
             href={generateInvoiceWhatsAppLink({
@@ -1351,7 +1501,7 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
             title="Envoyer un message pré-rempli au client sur WhatsApp"
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            <span>Partager via WhatsApp</span>
+            <span>WhatsApp</span>
           </a>
 
           <button
@@ -1360,7 +1510,7 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
             className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Télécharger en PDF HD (1 000 F)</span>
+            <span>Télécharger PDF HD</span>
           </button>
         </div>
       </div>

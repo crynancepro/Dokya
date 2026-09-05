@@ -10,7 +10,7 @@ import {
   CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, 
   CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode,
   UserSubscription, isUserVipActive, getTimestampMillis, formatRemainingSubscriptionTime, AdminUserRecord,
-  Customer, BusinessInvoice, UserBusiness
+  Customer, BusinessInvoice, UserBusiness, BusinessDocData
 } from '../types';
 
 const app = initializeApp(firebaseConfig);
@@ -51,6 +51,12 @@ export interface FirebaseUserProfile {
   updatedAt: string;
   personalInfo?: any;
   role?: 'admin' | 'candidate';
+  phone?: string;
+  phoneNumber?: string;
+  referralCode?: string;
+  referredBy?: string;
+  affiliateBalance?: number;
+  totalAffiliateEarnings?: number;
 }
 
 export interface OrderRecord {
@@ -1725,6 +1731,9 @@ export async function fetchCustomers(userId: string): Promise<Customer[]> {
         ninea: data.ninea || '',
         paymentTerms: data.paymentTerms || '',
         notes: data.notes || '',
+        totalSpent: Number(data.totalSpent) || 0,
+        totalBilled: Number(data.totalBilled) || 0,
+        totalUnpaid: Number(data.totalUnpaid) || 0,
         createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
         updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
       });
@@ -1774,6 +1783,9 @@ export function subscribeToCustomers(userId: string, callback: (customers: Custo
           ninea: data.ninea || '',
           paymentTerms: data.paymentTerms || '',
           notes: data.notes || '',
+          totalSpent: Number(data.totalSpent) || 0,
+          totalBilled: Number(data.totalBilled) || 0,
+          totalUnpaid: Number(data.totalUnpaid) || 0,
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
           updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
         });
@@ -2144,6 +2156,8 @@ export async function fetchBusinessInvoices(userId: string): Promise<BusinessInv
         totalTTC: Number(data.totalTTC) || 0,
         currency: data.currency || 'FCFA',
         status: data.status === 'PAID' ? 'PAID' : 'UNPAID',
+        quoteStatus: data.quoteStatus || 'BROUILLON',
+        paidAt: data.paidAt || '',
         issueDate: data.issueDate || '',
         dueDate: data.dueDate || '',
         businessDocData: data.businessDocData,
@@ -2201,6 +2215,8 @@ export function subscribeToBusinessInvoices(userId: string, callback: (invoices:
           totalTTC: Number(data.totalTTC) || 0,
           currency: data.currency || 'FCFA',
           status: data.status === 'PAID' ? 'PAID' : 'UNPAID',
+          quoteStatus: data.quoteStatus || 'BROUILLON',
+          paidAt: data.paidAt || '',
           issueDate: data.issueDate || '',
           dueDate: data.dueDate || '',
           businessDocData: data.businessDocData,
@@ -2219,40 +2235,439 @@ export function subscribeToBusinessInvoices(userId: string, callback: (invoices:
 }
 
 /**
- * Met à jour le statut PAYÉE ou IMPAYÉE d'une facture
+ * Recalcule et synchronise le total dépensé (totalSpent), facturé et impayé du client
  */
-export async function updateInvoicePaymentStatus(userId: string, invoiceId: string, status: 'PAID' | 'UNPAID'): Promise<boolean> {
+export async function syncCustomerFinancials(userId: string, customerId: string): Promise<void> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid || !customerId) return;
+
+  try {
+    const rawInvoices = localStorage.getItem(getLocalInvoicesKey(currentUid));
+    const invoices: BusinessInvoice[] = rawInvoices ? JSON.parse(rawInvoices) : [];
+    
+    // Filtrer les factures associées à ce client (par ID ou nom)
+    const clientInvoices = invoices.filter(i => 
+      i.customerId === customerId || 
+      (i.businessDocData?.customerId === customerId)
+    );
+
+    let totalBilled = 0;
+    let totalSpent = 0;
+    let totalUnpaid = 0;
+
+    for (const inv of clientInvoices) {
+      if (inv.type === 'facture') {
+        const amount = Number(inv.totalTTC) || 0;
+        totalBilled += amount;
+        if (inv.status === 'PAID' || inv.businessDocData?.paymentStatus === 'PAID') {
+          totalSpent += amount;
+        } else {
+          totalUnpaid += amount;
+        }
+      }
+    }
+
+    // Mise à jour locale du client
+    const rawCustomers = localStorage.getItem(getLocalCustomersKey(currentUid));
+    if (rawCustomers) {
+      const custList: Customer[] = JSON.parse(rawCustomers);
+      const target = custList.find(c => c.id === customerId);
+      if (target) {
+        target.totalSpent = totalSpent;
+        target.totalBilled = totalBilled;
+        target.totalUnpaid = totalUnpaid;
+        localStorage.setItem(getLocalCustomersKey(currentUid), JSON.stringify(custList));
+      }
+    }
+
+    // Mise à jour Firestore du client
+    const custRef = doc(db, 'users', currentUid, 'customers', customerId);
+    await updateDoc(custRef, {
+      totalSpent,
+      totalBilled,
+      totalUnpaid,
+      updatedAt: serverTimestamp()
+    });
+  } catch (err) {
+    console.warn("Erreur syncCustomerFinancials:", err);
+  }
+}
+
+/**
+ * Met à jour le statut PAYÉE ou IMPAYÉE d'une facture
+ * Recalcule automatiquement les statistiques globales et met à jour totalSpent du client
+ */
+export async function updateInvoicePaymentStatus(
+  userId: string, 
+  invoiceId: string, 
+  status: 'PAID' | 'UNPAID',
+  paidDate?: string
+): Promise<boolean> {
   const currentUid = userId || auth.currentUser?.uid;
   if (!currentUid) return false;
 
-  // Local update
+  const now = new Date().toISOString();
+  const effectivePaidAt = status === 'PAID' ? (paidDate || now) : null;
+  let customerIdToSync: string | undefined;
+
+  // 1. Mise à jour dans le cache local des factures
   try {
     const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
     if (raw) {
       const list: BusinessInvoice[] = JSON.parse(raw);
-      const target = list.find(i => i.id === invoiceId);
+      const target = list.find(i => i.id === invoiceId || i.docNumber === invoiceId);
       if (target) {
         target.status = status;
-        target.updatedAt = new Date().toISOString();
+        target.paidAt = effectivePaidAt || undefined;
+        target.updatedAt = now;
+        customerIdToSync = target.customerId || target.businessDocData?.customerId;
         if (target.businessDocData) {
           target.businessDocData.paymentStatus = status;
+          target.businessDocData.paidAt = effectivePaidAt || undefined;
         }
         localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(list));
       }
     }
   } catch (e) {}
 
+  // 2. Mise à jour dans le cache local de senegal_cv_saved_documents
+  try {
+    const rawDocs = localStorage.getItem('senegal_cv_saved_documents');
+    if (rawDocs) {
+      const docs: SavedUserDocument[] = JSON.parse(rawDocs);
+      let changed = false;
+      for (const d of docs) {
+        if (d.id === invoiceId || d.businessDocData?.docNumber === invoiceId) {
+          if (d.businessDocData) {
+            d.businessDocData.paymentStatus = status;
+            d.businessDocData.paidAt = effectivePaidAt || undefined;
+            if (!customerIdToSync && d.businessDocData.customerId) {
+              customerIdToSync = d.businessDocData.customerId;
+            }
+          }
+          d.updatedAt = now;
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(docs));
+      }
+    }
+  } catch (e) {}
+
+  // 3. Mise à jour Firestore dans users/{userId}/invoices/{invoiceId}
   try {
     const docRef = doc(db, 'users', currentUid, 'invoices', invoiceId);
-    await updateDoc(docRef, {
+    await updateDoc(docRef, cleanFirestorePayload({
       status,
+      paidAt: effectivePaidAt,
+      'businessDocData.paymentStatus': status,
+      'businessDocData.paidAt': effectivePaidAt,
       updatedAt: serverTimestamp()
-    });
-    return true;
+    }));
   } catch (error) {
-    console.warn("Erreur updateInvoicePaymentStatus Firestore:", error);
-    return true;
+    console.warn("Erreur updateInvoicePaymentStatus Firestore invoices:", error);
   }
+
+  // 4. Mise à jour Firestore dans users/{userId}/documents/{invoiceId}
+  try {
+    const subDocRef = doc(db, 'users', currentUid, 'documents', invoiceId);
+    await setDoc(subDocRef, {
+      'businessDocData.paymentStatus': status,
+      'businessDocData.paidAt': effectivePaidAt,
+      updatedAt: now
+    }, { merge: true });
+  } catch (e) {}
+
+  // 5. Mise à jour Firestore dans user_documents/{invoiceId}
+  try {
+    const userDocRef = doc(db, 'user_documents', invoiceId);
+    await setDoc(userDocRef, {
+      'businessDocData.paymentStatus': status,
+      'businessDocData.paidAt': effectivePaidAt,
+      updatedAt: now
+    }, { merge: true });
+  } catch (e) {}
+
+  // 6. Recalculer et mettre à jour totalSpent du client
+  if (customerIdToSync) {
+    await syncCustomerFinancials(currentUid, customerIdToSync);
+  }
+
+  return true;
+}
+
+/**
+ * Met à jour le statut d'un devis (BROUILLON, EN_ATTENTE, ACCEPTE, REFUSE)
+ */
+export async function updateQuoteStatus(
+  userId: string,
+  quoteId: string,
+  quoteStatus: 'BROUILLON' | 'EN_ATTENTE' | 'ACCEPTE' | 'REFUSE'
+): Promise<boolean> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return false;
+
+  const now = new Date().toISOString();
+
+  // 1. Local update invoices
+  try {
+    const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+    if (raw) {
+      const list: BusinessInvoice[] = JSON.parse(raw);
+      const target = list.find(i => i.id === quoteId || i.docNumber === quoteId);
+      if (target) {
+        target.quoteStatus = quoteStatus;
+        target.updatedAt = now;
+        if (target.businessDocData) {
+          target.businessDocData.quoteStatus = quoteStatus;
+        }
+        localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(list));
+      }
+    }
+  } catch (e) {}
+
+  // 2. Local update saved docs
+  try {
+    const rawDocs = localStorage.getItem('senegal_cv_saved_documents');
+    if (rawDocs) {
+      const docs: SavedUserDocument[] = JSON.parse(rawDocs);
+      let changed = false;
+      for (const d of docs) {
+        if (d.id === quoteId || d.businessDocData?.docNumber === quoteId) {
+          if (d.businessDocData) {
+            d.businessDocData.quoteStatus = quoteStatus;
+          }
+          d.updatedAt = now;
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(docs));
+      }
+    }
+  } catch (e) {}
+
+  // 3. Firestore update
+  try {
+    const docRef = doc(db, 'users', currentUid, 'invoices', quoteId);
+    await updateDoc(docRef, cleanFirestorePayload({
+      quoteStatus,
+      'businessDocData.quoteStatus': quoteStatus,
+      updatedAt: serverTimestamp()
+    }));
+  } catch (e) {
+    console.warn("Erreur updateQuoteStatus Firestore:", e);
+  }
+
+  return true;
+}
+
+/**
+ * Convertit un devis en facture avec les mêmes prestations et le statut initial IMPAYÉE
+ */
+export async function convertQuoteToInvoice(userId: string, quoteId: string): Promise<BusinessInvoice | null> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return null;
+
+  // 1. Récupérer le devis
+  let quote: BusinessInvoice | undefined;
+  try {
+    const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+    if (raw) {
+      const list: BusinessInvoice[] = JSON.parse(raw);
+      quote = list.find(i => i.id === quoteId || i.docNumber === quoteId);
+    }
+  } catch (e) {}
+
+  if (!quote) {
+    try {
+      const snap = await getDoc(doc(db, 'users', currentUid, 'invoices', quoteId));
+      if (snap.exists()) {
+        quote = snap.data() as BusinessInvoice;
+      }
+    } catch (e) {}
+  }
+
+  if (!quote) return null;
+
+  // Marquer le devis original comme ACCEPTÉ
+  await updateQuoteStatus(currentUid, quoteId, 'ACCEPTE');
+
+  // Générer un nouveau numéro de facture professionnel
+  const year = new Date().getFullYear();
+  const randomSuffix = Math.floor(100 + Math.random() * 900);
+  const newDocNumber = `FAC-${year}-${randomSuffix}`;
+  const newInvoiceId = `INV-${Date.now()}`;
+  const now = new Date().toISOString();
+  const todayStr = now.split('T')[0];
+
+  const clonedDocData: BusinessDocData = quote.businessDocData ? {
+    ...JSON.parse(JSON.stringify(quote.businessDocData)),
+    id: newInvoiceId,
+    type: 'facture',
+    docNumber: newDocNumber,
+    issueDate: todayStr,
+    paymentStatus: 'UNPAID',
+    status: 'envoye',
+    quoteStatus: undefined,
+    paidAt: undefined
+  } : {
+    id: newInvoiceId,
+    type: 'facture',
+    docNumber: newDocNumber,
+    issueDate: todayStr,
+    currency: quote.currency || 'FCFA',
+    issuer: { companyName: '', phone: '', email: '', address: '', ninea: '' },
+    client: {
+      name: quote.customerName,
+      phone: quote.customerPhone || '',
+      email: quote.customerEmail || '',
+      address: quote.customerAddress || '',
+      ninea: quote.customerNinea || ''
+    },
+    items: [],
+    paymentStatus: 'UNPAID',
+    status: 'envoye',
+    customerId: quote.customerId
+  };
+
+  const newInvoice: BusinessInvoice = {
+    id: newInvoiceId,
+    userId: currentUid,
+    customerId: quote.customerId,
+    customerName: quote.customerName,
+    customerPhone: quote.customerPhone,
+    customerEmail: quote.customerEmail,
+    customerAddress: quote.customerAddress,
+    customerNinea: quote.customerNinea,
+    docNumber: newDocNumber,
+    type: 'facture',
+    totalHT: quote.totalHT,
+    totalTTC: quote.totalTTC,
+    currency: quote.currency || 'FCFA',
+    status: 'UNPAID',
+    issueDate: todayStr,
+    businessDocData: clonedDocData,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  // Sauvegarder la nouvelle facture
+  await saveBusinessInvoice(currentUid, newInvoice);
+
+  // Sauvegarder dans user_documents et users/{uid}/documents
+  try {
+    const savedUserDoc: SavedUserDocument = {
+      id: newInvoiceId,
+      userId: currentUid,
+      title: `Facture Client - ${newDocNumber}`,
+      generationMode: 'facture',
+      isPaid: true,
+      businessDocData: clonedDocData,
+      createdAt: now,
+      updatedAt: now
+    };
+    await saveUserDocument(savedUserDoc);
+
+    const subDocRef = doc(db, 'users', currentUid, 'documents', newInvoiceId);
+    await setDoc(subDocRef, cleanFirestorePayload(savedUserDoc), { merge: true });
+  } catch (e) {}
+
+  // Synchroniser les finances du client
+  if (newInvoice.customerId) {
+    await syncCustomerFinancials(currentUid, newInvoice.customerId);
+  }
+
+  return newInvoice;
+}
+
+/**
+ * Sauvegarde ou met à jour un document Devis ou Facture existant dans Firestore et le cache local
+ * Écrase ou met à jour 'users/{userId}/documents/{documentId}', 'users/{userId}/invoices/{id}', etc.
+ */
+export async function saveOrUpdateBusinessDocument(
+  userId: string,
+  docId: string,
+  docData: BusinessDocData
+): Promise<{ invoice: BusinessInvoice; doc: SavedUserDocument }> {
+  const currentUid = userId || auth.currentUser?.uid;
+  const now = new Date().toISOString();
+  const effectiveId = docId || docData.id || `DOC-${Date.now()}`;
+
+  // Calculs des totaux
+  const subtotalHT = (docData.items || []).reduce((acc, item) => {
+    return acc + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0));
+  }, 0);
+  const discountAmount = docData.discountPercent ? Math.round((subtotalHT * docData.discountPercent) / 100) : 0;
+  const netHT = subtotalHT - discountAmount;
+  const vatRate = docData.applyVat ? (docData.vatRate ?? 18) : 0;
+  const vatAmount = docData.applyVat ? Math.round((netHT * vatRate) / 100) : 0;
+  const totalTTC = netHT + vatAmount;
+
+  const enrichedDocData: BusinessDocData = {
+    ...docData,
+    id: effectiveId
+  };
+
+  const invoice: BusinessInvoice = {
+    id: effectiveId,
+    userId: currentUid,
+    customerId: docData.customerId,
+    customerName: docData.client?.companyName || docData.client?.name || 'Client',
+    customerPhone: docData.client?.phone,
+    customerEmail: docData.client?.email,
+    customerAddress: docData.client?.address,
+    customerNinea: docData.client?.ninea,
+    docNumber: docData.docNumber,
+    type: docData.type,
+    totalHT: subtotalHT,
+    totalTTC,
+    currency: docData.currency || 'FCFA',
+    status: docData.paymentStatus === 'PAID' ? 'PAID' : 'UNPAID',
+    quoteStatus: docData.quoteStatus,
+    paidAt: docData.paidAt,
+    issueDate: docData.issueDate || now.split('T')[0],
+    dueDate: docData.dueDate,
+    businessDocData: enrichedDocData,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  const savedUserDoc: SavedUserDocument = {
+    id: effectiveId,
+    userId: currentUid,
+    title: `${docData.type === 'devis' ? 'Devis Pro' : 'Facture Client'} - ${docData.docNumber}`,
+    generationMode: docData.type,
+    isPaid: true,
+    businessDocData: enrichedDocData,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  // 1. Sauvegarder dans 'users/{userId}/invoices/{id}'
+  await saveBusinessInvoice(currentUid, invoice);
+
+  // 2. Sauvegarder dans 'user_documents/{id}'
+  await saveUserDocument(savedUserDoc);
+
+  // 3. Sauvegarder explicitement dans 'users/{userId}/documents/{documentId}'
+  try {
+    const userSubDocRef = doc(db, 'users', currentUid, 'documents', effectiveId);
+    await setDoc(userSubDocRef, cleanFirestorePayload({
+      ...savedUserDoc,
+      updatedAt: serverTimestamp()
+    }), { merge: true });
+  } catch (e) {
+    console.warn("Erreur users/{userId}/documents:", e);
+  }
+
+  // 4. Si client rattaché, synchroniser ses finances
+  if (docData.customerId) {
+    await syncCustomerFinancials(currentUid, docData.customerId);
+  }
+
+  return { invoice, doc: savedUserDoc };
 }
 
 /**

@@ -10,7 +10,8 @@ import {
   fetchCustomers, saveCustomer, deleteCustomer, subscribeToCustomers,
   fetchBusinessInvoices, saveBusinessInvoice, updateInvoicePaymentStatus, 
   deleteBusinessInvoice, subscribeToBusinessInvoices,
-  subscribeToUserBusinesses, deleteUserBusiness, setDefaultUserBusiness
+  subscribeToUserBusinesses, deleteUserBusiness, setDefaultUserBusiness,
+  updateQuoteStatus, convertQuoteToInvoice, saveOrUpdateBusinessDocument
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
 import { 
@@ -269,11 +270,32 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
     showToast(`Client "${clientName}" supprimé.`);
   };
 
-  // Toggle Invoice Payment Status
+  // Toggle Invoice Payment Status avec mise à jour immédiate et synchro financière
   const handleToggleInvoiceStatus = async (invoice: BusinessInvoice) => {
     const newStatus = invoice.status === 'PAID' ? 'UNPAID' : 'PAID';
-    await updateInvoicePaymentStatus(currentUid, invoice.id, newStatus);
+    const now = new Date().toISOString();
+    await updateInvoicePaymentStatus(currentUid, invoice.id, newStatus, newStatus === 'PAID' ? now : undefined);
     showToast(`Facture ${invoice.docNumber} marquée comme ${newStatus === 'PAID' ? 'PAYÉE' : 'IMPAYÉE'}`);
+  };
+
+  // Mise à jour du statut d'un devis
+  const handleUpdateQuoteStatus = async (invoice: BusinessInvoice, newStatus: 'BROUILLON' | 'EN_ATTENTE' | 'ACCEPTE' | 'REFUSE') => {
+    await updateQuoteStatus(currentUid, invoice.id, newStatus);
+    showToast(`Statut du devis ${invoice.docNumber} : ${newStatus}`);
+  };
+
+  // Conversion 1-clic d'un Devis en Facture avec statut initial "IMPAYÉE"
+  const handleConvertQuote = async (invoice: BusinessInvoice) => {
+    if (!window.confirm(`Convertir le devis ${invoice.docNumber} en nouvelle facture ?`)) {
+      return;
+    }
+    const newInvoice = await convertQuoteToInvoice(currentUid, invoice.id);
+    if (newInvoice) {
+      showToast(`Devis ${invoice.docNumber} converti en Facture ${newInvoice.docNumber} !`);
+      if (onLoadInvoiceToEditor && newInvoice.businessDocData) {
+        onLoadInvoiceToEditor(newInvoice.businessDocData);
+      }
+    }
   };
 
   const handleDeleteInvoice = async (invoiceId: string, docNumber: string) => {
@@ -826,19 +848,37 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
                           {/* Statut Toggle */}
                           <td className="py-3.5 px-4">
                             {isQuote ? (
-                              <span className="px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 font-bold text-[11px] border border-slate-700">
-                                Proposition
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={inv.quoteStatus || 'BROUILLON'}
+                                  onChange={(e) => handleUpdateQuoteStatus(inv, e.target.value as any)}
+                                  className={`px-2 py-1 rounded-md font-bold text-[11px] border cursor-pointer bg-slate-950 transition-all ${
+                                    inv.quoteStatus === 'ACCEPTE'
+                                      ? 'text-emerald-300 border-emerald-500/40'
+                                      : inv.quoteStatus === 'REFUSE'
+                                      ? 'text-rose-300 border-rose-500/40'
+                                      : inv.quoteStatus === 'EN_ATTENTE'
+                                      ? 'text-amber-300 border-amber-500/40'
+                                      : 'text-slate-300 border-slate-700'
+                                  }`}
+                                  title="Changer le statut du devis"
+                                >
+                                  <option value="BROUILLON">Brouillon</option>
+                                  <option value="EN_ATTENTE">En attente</option>
+                                  <option value="ACCEPTE">Accepté</option>
+                                  <option value="REFUSE">Refusé</option>
+                                </select>
+                              </div>
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => handleToggleInvoiceStatus(inv)}
-                                className={`px-2.5 py-1 rounded-md font-bold text-[11px] border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                className={`px-2.5 py-1 rounded-md font-bold text-[11px] border transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 ${
                                   isPaid 
                                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30' 
                                     : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
                                 }`}
-                                title="Cliquer pour basculer le statut"
+                                title="Cliquer pour basculer entre PAYÉE et IMPAYÉE"
                               >
                                 {isPaid ? (
                                   <>
@@ -870,15 +910,29 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
                                 <MessageSquare className="w-3.5 h-3.5" />
                               </a>
 
-                              {/* Recharger dans l'éditeur */}
+                              {/* Convertir devis en facture */}
+                              {isQuote && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleConvertQuote(inv)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
+                                  title="Convertir ce devis en Facture avec statut initial IMPAYÉE"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Convertir</span>
+                                </button>
+                              )}
+
+                              {/* Recharger dans l'éditeur [ ✏️ Modifier ] */}
                               {onLoadInvoiceToEditor && inv.businessDocData && (
                                 <button
                                   type="button"
                                   onClick={() => onLoadInvoiceToEditor(inv.businessDocData!)}
-                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-                                  title="Ouvrir dans l'éditeur"
+                                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/30 text-indigo-300 hover:text-white font-bold text-xs flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                                  title="Recharger l'intégralité des données dans l'Éditeur"
                                 >
                                   <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Modifier</span>
                                 </button>
                               )}
 
@@ -1289,31 +1343,73 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
                                 </td>
                                 <td className="py-2.5 px-3">
                                   {inv.type === 'devis' ? (
-                                    <span className="text-[10px] text-blue-300 font-bold">Devis</span>
+                                    <div className="flex items-center gap-1">
+                                      <select
+                                        value={inv.quoteStatus || 'BROUILLON'}
+                                        onChange={(e) => handleUpdateQuoteStatus(inv, e.target.value as any)}
+                                        className="px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer bg-slate-950 text-slate-300 border-slate-700"
+                                      >
+                                        <option value="BROUILLON">Brouillon</option>
+                                        <option value="EN_ATTENTE">En attente</option>
+                                        <option value="ACCEPTE">Accepté</option>
+                                        <option value="REFUSE">Refusé</option>
+                                      </select>
+                                    </div>
                                   ) : (
                                     <button
                                       type="button"
                                       onClick={() => handleToggleInvoiceStatus(inv)}
-                                      className={`px-2 py-0.5 rounded text-[10px] font-black cursor-pointer border ${
+                                      className={`px-2 py-0.5 rounded text-[10px] font-black cursor-pointer border transition-all active:scale-95 ${
                                         isPaid 
-                                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
-                                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30' 
+                                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30'
                                       }`}
+                                      title="Cliquer pour basculer le statut de paiement"
                                     >
                                       {isPaid ? 'PAYÉE' : 'IMPAYÉE'}
                                     </button>
                                   )}
                                 </td>
                                 <td className="py-2.5 px-3 text-right">
-                                  <a
-                                    href={waLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 inline-flex items-center"
-                                    title="Envoyer sur WhatsApp"
-                                  >
-                                    <MessageSquare className="w-3 h-3" />
-                                  </a>
+                                  <div className="flex items-center justify-end gap-1">
+                                    {inv.type === 'devis' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedClientForDetails(null);
+                                          handleConvertQuote(inv);
+                                        }}
+                                        className="p-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 inline-flex items-center"
+                                        title="Convertir en Facture"
+                                      >
+                                        <RefreshCw className="w-3 h-3" />
+                                      </button>
+                                    )}
+
+                                    {onLoadInvoiceToEditor && inv.businessDocData && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedClientForDetails(null);
+                                          onLoadInvoiceToEditor(inv.businessDocData!);
+                                        }}
+                                        className="p-1 rounded bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 inline-flex items-center"
+                                        title="Modifier dans l'Éditeur"
+                                      >
+                                        <Edit3 className="w-3 h-3" />
+                                      </button>
+                                    )}
+
+                                    <a
+                                      href={waLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 inline-flex items-center"
+                                      title="Envoyer sur WhatsApp"
+                                    >
+                                      <MessageSquare className="w-3 h-3" />
+                                    </a>
+                                  </div>
                                 </td>
                               </tr>
                             );

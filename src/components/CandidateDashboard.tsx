@@ -16,7 +16,8 @@ import {
   fetchUserProfile, saveCandidateProfile, fetchUserDocuments, 
   deleteUserDocument, fetchUserOrders, saveOrderRecord, OrderRecord,
   saveTransactionRecord, fetchUserTransactions, subscribeToUserProfile,
-  subscribeToUserTransactions
+  subscribeToUserTransactions, updateInvoicePaymentStatus, updateQuoteStatus,
+  convertQuoteToInvoice, saveOrUpdateBusinessDocument
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
@@ -46,7 +47,7 @@ interface CandidateDashboardProps {
   onSignOut?: () => void;
   initialTab?: SidebarTab | string;
   onOpenInterviewPrepDocument?: (prepData: InterviewPrepData) => void;
-  onLoadBusinessDocToEditor?: (data: BusinessDocData) => void;
+  onLoadBusinessDocToEditor?: (data: BusinessDocData, docId?: string) => void;
   onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture', business?: UserBusiness) => void;
 }
 
@@ -588,6 +589,90 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       }
     } catch (e) {
       console.error('Error generating card docx:', e);
+    }
+  };
+
+  // Bascule rapide du statut PAYÉE / IMPAYÉE directement depuis la carte
+  const handleToggleDocPaymentStatus = async (docItem: SavedUserDocument) => {
+    const currentUid = user?.uid || 'guest';
+    const currentStatus = docItem.businessDocData?.paymentStatus || 'UNPAID';
+    const newStatus = currentStatus === 'PAID' ? 'UNPAID' : 'PAID';
+    const now = new Date().toISOString();
+
+    // Mise à jour optimiste dans la liste locale des documents
+    setDocuments(prev => prev.map(d => {
+      if (d.id === docItem.id) {
+        return {
+          ...d,
+          businessDocData: d.businessDocData ? {
+            ...d.businessDocData,
+            paymentStatus: newStatus,
+            paidAt: newStatus === 'PAID' ? now : undefined
+          } : undefined,
+          updatedAt: now
+        };
+      }
+      return d;
+    }));
+
+    await updateInvoicePaymentStatus(currentUid, docItem.id, newStatus, newStatus === 'PAID' ? now : undefined);
+  };
+
+  // Mise à jour du statut d'un devis depuis la carte
+  const handleUpdateDocQuoteStatus = async (docItem: SavedUserDocument, newStatus: 'BROUILLON' | 'EN_ATTENTE' | 'ACCEPTE' | 'REFUSE') => {
+    const currentUid = user?.uid || 'guest';
+    setDocuments(prev => prev.map(d => {
+      if (d.id === docItem.id) {
+        return {
+          ...d,
+          businessDocData: d.businessDocData ? {
+            ...d.businessDocData,
+            quoteStatus: newStatus
+          } : undefined,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return d;
+    }));
+    await updateQuoteStatus(currentUid, docItem.id, newStatus);
+  };
+
+  // Conversion directe d'un devis en facture
+  const handleConvertDocQuote = async (docItem: SavedUserDocument) => {
+    if (!window.confirm(`Convertir ce devis ${docItem.businessDocData?.docNumber || ''} en nouvelle facture ?`)) return;
+    const currentUid = user?.uid || 'guest';
+    const newInvoice = await convertQuoteToInvoice(currentUid, docItem.id);
+    if (newInvoice && onLoadBusinessDocToEditor && newInvoice.businessDocData) {
+      onLoadBusinessDocToEditor(newInvoice.businessDocData, newInvoice.id);
+    }
+  };
+
+  // Édition universelle d'un document (CV / Lettre vs Devis / Facture)
+  const handleEditAnyDocument = (docItem: SavedUserDocument) => {
+    const isBusinessDoc = docItem.generationMode === 'devis' || 
+      docItem.generationMode === 'facture' || 
+      docItem.generationMode === 'pack_business' || 
+      !!docItem.businessDocData;
+
+    if (isBusinessDoc && onLoadBusinessDocToEditor) {
+      const fallbackData: BusinessDocData = docItem.businessDocData || {
+        id: docItem.id,
+        type: docItem.generationMode === 'devis' ? 'devis' : 'facture',
+        docNumber: docItem.title?.split('-')?.[1]?.trim() || `DOC-${Date.now()}`,
+        issueDate: new Date(docItem.createdAt).toISOString().split('T')[0],
+        currency: 'FCFA',
+        applyVat: false,
+        vatRate: 18,
+        discountPercent: 0,
+        issuer: { name: '', companyName: '', phone: '', email: '', address: '', city: 'Dakar', country: 'Sénégal', ninea: '' },
+        client: { name: 'Client', phone: '', email: '', address: '', city: 'Dakar', country: 'Sénégal', ninea: '' },
+        items: [],
+        paymentInfo: {},
+        paymentStatus: 'UNPAID'
+      };
+      onLoadBusinessDocToEditor(fallbackData, docItem.id);
+    } else {
+      onLoadDocumentToEditor(docItem.formData, docItem.aiData);
     }
   };
 
@@ -1283,26 +1368,90 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {filteredDocuments.map(docItem => {
                     const isInterviewDoc = !!docItem.interviewPrepData || (docItem.generationMode as any) === 'interview_prep';
+                    const isBusinessDoc = docItem.generationMode === 'devis' || docItem.generationMode === 'facture' || docItem.generationMode === 'pack_business' || !!docItem.businessDocData;
+                    const isFacture = docItem.generationMode === 'facture' || docItem.businessDocData?.type === 'facture';
+                    const isDevis = docItem.generationMode === 'devis' || docItem.businessDocData?.type === 'devis';
+                    const isPaid = docItem.businessDocData?.paymentStatus === 'PAID';
+                    const quoteStatus = docItem.businessDocData?.quoteStatus || 'BROUILLON';
+
                     return (
                     <div
                       key={docItem.id}
                       className={`bg-slate-900 border ${isInterviewDoc ? 'border-indigo-500/40 hover:border-indigo-500/70' : 'border-slate-800 hover:border-slate-700'} rounded-3xl p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all`}
                     >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${
-                            isInterviewDoc
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                          }`}>
-                            {isInterviewDoc ? 'Coaching Entretien RH'
-                              : docItem.generationMode === 'letter_only' ? 'Lettre de Motivation'
-                              : docItem.generationMode === 'devis' ? 'Devis Pro'
-                              : docItem.generationMode === 'facture' ? 'Facture Client'
-                              : docItem.generationMode === 'ebook' ? 'Ebook Pro AI'
-                              : 'CV Pro ATS'}
-                          </span>
-                          <span className="text-[11px] text-slate-400">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${
+                              isInterviewDoc
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : isDevis
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                : isFacture
+                                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                                : docItem.generationMode === 'letter_only' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                : docItem.generationMode === 'ebook' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                            }`}>
+                              {isInterviewDoc ? 'Coaching Entretien RH'
+                                : docItem.generationMode === 'letter_only' ? 'Lettre de Motivation'
+                                : isDevis ? 'Devis Pro'
+                                : isFacture ? 'Facture Client'
+                                : docItem.generationMode === 'ebook' ? 'Ebook Pro AI'
+                                : 'CV Pro ATS'}
+                            </span>
+
+                            {/* Facture : Statut Règlement Rapide (PAYÉE / IMPAYÉE) */}
+                            {isFacture && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleDocPaymentStatus(docItem)}
+                                className={`px-2 py-0.5 rounded text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 active:scale-95 ${
+                                  isPaid 
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30' 
+                                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                }`}
+                                title="Cliquer pour basculer entre PAYÉE et IMPAYÉE"
+                              >
+                                {isPaid ? (
+                                  <>
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                    <span>PAYÉE</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="w-3 h-3 text-amber-400" />
+                                    <span>IMPAYÉE</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+
+                            {/* Devis : Statut (Brouillon, En attente, Accepté, Refusé) */}
+                            {isDevis && (
+                              <select
+                                value={quoteStatus}
+                                onChange={(e) => handleUpdateDocQuoteStatus(docItem, e.target.value as any)}
+                                className={`px-2 py-0.5 rounded text-[10px] font-black border cursor-pointer bg-slate-950 ${
+                                  quoteStatus === 'ACCEPTE'
+                                    ? 'text-emerald-300 border-emerald-500/40'
+                                    : quoteStatus === 'REFUSE'
+                                    ? 'text-rose-300 border-rose-500/40'
+                                    : quoteStatus === 'EN_ATTENTE'
+                                    ? 'text-amber-300 border-amber-500/40'
+                                    : 'text-slate-300 border-slate-700'
+                                }`}
+                                title="Modifier le statut du devis"
+                              >
+                                <option value="BROUILLON">Brouillon</option>
+                                <option value="EN_ATTENTE">En attente</option>
+                                <option value="ACCEPTE">Accepté</option>
+                                <option value="REFUSE">Refusé</option>
+                              </select>
+                            )}
+                          </div>
+
+                          <span className="text-[11px] text-slate-400 font-mono">
                             {new Date(docItem.createdAt).toLocaleDateString('fr-FR')}
                           </span>
                         </div>
@@ -1311,6 +1460,16 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                         <p className="text-xs text-slate-400 line-clamp-2">
                           {docItem.formData?.personalInfo?.targetJob || docItem.businessDocData?.issuer?.companyName || docItem.ebookData?.author || 'Document Dokya'}
                         </p>
+
+                        {/* Montant TTC pour les documents commerciaux */}
+                        {isBusinessDoc && docItem.businessDocData && (
+                          <div className="flex items-center justify-between text-xs pt-1">
+                            <span className="text-slate-400">Total :</span>
+                            <span className="font-mono font-black text-white">
+                              {((docItem.businessDocData.items || []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0)).toLocaleString('fr-FR')} {docItem.businessDocData.currency || 'FCFA'}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
@@ -1386,22 +1545,39 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           </div>
                         )}
 
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
+                          {/* Conversion Devis -> Facture si Devis */}
+                          {isDevis && (
+                            <button
+                              type="button"
+                              onClick={() => handleConvertDocQuote(docItem)}
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                              title="Convertir ce devis en Facture avec statut initial IMPAYÉE"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Convertir</span>
+                            </button>
+                          )}
+
+                          {/* Bouton d'action [ ✏️ Modifier ] demandé */}
                           {!isInterviewDoc && (
                             <button
                               type="button"
-                              onClick={() => onLoadDocumentToEditor(docItem.formData, docItem.aiData)}
-                              className="p-2 rounded-xl text-indigo-400 hover:bg-indigo-950/40 transition-colors cursor-pointer"
-                              title="Modifier dans l'éditeur"
+                              onClick={() => handleEditAnyDocument(docItem)}
+                              className="px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                              title="Recharger l'intégralité des données dans l'Éditeur"
                             >
-                              <Edit3 className="w-4 h-4" />
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Modifier</span>
                             </button>
                           )}
+
+                          {/* Supprimer */}
                           <button
                             type="button"
                             onClick={() => handleDeleteDoc(docItem.id)}
                             className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
-                            title="Supprimer"
+                            title="Supprimer ce document"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
