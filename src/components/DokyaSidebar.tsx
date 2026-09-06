@@ -23,7 +23,8 @@ import {
   Menu,
   X,
   Building2,
-  Users
+  Users,
+  MessageSquare
 } from 'lucide-react';
 import { CandidateProfile, SavedUserDocument, isUserVipActive } from '../types';
 import { auth } from '../lib/firebase';
@@ -37,6 +38,8 @@ export type SidebarTab =
   | 'entretiens'
   | 'business'
   | 'affiliation'
+  | 'help'
+  | 'support'
   | 'gen_cv'
   | 'gen_letter'
   | 'gen_business'
@@ -530,6 +533,27 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </div>
               <span className="text-[10px] text-slate-400 font-mono">
                 Éditer
+              </span>
+            </button>
+
+            {/* 7. Centre d'Aide & Support Tchat (IA + Relais Humain) */}
+            <button
+              id="nav-support-help"
+              type="button"
+              onClick={() => handleNavClick('help')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'help' || activeTab === 'support'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <MessageSquare className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>Centre d'Aide & Support</span>
+              </div>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Direct</span>
               </span>
             </button>
 

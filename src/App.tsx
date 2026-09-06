@@ -164,7 +164,9 @@ export type MainAppView =
   | 'ebook_preview'
   | 'interview_prep'
   | 'tarifs'
-  | 'subscription';
+  | 'subscription'
+  | 'help'
+  | 'support';
 
 interface AppProps {
   onOpenAdmin?: () => void;
@@ -968,7 +970,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   };
 
   const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name || !!ebookData?.title;
-  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || activeTab === 'business' || activeTab === 'clients';
+  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || activeTab === 'business' || activeTab === 'clients' || activeTab === 'help' || activeTab === 'support';
   const isLandingView = activeTab === 'landing';
   const isTemplatesView = activeTab === 'templates';
 
@@ -1050,7 +1052,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       {/* 2. MAIN WORKSPACE */}
       {isDashboardView ? (
         <CandidateDashboard
-          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : activeTab === 'entretiens' ? 'entretiens' : activeTab === 'business' || activeTab === 'clients' ? 'business' : 'dashboard_home'}
+          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : activeTab === 'entretiens' ? 'entretiens' : activeTab === 'business' || activeTab === 'clients' ? 'business' : activeTab === 'help' || activeTab === 'support' ? 'help' : 'dashboard_home'}
           onApplyProfileToEditor={handleApplyProfileToEditor}
           onLoadDocumentToEditor={handleLoadDocumentToEditor}
           onSelectService={handleSelectService}

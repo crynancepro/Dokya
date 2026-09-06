@@ -7,7 +7,8 @@ import {
   Sliders, UserCheck, Eye, Edit3, X, HelpCircle, Tag, ShieldAlert,
   Percent, Clock, Trash2, Ban, Unlock, Check, AlertTriangle, ArrowRight,
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
-  Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity
+  Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity,
+  MessageSquare, Volume2, VolumeX, BellRing
 } from 'lucide-react';
 import { 
   auth, 
@@ -25,16 +26,26 @@ import {
   rejectTransactionWithFirestore,
   purgeDemoDataInFirestore,
   fetchAllAdminUsersWithSubscriptions,
-  manageUserSubscriptionInFirestore
+  manageUserSubscriptionInFirestore,
+  subscribeToActiveSupportConversations
 } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail, PRIMARY_ADMIN_EMAIL, getAdminHeaders } from '../lib/adminAuth';
 import { startImpersonationSession, stopImpersonationSession, getImpersonatedSession } from '../lib/impersonation';
 import { 
   AdminUserRecord, AdminKPIs, TransactionRecord, PlatformPricingConfig, 
-  PromoCode, AuditLogEntry, UserSubscription, isUserVipActive, getTimestampMillis 
+  PromoCode, AuditLogEntry, UserSubscription, isUserVipActive, getTimestampMillis,
+  SupportConversation
 } from '../types';
 import { AdminAffiliationView } from './AdminAffiliationView';
+import { AdminSupportChatView } from './AdminSupportChatView';
+import { 
+  startEmergencyAlarm, 
+  stopEmergencyAlarm, 
+  isEmergencyAlarmActive, 
+  requestAdminNotificationPermission, 
+  triggerAdminPushNotification 
+} from '../lib/adminAlerts';
 
 interface AdminDashboardProps {
   onBackHome: () => void;
@@ -46,8 +57,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenEditor 
 }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(auth.currentUser);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'subscriptions' | 'pricing' | 'promo' | 'audit' | 'transactions' | 'affiliations'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'subscriptions' | 'pricing' | 'promo' | 'audit' | 'transactions' | 'affiliations' | 'support'>('overview');
   
+  // Realtime Support & Emergency Alarm States
+  const [supportConversations, setSupportConversations] = useState<SupportConversation[]>([]);
+  const [isAlarmMuted, setIsAlarmMuted] = useState<boolean>(false);
+  const [isAlarmTesting, setIsAlarmTesting] = useState<boolean>(false);
+
   // Data States
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -331,13 +347,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       });
 
+      // Real-time Firestore support conversations listener (detects human escalation immediately)
+      const unsubSupport = subscribeToActiveSupportConversations((liveConvs) => {
+        if (Array.isArray(liveConvs)) {
+          setSupportConversations(liveConvs);
+        }
+      });
+
       return () => {
         unsubTx();
         unsubPricing();
         unsubPromos();
+        unsubSupport();
+        stopEmergencyAlarm();
       };
     }
   }, [isAuthorized, adminEmail]);
+
+  // Request Push Notification permission on mount
+  useEffect(() => {
+    requestAdminNotificationPermission().catch(() => {});
+  }, []);
+
+  // Compute emergency counts
+  const urgentSupportCount = useMemo(() => {
+    return supportConversations.filter((c) => c.urgent || c.status === 'HUMAN_REQUESTED').length;
+  }, [supportConversations]);
+
+  const pendingReceiptsCount = useMemo(() => {
+    return transactionsList.filter((t) => t.status === 'PENDING' || t.status === 'WAITING_FOR_ADMIN' || t.status === 'WAITING_VALIDATION').length;
+  }, [transactionsList]);
+
+  const totalEmergencyCount = urgentSupportCount + pendingReceiptsCount;
+
+  // Background Audio Alarm & Push Notification Trigger
+  useEffect(() => {
+    if (totalEmergencyCount > 0 && !isAlarmMuted) {
+      startEmergencyAlarm();
+      triggerAdminPushNotification(
+        '🚨 ALERTE ADMIN DOKYA URGENTE',
+        `${totalEmergencyCount} action(s) requise(s) : ${urgentSupportCount} demande(s) de support et ${pendingReceiptsCount} reçu(s) en attente.`
+      );
+    } else if (totalEmergencyCount === 0 && !isAlarmTesting) {
+      stopEmergencyAlarm();
+    }
+  }, [totalEmergencyCount, isAlarmMuted, urgentSupportCount, pendingReceiptsCount, isAlarmTesting]);
 
   // Sync impersonation state listener
   useEffect(() => {
@@ -1370,6 +1424,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Quick Actions */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Siren Audio Alert Control / Manual Test */}
+            <button
+              type="button"
+              onClick={() => {
+                if (isAlarmTesting || isEmergencyAlarmActive()) {
+                  stopEmergencyAlarm();
+                  setIsAlarmTesting(false);
+                  setIsAlarmMuted(true);
+                } else {
+                  setIsAlarmMuted(false);
+                  setIsAlarmTesting(true);
+                  startEmergencyAlarm();
+                  setTimeout(() => {
+                    stopEmergencyAlarm();
+                    setIsAlarmTesting(false);
+                  }, 4000);
+                }
+              }}
+              title={isAlarmMuted ? "Alarme coupée (Cliquer pour réactiver ou tester)" : "Sirène audio active pour les alertes urgentes"}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer border ${
+                isAlarmTesting || (!isAlarmMuted && totalEmergencyCount > 0)
+                  ? 'bg-rose-600 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-950/50'
+                  : isAlarmMuted
+                  ? 'bg-slate-800/80 text-slate-400 border-slate-700/60 hover:text-white'
+                  : 'bg-slate-800/90 text-emerald-300 border-emerald-500/30 hover:bg-slate-800'
+              }`}
+            >
+              {isAlarmMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+              <span>{isAlarmTesting ? 'Test Sirène...' : isAlarmMuted ? 'Sirène Coupée' : 'Sirène Active'}</span>
+            </button>
+
             {adminEmail === PRIMARY_ADMIN_EMAIL && (
               <button
                 onClick={() => setIsPurgeModalOpen(true)}
@@ -1544,11 +1629,119 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>Affiliations & Parrainages</span>
           </button>
 
+          {/* Support & Tchat Client Tab with Emergency Indicator */}
+          <button
+            onClick={() => setActiveTab('support')}
+            type="button"
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer relative ${
+              activeTab === 'support'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black'
+                : urgentSupportCount > 0
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 animate-pulse'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <MessageSquare className={`w-4 h-4 ${urgentSupportCount > 0 ? 'text-rose-400 animate-bounce' : ''}`} />
+            <span>Support & Tchat Client</span>
+            {urgentSupportCount > 0 ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-600 text-white font-black animate-pulse shadow-sm">
+                🚨 {urgentSupportCount} URGENT
+              </span>
+            ) : supportConversations.length > 0 ? (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300 font-bold">
+                {supportConversations.length}
+              </span>
+            ) : null}
+          </button>
+
         </div>
       </header>
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-8 pt-6 space-y-6">
+
+        {/* Urgent Emergency Alert Banner */}
+        {totalEmergencyCount > 0 && (
+          <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-rose-950 via-rose-900/90 to-slate-900 border-2 border-rose-500/80 shadow-2xl shadow-rose-950/80 animate-in fade-in flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-rose-950/60 animate-bounce">
+                <BellRing className="w-6 h-6" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-rose-500 text-white animate-pulse">
+                    🚨 ALERTE INTERVENTION DIRECTE ({totalEmergencyCount})
+                  </span>
+                  {!isAlarmMuted && (
+                    <span className="text-xs text-rose-200 flex items-center gap-1 font-semibold">
+                      <Volume2 className="w-3.5 h-3.5 text-rose-300 animate-pulse" />
+                      Sirène d'alarme active
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-base sm:text-lg font-black text-white">
+                  Des clients demandent une assistance immédiate ou attendent une validation
+                </h2>
+                <p className="text-xs text-rose-200/80">
+                  {urgentSupportCount > 0 && (
+                    <span className="font-bold text-rose-300 mr-3">
+                      • {urgentSupportCount} client(s) ont cliqué sur "Parler à un conseiller humain"
+                    </span>
+                  )}
+                  {pendingReceiptsCount > 0 && (
+                    <span className="font-bold text-amber-300">
+                      • {pendingReceiptsCount} transaction(s) Wave / OM en attente de vérification
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0 self-end md:self-auto flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  stopEmergencyAlarm();
+                  setIsAlarmMuted(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <VolumeX className="w-4 h-4 text-rose-400" />
+                <span>Couper l'alarme</span>
+              </button>
+
+              {urgentSupportCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopEmergencyAlarm();
+                    setIsAlarmMuted(true);
+                    setActiveTab('support');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-950/40 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Répondre au Tchat ({urgentSupportCount})</span>
+                </button>
+              )}
+
+              {pendingReceiptsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopEmergencyAlarm();
+                    setIsAlarmMuted(true);
+                    setActiveTab('transactions');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-lg shadow-amber-950/40 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>Valider Reçus ({pendingReceiptsCount})</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Global Notifications */}
         {successMsg && (
@@ -3252,6 +3445,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* ========================================================================= */}
         {activeTab === 'affiliations' && (
           <AdminAffiliationView adminEmail={currentUser?.email || PRIMARY_ADMIN_EMAIL} />
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB: SUPPORT CLIENT HYBRIDE (IA & CONSEILLER HUMAIN EN DIRECT)           */}
+        {/* ========================================================================= */}
+        {activeTab === 'support' && (
+          <AdminSupportChatView adminEmail={currentUser?.email || PRIMARY_ADMIN_EMAIL} />
         )}
 
       </main>

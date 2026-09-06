@@ -38,6 +38,7 @@ import { A4PreviewContainer } from './A4PreviewContainer';
 import { isAdminEmail } from '../lib/adminAuth';
 import { DokyaBusinessView } from './DokyaBusinessView';
 import { DokyaAffiliateView } from './DokyaAffiliateView';
+import { DokyaSupportChat } from './DokyaSupportChat';
 
 interface CandidateDashboardProps {
   onLoadDocumentToEditor: (formData: CVFormData, aiData: any) => void;
@@ -2083,6 +2084,19 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               onDirectExportPDF={handleDirectCardPDF}
               onDirectExportDocx={handleDirectCardDocx}
             />
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 8: CENTRE D'AIDE ET SUPPORT EN DIRECT (TCHAT HYBRIDE IA + HUMAIN)   */}
+          {/* ========================================================================= */}
+          {(activeSidebarTab === 'help' || activeSidebarTab === 'support') && (
+            <div className="pt-2">
+              <DokyaSupportChat
+                currentUser={user}
+                userProfile={profile}
+                onBack={() => setActiveSidebarTab('dashboard_home')}
+              />
+            </div>
           )}
 
         </main>

@@ -11,12 +11,14 @@ import {
   CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode,
   UserSubscription, isUserVipActive, getTimestampMillis, formatRemainingSubscriptionTime, AdminUserRecord,
   Customer, BusinessInvoice, UserBusiness, BusinessDocData,
-  AffiliateCommission, AffiliatePayoutRequest
+  AffiliateCommission, AffiliatePayoutRequest,
+  SupportMessage, SupportConversation, SupportConversationStatus, SupportSenderType
 } from '../types';
 
 const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
   experimentalAutoDetectLongPolling: true,
+  ignoreUndefinedProperties: true,
 }, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -3155,3 +3157,256 @@ async function testConnection() {
 }
 
 testConnection();
+
+// =========================================================================
+// SUPPORT CHAT & CONVERSATIONS (HYBRID AI + HUMAN ASSISTANCE)
+// =========================================================================
+
+export function getOrCreateConversationId(userId: string): string {
+  return `support_${userId}`;
+}
+
+export function subscribeToSupportConversation(
+  conversationId: string, 
+  onUpdate: (conv: SupportConversation | null) => void
+): Unsubscribe {
+  const convRef = doc(db, 'support_conversations', conversationId);
+  return onSnapshot(convRef, (docSnap) => {
+    if (docSnap.exists()) {
+      onUpdate({ id: docSnap.id, ...(docSnap.data() as any) });
+    } else {
+      onUpdate(null);
+    }
+  }, (err) => {
+    console.warn('[Support Chat] Error subscribing to conversation:', err);
+    onUpdate(null);
+  });
+}
+
+export function subscribeToSupportMessages(
+  conversationId: string, 
+  onUpdate: (messages: SupportMessage[]) => void
+): Unsubscribe {
+  const messagesCol = collection(db, 'support_conversations', conversationId, 'messages');
+  // Auto-TTL 24 hours calculation:
+  const cutoffTime = Date.now() - 24 * 60 * 60 * 1000;
+
+  return onSnapshot(messagesCol, (querySnap) => {
+    const msgs: SupportMessage[] = [];
+    querySnap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      // 24h TTL filter
+      if (!data.timestamp || data.timestamp >= cutoffTime) {
+        msgs.push({
+          id: docSnap.id,
+          ...data,
+          conversationId,
+        });
+      }
+    });
+    // Sort chronologically ascending
+    msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    onUpdate(msgs);
+  }, (err) => {
+    console.warn('[Support Chat] Error subscribing to messages:', err);
+    onUpdate([]);
+  });
+}
+
+export async function sendSupportMessage(
+  conversationId: string,
+  messageData: {
+    senderId: string;
+    senderType: SupportSenderType;
+    senderName: string;
+    text: string;
+    mediaUrl?: string;
+    mediaType?: 'image' | 'audio';
+    audioDuration?: number;
+  },
+  convMetadata: {
+    userId: string;
+    userEmail: string;
+    userName: string;
+    userPhone?: string;
+    status?: SupportConversationStatus;
+    unreadAdmin?: boolean;
+    unreadUser?: boolean;
+    urgent?: boolean;
+  }
+): Promise<string> {
+  const now = new Date();
+  const timestamp = now.getTime();
+  const isoTime = now.toISOString();
+
+  const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const msgRef = doc(db, 'support_conversations', conversationId, 'messages', msgId);
+  
+  const fullMsg: any = {
+    id: msgId,
+    conversationId,
+    senderId: messageData.senderId || 'user',
+    senderType: messageData.senderType || 'user',
+    senderName: messageData.senderName || 'Utilisateur',
+    text: messageData.text || '',
+    createdAt: isoTime,
+    timestamp,
+  };
+
+  if (messageData.mediaUrl) {
+    fullMsg.mediaUrl = messageData.mediaUrl;
+  }
+  if (messageData.mediaType) {
+    fullMsg.mediaType = messageData.mediaType;
+  }
+  if (messageData.audioDuration !== undefined && messageData.audioDuration !== null) {
+    fullMsg.audioDuration = messageData.audioDuration;
+  }
+
+  await setDoc(msgRef, fullMsg);
+
+  // Update conversation parent document
+  const convRef = doc(db, 'support_conversations', conversationId);
+  const convUpdate: any = {
+    id: conversationId,
+    userId: convMetadata.userId || 'guest_user',
+    userEmail: convMetadata.userEmail || '',
+    userName: convMetadata.userName || 'Candidat Dokya',
+    lastMessageText: messageData.text || (messageData.mediaType === 'image' ? '📷 Capture d\'écran' : '🎙️ Message vocal'),
+    lastMessageSender: messageData.senderType || 'user',
+    lastMessageAt: isoTime,
+    updatedAt: isoTime,
+  };
+
+  if (convMetadata.userPhone) convUpdate.userPhone = convMetadata.userPhone;
+  if (convMetadata.status) convUpdate.status = convMetadata.status;
+  if (convMetadata.unreadAdmin !== undefined) convUpdate.unreadAdmin = convMetadata.unreadAdmin;
+  if (convMetadata.unreadUser !== undefined) convUpdate.unreadUser = convMetadata.unreadUser;
+  if (convMetadata.urgent !== undefined) convUpdate.urgent = convMetadata.urgent;
+
+  await setDoc(convRef, convUpdate, { merge: true });
+  return msgId;
+}
+
+export async function requestHumanSupport(
+  conversationId: string,
+  user: { uid: string; displayName?: string; email?: string; phone?: string }
+): Promise<void> {
+  const now = new Date();
+  const isoTime = now.toISOString();
+  const timestamp = now.getTime();
+
+  // 1. Insert system message in discussion
+  const sysMsgId = `sys_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const sysMsgRef = doc(db, 'support_conversations', conversationId, 'messages', sysMsgId);
+  await setDoc(sysMsgRef, {
+    id: sysMsgId,
+    conversationId,
+    senderId: 'system',
+    senderType: 'system',
+    senderName: 'Système Dokya',
+    text: '🆘 Relais humain demandé : Votre conversation a été transférée en priorité haute vers un conseiller de l\'équipe Dokya. Une alerte d\'urgence a été transmise à l\'administration.',
+    createdAt: isoTime,
+    timestamp,
+  });
+
+  // 2. Update conversation status
+  const convRef = doc(db, 'support_conversations', conversationId);
+  await setDoc(convRef, {
+    id: conversationId,
+    userId: user.uid,
+    userEmail: user.email || '',
+    userName: user.displayName || 'Candidat Dokya',
+    userPhone: user.phone || '',
+    status: 'HUMAN_REQUESTED',
+    urgent: true,
+    unreadAdmin: true,
+    lastMessageText: '🆘 Relais humain demandé en urgence',
+    lastMessageSender: 'system',
+    lastMessageAt: isoTime,
+    updatedAt: isoTime,
+  }, { merge: true });
+}
+
+export function subscribeToActiveSupportConversations(
+  onUpdate: (conversations: SupportConversation[]) => void
+): Unsubscribe {
+  const convCol = collection(db, 'support_conversations');
+  return onSnapshot(convCol, (querySnap) => {
+    const list: SupportConversation[] = [];
+    querySnap.forEach((docSnap) => {
+      list.push({ id: docSnap.id, ...(docSnap.data() as any) });
+    });
+    // Sort with urgent & latest on top
+    list.sort((a, b) => {
+      if (a.urgent && !b.urgent) return -1;
+      if (!a.urgent && b.urgent) return 1;
+      return new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime();
+    });
+    onUpdate(list);
+  }, (err) => {
+    console.warn('[Support Chat] Error subscribing to all conversations:', err);
+    onUpdate([]);
+  });
+}
+
+export async function resolveSupportTicket(conversationId: string, adminName: string): Promise<void> {
+  const now = new Date();
+  const isoTime = now.toISOString();
+
+  const msgId = `sys_res_${Date.now()}`;
+  await setDoc(doc(db, 'support_conversations', conversationId, 'messages', msgId), {
+    id: msgId,
+    conversationId,
+    senderId: 'system',
+    senderType: 'system',
+    senderName: 'Support Dokya',
+    text: `✅ Ce ticket de support a été marqué comme résolu par ${adminName}. Vous pouvez poser une nouvelle question à tout moment pour réactiver l'assistance.`,
+    createdAt: isoTime,
+    timestamp: now.getTime(),
+  });
+
+  await updateDoc(doc(db, 'support_conversations', conversationId), {
+    status: 'RESOLVED',
+    urgent: false,
+    unreadAdmin: false,
+    updatedAt: isoTime,
+  });
+}
+
+export async function reactivateAiSupport(conversationId: string): Promise<void> {
+  const now = new Date();
+  await updateDoc(doc(db, 'support_conversations', conversationId), {
+    status: 'AI_ASSISTED',
+    urgent: false,
+    unreadAdmin: false,
+    updatedAt: now.toISOString(),
+  });
+}
+
+export async function purgeOldSupportMessages(conversationId: string): Promise<number> {
+  try {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const msgsCol = collection(db, 'support_conversations', conversationId, 'messages');
+    const snap = await getDocs(msgsCol);
+    let deletedCount = 0;
+    const batch = writeBatch(db);
+
+    snap.forEach((d) => {
+      const data = d.data();
+      if (data.timestamp && data.timestamp < cutoff) {
+        batch.delete(d.ref);
+        deletedCount++;
+      }
+    });
+
+    if (deletedCount > 0) {
+      await batch.commit();
+    }
+    return deletedCount;
+  } catch (err) {
+    console.warn('[Support Chat] Purge old messages error:', err);
+    return 0;
+  }
+}
+

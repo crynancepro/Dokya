@@ -873,6 +873,35 @@ export interface AffiliatePayoutRequest {
   adminNote?: string;
 }
 
+export type SupportConversationStatus = 'AI_ASSISTED' | 'HUMAN_REQUESTED' | 'IN_PROGRESS' | 'RESOLVED';
+export type SupportSenderType = 'user' | 'ai' | 'agent' | 'system';
 
+export interface SupportMessage {
+  id: string;
+  conversationId: string;
+  senderId: string; // 'ai' | user.uid | admin.uid | 'system'
+  senderType: SupportSenderType;
+  senderName: string;
+  text: string;
+  mediaUrl?: string; // base64 or remote URL
+  mediaType?: 'image' | 'audio';
+  audioDuration?: number; // duration in seconds
+  createdAt: string; // ISO string
+  timestamp: number; // milliseconds for TTL 24h filtering
+}
 
-
+export interface SupportConversation {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  userPhone?: string;
+  status: SupportConversationStatus;
+  lastMessageText: string;
+  lastMessageSender: SupportSenderType;
+  lastMessageAt: string;
+  createdAt: string;
+  unreadAdmin?: boolean;
+  unreadUser?: boolean;
+  urgent?: boolean;
+}

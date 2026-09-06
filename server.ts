@@ -4145,6 +4145,108 @@ app.post('/api/admin/purge-demo-data', requireAdmin, (req, res) => {
   }
 });
 
+// =========================================================================
+// SUPPORT TCHAT HYBRIDE - RÉPONSE AUTOMATIQUE IA DOKYA (GEMINI)
+// =========================================================================
+app.post('/api/support/ai-reply', async (req, res) => {
+  try {
+    const { message, history = [], userName = 'Candidat', userEmail = '' } = req.body;
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ success: false, error: 'Message utilisateur requis.' });
+    }
+
+    const trimmedMsg = message.trim();
+
+    // Fallback smart responder in case Gemini is unavailable
+    const generateFallbackResponse = (query: string): string => {
+      const q = query.toLowerCase();
+      if (q.includes('cv') || q.includes('ats') || q.includes('modèle') || q.includes('modele')) {
+        return `Bonjour ${userName} ! Sur Dokya AI, nos modèles de CV sont optimisés à 100% pour les logiciels de tri ATS utilisés par les recruteurs au Sénégal et à l'international.\n\n• Tarif à l'acte : 1 000 FCFA (avec export PDF haute définition et Word .docx modifiable).\n• Inclus en illimité dans tous nos Pass VIP.\n\nVous pouvez le générer en 2 minutes depuis l'onglet « Créer un CV ATS » de votre tableau de bord. Si vous avez besoin d'aide pour une personnalisation, vous pouvez aussi cliquer sur « 🆘 Parler à un conseiller humain ».`;
+      }
+      if (q.includes('facture') || q.includes('devis') || q.includes('business')) {
+        return `Bonjour ! Dokya AI intègre un module complet de facturation conforme aux normes UEMOA / SYSCOHADA :\n\n• Factures et Devis PRO avec calcul automatique de la TVA (18%), remises et mentions légales.\n• Numérotation automatique et export PDF immédiat.\n• Tarif : 1 500 FCFA par document ou illimité avec le Pass VIP.\n\nAccédez-y directement via l'onglet « Factures & Devis » !`;
+      }
+      if (q.includes('wave') || q.includes('orange') || q.includes('paiement') || q.includes('recharge') || q.includes('solde') || q.includes('argent') || q.includes('kkiapay')) {
+        return `Pour vos paiements et recharges sur Dokya AI :\n\n1. Nous acceptons Wave, Orange Money, KkiaPay et Cartes Bancaires.\n2. Si vous avez été débité(e) sans que votre solde ne soit crédité automatiquement, rendez-vous sur « Recharger mon solde » puis « Déjà payé ? Soumettre un reçu ». Téléversez la capture d'écran du SMS Wave ou Orange Money : notre équipe admin la validera sous quelques minutes !\n3. Pour une assistance immédiate, cliquez sur « 🆘 Parler à un conseiller humain ».`;
+      }
+      if (q.includes('vip') || q.includes('abonnement') || q.includes('tarif') || q.includes('prix')) {
+        return `Voici nos formules d'abonnements Pass VIP Dokya :\n\n• Pass Hebdo (7 jours) : 2 500 FCFA\n• Pass Mensuel (30 jours) : 5 000 FCFA\n• Pass Annuel (365 jours) : 25 000 FCFA\n• Pass Permanent à vie : 50 000 FCFA\n\nLe Pass VIP vous donne accès illimité à tous les CV ATS, lettres, factures, simulateur d'entretiens et livres numériques sans aucun frais à l'acte !`;
+      }
+      if (q.includes('affiliation') || q.includes('parrain') || q.includes('commission') || q.includes('retrait') || q.includes('gagner')) {
+        return `Le programme d'affiliation Dokya AI vous permet de gagner de l'argent réel :\n\n• 20% de commission cash sur chaque achat de document ou abonnement de vos filleuls.\n• Retrait disponible dès 2 000 FCFA cumulés, envoyé directement sur votre compte Wave ou Orange Money sous 24h.\n• Récupérez votre lien unique dans l'onglet « Affiliation & Parrainage » !`;
+      }
+      if (q.includes('humain') || q.includes('conseiller') || q.includes('agent') || q.includes('bloqu') || q.includes('problème') || q.includes('arnaque') || q.includes('erreur')) {
+        return `Je comprends parfaitement votre demande. Vous pouvez cliquer sur le bouton rouge « 🆘 Parler à un conseiller humain » juste au-dessus du tchat. Dès votre clic, notre console d'administration sera alertée en temps réel avec sirène d'urgence, et un conseiller Dokya prendra directement le relais dans ce fil de discussion !`;
+      }
+      return `Bonjour ${userName} ! Je suis l'assistant d'aide Dokya AI. Je peux vous renseigner sur :\n\n• La création de vos CV ATS et lettres de motivation\n• Les devis et factures conformes UEMOA\n• Les recharges Wave et Orange Money (soumission de reçu)\n• Les abonnements Pass VIP et le programme d'affiliation\n\nPour une intervention personnalisée de notre équipe, cliquez sur « 🆘 Parler à un conseiller humain ». En quoi puis-je vous être utile ?`;
+    };
+
+    let aiResponseText = '';
+
+    try {
+      const ai = getGenAIClient();
+      
+      const systemInstruction = `Tu es l'assistant de support officiel et bienveillant de Dokya AI (plateforme de création de CV ATS, lettres de motivation, factures/devis professionnels UEMOA, livres numériques Ebooks et simulateur d'entretiens d'embauche au Sénégal et en Afrique francophone).
+Client actuel : ${userName} (${userEmail || 'email non renseigné'}).
+
+RÈGLES D'OR DU SUPPORT DOKYA :
+1. Réponds de façon concise, polie, chaleureuse et structurée en français (avec quelques puces claires si nécessaire).
+2. Tarifs et règles :
+   - CV ATS certifié : 1 000 FCFA à l'acte ou inclus dans Pass VIP (export PDF + Word .docx).
+   - Lettre de motivation : 500 FCFA.
+   - Devis & Factures PRO : 1 500 FCFA (normes fiscales UEMOA/SYSCOHADA).
+   - Livres Ebooks KDP : 1 500 FCFA.
+   - Pass VIP : Hebdomadaire 2 500 FCFA, Mensuel 5 000 FCFA, Annuel 25 000 FCFA, Permanent à vie 50 000 FCFA.
+   - Paiements : Wave, Orange Money, KkiaPay, Carte Bancaire, solde portefeuille.
+   - Si un paiement Wave ou Orange Money a été débité mais non validé, le client peut soumettre la capture du reçu dans « Recharger mon solde » > « Soumettre un reçu » pour validation manuelle rapide.
+   - Affiliation : 20% de commission cash par vente apportée, retrait dès 2 000 FCFA sur Wave ou Orange Money.
+3. Si le client a un litige, un blocage technique sérieux ou souhaite explicitement échanger avec une personne réelle, rappelle-lui gentiment qu'il peut cliquer sur le bouton « 🆘 Parler à un conseiller humain » en haut du tchat pour que l'équipe prenne immédiatement le relais.
+4. Reste toujours rassurant et réactif. Longueur idéale : 2 à 4 paragraphes courts et aérés.`;
+
+      // Build dialog context
+      let promptParts: string[] = [];
+      if (Array.isArray(history) && history.length > 0) {
+        const recentHistory = history.slice(-6);
+        for (const h of recentHistory) {
+          const roleLabel = h.role === 'user' ? 'Client' : 'Assistant Support';
+          promptParts.push(`${roleLabel}: ${h.text}`);
+        }
+      }
+      promptParts.push(`Client: ${trimmedMsg}`);
+      promptParts.push(`Assistant Support:`);
+
+      const fullPrompt = promptParts.join('\n\n');
+
+      const response = await generateContentWithRetry(ai, {
+        model: 'gemini-3.8-flash',
+        contents: [
+          { role: 'user', parts: [{ text: `${systemInstruction}\n\nHistorique de la conversation :\n${fullPrompt}` }] }
+        ]
+      });
+
+      aiResponseText = response?.text || '';
+    } catch (aiErr: any) {
+      console.warn('[Support AI Notice]: Fallback to internal knowledge base:', aiErr.message);
+      aiResponseText = generateFallbackResponse(trimmedMsg);
+    }
+
+    if (!aiResponseText || aiResponseText.trim() === '') {
+      aiResponseText = generateFallbackResponse(trimmedMsg);
+    }
+
+    return res.json({
+      success: true,
+      reply: aiResponseText.trim()
+    });
+  } catch (err: any) {
+    console.error('[Support API Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Erreur lors du traitement de votre message de support.'
+    });
+  }
+});
+
 // ==========================================
 // API CATCH-ALL & GLOBAL API ERROR HANDLER
 // Prevents returning HTML pages for API calls
