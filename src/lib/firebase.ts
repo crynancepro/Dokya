@@ -3,7 +3,7 @@ import { getAuth, GoogleAuthProvider, User as FirebaseUser } from 'firebase/auth
 import { 
   initializeFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, 
   collection, query, where, getDocs, onSnapshot, Unsubscribe, runTransaction,
-  serverTimestamp, writeBatch, increment, Timestamp
+  serverTimestamp, writeBatch, increment, Timestamp, addDoc, orderBy
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { 
@@ -3160,17 +3160,23 @@ testConnection();
 
 // =========================================================================
 // SUPPORT CHAT & CONVERSATIONS (HYBRID AI + HUMAN ASSISTANCE)
+// Collection: support_chats/{chatId}/messages
 // =========================================================================
 
+export function getOrCreateChatId(userId: string): string {
+  if (!userId || userId === 'guest') return 'guest_user';
+  return String(userId);
+}
+
 export function getOrCreateConversationId(userId: string): string {
-  return `support_${userId}`;
+  return getOrCreateChatId(userId);
 }
 
 export function subscribeToSupportConversation(
-  conversationId: string, 
+  chatId: string, 
   onUpdate: (conv: SupportConversation | null) => void
 ): Unsubscribe {
-  const convRef = doc(db, 'support_conversations', conversationId);
+  const convRef = doc(db, 'support_chats', chatId);
   return onSnapshot(convRef, (docSnap) => {
     if (docSnap.exists()) {
       onUpdate({ id: docSnap.id, ...(docSnap.data() as any) });
@@ -3184,165 +3190,253 @@ export function subscribeToSupportConversation(
 }
 
 export function subscribeToSupportMessages(
-  conversationId: string, 
+  chatId: string, 
   onUpdate: (messages: SupportMessage[]) => void
 ): Unsubscribe {
-  const messagesCol = collection(db, 'support_conversations', conversationId, 'messages');
-  // Auto-TTL 24 hours calculation:
-  const cutoffTime = Date.now() - 24 * 60 * 60 * 1000;
+  const messagesCol = collection(db, 'support_chats', chatId, 'messages');
+  // Order by createdAt ascending as strictly specified
+  const q = query(messagesCol, orderBy('createdAt', 'asc'));
 
-  return onSnapshot(messagesCol, (querySnap) => {
+  return onSnapshot(q, (querySnap) => {
     const msgs: SupportMessage[] = [];
     querySnap.forEach((docSnap) => {
       const data = docSnap.data() as any;
-      // 24h TTL filter
-      if (!data.timestamp || data.timestamp >= cutoffTime) {
-        msgs.push({
-          id: docSnap.id,
-          ...data,
-          conversationId,
-        });
+      const role: 'USER' | 'ADMIN' = data.senderRole || (data.senderType === 'agent' ? 'ADMIN' : 'USER');
+      const msgType: 'TEXT' | 'IMAGE' | 'AUDIO' = data.type || (data.mediaType === 'image' ? 'IMAGE' : data.mediaType === 'audio' ? 'AUDIO' : 'TEXT');
+      
+      let createdIso = new Date().toISOString();
+      let createdMillis = Date.now();
+      if (data.createdAt) {
+        if (typeof data.createdAt.toDate === 'function') {
+          const d = data.createdAt.toDate();
+          createdIso = d.toISOString();
+          createdMillis = d.getTime();
+        } else if (typeof data.createdAt === 'string') {
+          createdIso = data.createdAt;
+          createdMillis = new Date(data.createdAt).getTime();
+        }
       }
+
+      msgs.push({
+        id: docSnap.id,
+        chatId,
+        conversationId: chatId,
+        senderId: data.senderId || (role === 'ADMIN' ? 'admin' : 'user'),
+        senderRole: role,
+        senderType: role === 'ADMIN' ? 'agent' : 'user',
+        senderName: data.senderName || (role === 'ADMIN' ? 'Support Dokya' : 'Utilisateur'),
+        text: data.text || '',
+        type: msgType,
+        mediaType: msgType === 'IMAGE' ? 'image' : msgType === 'AUDIO' ? 'audio' : undefined,
+        mediaUrl: data.mediaUrl || undefined,
+        audioDuration: data.audioDuration,
+        createdAt: createdIso,
+        timestamp: createdMillis,
+      });
     });
-    // Sort chronologically ascending
+    // Ensure strict ascending sorting even if server timestamp is momentarily local estimate
     msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     onUpdate(msgs);
   }, (err) => {
-    console.warn('[Support Chat] Error subscribing to messages:', err);
-    onUpdate([]);
+    console.warn('[Support Chat] Error with orderBy query, falling back:', err);
+    // Fallback if index is being built or offline
+    const fallbackUnsub = onSnapshot(messagesCol, (querySnap) => {
+      const msgs: SupportMessage[] = [];
+      querySnap.forEach((docSnap) => {
+        const data = docSnap.data() as any;
+        const role: 'USER' | 'ADMIN' = data.senderRole || (data.senderType === 'agent' ? 'ADMIN' : 'USER');
+        const msgType: 'TEXT' | 'IMAGE' | 'AUDIO' = data.type || (data.mediaType === 'image' ? 'IMAGE' : data.mediaType === 'audio' ? 'AUDIO' : 'TEXT');
+        
+        let createdIso = new Date().toISOString();
+        let createdMillis = Date.now();
+        if (data.createdAt) {
+          if (typeof data.createdAt.toDate === 'function') {
+            const d = data.createdAt.toDate();
+            createdIso = d.toISOString();
+            createdMillis = d.getTime();
+          } else if (typeof data.createdAt === 'string') {
+            createdIso = data.createdAt;
+            createdMillis = new Date(data.createdAt).getTime();
+          }
+        }
+
+        msgs.push({
+          id: docSnap.id,
+          chatId,
+          conversationId: chatId,
+          senderId: data.senderId || (role === 'ADMIN' ? 'admin' : 'user'),
+          senderRole: role,
+          senderType: role === 'ADMIN' ? 'agent' : 'user',
+          senderName: data.senderName || (role === 'ADMIN' ? 'Support Dokya' : 'Utilisateur'),
+          text: data.text || '',
+          type: msgType,
+          mediaType: msgType === 'IMAGE' ? 'image' : msgType === 'AUDIO' ? 'audio' : undefined,
+          mediaUrl: data.mediaUrl || undefined,
+          audioDuration: data.audioDuration,
+          createdAt: createdIso,
+          timestamp: createdMillis,
+        });
+      });
+      msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      onUpdate(msgs);
+    });
+    return fallbackUnsub;
   });
 }
 
 export async function sendSupportMessage(
-  conversationId: string,
+  chatId: string,
   messageData: {
     senderId: string;
-    senderType: SupportSenderType;
-    senderName: string;
+    senderRole?: 'USER' | 'ADMIN';
+    senderType?: SupportSenderType;
+    senderName?: string;
     text: string;
     mediaUrl?: string;
+    type?: 'TEXT' | 'IMAGE' | 'AUDIO';
     mediaType?: 'image' | 'audio';
     audioDuration?: number;
   },
-  convMetadata: {
-    userId: string;
-    userEmail: string;
-    userName: string;
+  convMetadata?: {
+    userId?: string;
+    userEmail?: string;
+    userName?: string;
     userPhone?: string;
     status?: SupportConversationStatus;
+    unreadByAdmin?: boolean;
     unreadAdmin?: boolean;
     unreadUser?: boolean;
     urgent?: boolean;
   }
 ): Promise<string> {
-  const now = new Date();
-  const timestamp = now.getTime();
-  const isoTime = now.toISOString();
+  const role: 'USER' | 'ADMIN' = messageData.senderRole 
+    ? messageData.senderRole 
+    : (messageData.senderType === 'agent' ? 'ADMIN' : 'USER');
 
-  const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const msgRef = doc(db, 'support_conversations', conversationId, 'messages', msgId);
-  
-  const fullMsg: any = {
-    id: msgId,
-    conversationId,
-    senderId: messageData.senderId || 'user',
-    senderType: messageData.senderType || 'user',
-    senderName: messageData.senderName || 'Utilisateur',
+  const msgType: 'TEXT' | 'IMAGE' | 'AUDIO' = messageData.type 
+    ? messageData.type 
+    : (messageData.mediaType === 'image' ? 'IMAGE' : messageData.mediaType === 'audio' ? 'AUDIO' : 'TEXT');
+
+  // Exact structure required in Firestore 'support_chats/{chatId}/messages'
+  const messagePayload: any = {
+    senderId: messageData.senderId || (role === 'ADMIN' ? 'admin' : 'user'),
+    senderRole: role,
     text: messageData.text || '',
-    createdAt: isoTime,
-    timestamp,
+    type: msgType,
+    createdAt: serverTimestamp(),
   };
 
   if (messageData.mediaUrl) {
-    fullMsg.mediaUrl = messageData.mediaUrl;
+    messagePayload.mediaUrl = messageData.mediaUrl;
   }
-  if (messageData.mediaType) {
-    fullMsg.mediaType = messageData.mediaType;
+  if (messageData.senderName) {
+    messagePayload.senderName = messageData.senderName;
   }
   if (messageData.audioDuration !== undefined && messageData.audioDuration !== null) {
-    fullMsg.audioDuration = messageData.audioDuration;
+    messagePayload.audioDuration = messageData.audioDuration;
   }
 
-  await setDoc(msgRef, fullMsg);
+  // 1. addDoc in 'support_chats/{chatId}/messages'
+  const messagesCol = collection(db, 'support_chats', chatId, 'messages');
+  const docRef = await addDoc(messagesCol, messagePayload);
 
-  // Update conversation parent document
-  const convRef = doc(db, 'support_conversations', conversationId);
-  const convUpdate: any = {
-    id: conversationId,
-    userId: convMetadata.userId || 'guest_user',
-    userEmail: convMetadata.userEmail || '',
-    userName: convMetadata.userName || 'Candidat Dokya',
-    lastMessageText: messageData.text || (messageData.mediaType === 'image' ? '📷 Capture d\'écran' : '🎙️ Message vocal'),
-    lastMessageSender: messageData.senderType || 'user',
-    lastMessageAt: isoTime,
-    updatedAt: isoTime,
+  // 2. Update parent document 'support_chats/{chatId}'
+  const isUser = role === 'USER';
+  const chatParentRef = doc(db, 'support_chats', chatId);
+  const lastText = messageData.text || (msgType === 'IMAGE' ? '📷 Capture d\'écran' : msgType === 'AUDIO' ? '🎙️ Message vocal' : '');
+
+  const parentUpdate: any = {
+    id: chatId,
+    lastMessage: lastText,
+    lastMessageText: lastText,
+    lastMessageSender: role,
+    lastMessageAt: serverTimestamp(),
+    unreadByAdmin: isUser ? true : false,
+    updatedAt: serverTimestamp(),
   };
 
-  if (convMetadata.userPhone) convUpdate.userPhone = convMetadata.userPhone;
-  if (convMetadata.status) convUpdate.status = convMetadata.status;
-  if (convMetadata.unreadAdmin !== undefined) convUpdate.unreadAdmin = convMetadata.unreadAdmin;
-  if (convMetadata.unreadUser !== undefined) convUpdate.unreadUser = convMetadata.unreadUser;
-  if (convMetadata.urgent !== undefined) convUpdate.urgent = convMetadata.urgent;
+  if (convMetadata?.userId) parentUpdate.userId = convMetadata.userId;
+  if (convMetadata?.userEmail) parentUpdate.userEmail = convMetadata.userEmail;
+  if (convMetadata?.userName) parentUpdate.userName = convMetadata.userName;
+  if (convMetadata?.userPhone) parentUpdate.userPhone = convMetadata.userPhone;
+  if (convMetadata?.status) parentUpdate.status = convMetadata.status;
+  if (convMetadata?.urgent !== undefined) parentUpdate.urgent = convMetadata.urgent;
 
-  await setDoc(convRef, convUpdate, { merge: true });
-  return msgId;
+  await setDoc(chatParentRef, parentUpdate, { merge: true });
+
+  return docRef.id;
 }
 
 export async function requestHumanSupport(
-  conversationId: string,
+  chatId: string,
   user: { uid: string; displayName?: string; email?: string; phone?: string }
 ): Promise<void> {
-  const now = new Date();
-  const isoTime = now.toISOString();
-  const timestamp = now.getTime();
-
-  // 1. Insert system message in discussion
-  const sysMsgId = `sys_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const sysMsgRef = doc(db, 'support_conversations', conversationId, 'messages', sysMsgId);
-  await setDoc(sysMsgRef, {
-    id: sysMsgId,
-    conversationId,
-    senderId: 'system',
-    senderType: 'system',
-    senderName: 'Système Dokya',
-    text: '🆘 Relais humain demandé : Votre conversation a été transférée en priorité haute vers un conseiller de l\'équipe Dokya. Une alerte d\'urgence a été transmise à l\'administration.',
-    createdAt: isoTime,
-    timestamp,
+  // 1. Insert alert message in discussion
+  const messagesCol = collection(db, 'support_chats', chatId, 'messages');
+  await addDoc(messagesCol, {
+    senderId: user.uid,
+    senderRole: 'USER',
+    text: '🆘 Relais humain demandé : Le client souhaite s\'entretenir directement avec un conseiller Dokya.',
+    type: 'TEXT',
+    createdAt: serverTimestamp(),
   });
 
-  // 2. Update conversation status
-  const convRef = doc(db, 'support_conversations', conversationId);
-  await setDoc(convRef, {
-    id: conversationId,
+  // 2. Update conversation status with urgent: true and unreadByAdmin: true
+  const chatParentRef = doc(db, 'support_chats', chatId);
+  await setDoc(chatParentRef, {
+    id: chatId,
     userId: user.uid,
     userEmail: user.email || '',
     userName: user.displayName || 'Candidat Dokya',
     userPhone: user.phone || '',
     status: 'HUMAN_REQUESTED',
     urgent: true,
-    unreadAdmin: true,
+    unreadByAdmin: true,
+    lastMessage: '🆘 Relais humain demandé en urgence',
     lastMessageText: '🆘 Relais humain demandé en urgence',
-    lastMessageSender: 'system',
-    lastMessageAt: isoTime,
-    updatedAt: isoTime,
+    lastMessageSender: 'USER',
+    lastMessageAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   }, { merge: true });
 }
 
 export function subscribeToActiveSupportConversations(
   onUpdate: (conversations: SupportConversation[]) => void
 ): Unsubscribe {
-  const convCol = collection(db, 'support_conversations');
+  const convCol = collection(db, 'support_chats');
   return onSnapshot(convCol, (querySnap) => {
     const list: SupportConversation[] = [];
     querySnap.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      const data = docSnap.data() as any;
+      list.push({
+        id: docSnap.id,
+        ...data,
+        lastMessage: data.lastMessage || data.lastMessageText || '',
+        lastMessageText: data.lastMessage || data.lastMessageText || '',
+        unreadByAdmin: data.unreadByAdmin !== undefined ? data.unreadByAdmin : (data.unreadAdmin ?? false),
+      });
     });
-    // Sort with urgent & latest on top
+
+    // Sort with unreadByAdmin or urgent first, then latest lastMessageAt
     list.sort((a, b) => {
-      if (a.urgent && !b.urgent) return -1;
-      if (!a.urgent && b.urgent) return 1;
-      return new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime();
+      const aUrgent = a.urgent || a.status === 'HUMAN_REQUESTED';
+      const bUrgent = b.urgent || b.status === 'HUMAN_REQUESTED';
+      if (aUrgent && !bUrgent) return -1;
+      if (!aUrgent && bUrgent) return 1;
+
+      if (a.unreadByAdmin && !b.unreadByAdmin) return -1;
+      if (!a.unreadByAdmin && b.unreadByAdmin) return 1;
+
+      const getTime = (val: any) => {
+        if (!val) return 0;
+        if (typeof val.toMillis === 'function') return val.toMillis();
+        if (typeof val.toDate === 'function') return val.toDate().getTime();
+        return new Date(val).getTime() || 0;
+      };
+
+      return getTime(b.lastMessageAt) - getTime(a.lastMessageAt);
     });
+
     onUpdate(list);
   }, (err) => {
     console.warn('[Support Chat] Error subscribing to all conversations:', err);
@@ -3350,51 +3444,51 @@ export function subscribeToActiveSupportConversations(
   });
 }
 
-export async function resolveSupportTicket(conversationId: string, adminName: string): Promise<void> {
-  const now = new Date();
-  const isoTime = now.toISOString();
-
-  const msgId = `sys_res_${Date.now()}`;
-  await setDoc(doc(db, 'support_conversations', conversationId, 'messages', msgId), {
-    id: msgId,
-    conversationId,
-    senderId: 'system',
-    senderType: 'system',
-    senderName: 'Support Dokya',
+export async function resolveSupportTicket(chatId: string, adminName: string): Promise<void> {
+  const messagesCol = collection(db, 'support_chats', chatId, 'messages');
+  await addDoc(messagesCol, {
+    senderId: 'admin',
+    senderRole: 'ADMIN',
+    senderName: adminName,
     text: `✅ Ce ticket de support a été marqué comme résolu par ${adminName}. Vous pouvez poser une nouvelle question à tout moment pour réactiver l'assistance.`,
-    createdAt: isoTime,
-    timestamp: now.getTime(),
+    type: 'TEXT',
+    createdAt: serverTimestamp(),
   });
 
-  await updateDoc(doc(db, 'support_conversations', conversationId), {
+  await updateDoc(doc(db, 'support_chats', chatId), {
     status: 'RESOLVED',
     urgent: false,
-    unreadAdmin: false,
-    updatedAt: isoTime,
+    unreadByAdmin: false,
+    updatedAt: serverTimestamp(),
   });
 }
 
-export async function reactivateAiSupport(conversationId: string): Promise<void> {
-  const now = new Date();
-  await updateDoc(doc(db, 'support_conversations', conversationId), {
+export async function reactivateAiSupport(chatId: string): Promise<void> {
+  await updateDoc(doc(db, 'support_chats', chatId), {
     status: 'AI_ASSISTED',
     urgent: false,
-    unreadAdmin: false,
-    updatedAt: now.toISOString(),
+    unreadByAdmin: false,
+    updatedAt: serverTimestamp(),
   });
 }
 
-export async function purgeOldSupportMessages(conversationId: string): Promise<number> {
+export async function purgeOldSupportMessages(chatId: string): Promise<number> {
   try {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const msgsCol = collection(db, 'support_conversations', conversationId, 'messages');
+    const msgsCol = collection(db, 'support_chats', chatId, 'messages');
     const snap = await getDocs(msgsCol);
     let deletedCount = 0;
     const batch = writeBatch(db);
 
     snap.forEach((d) => {
       const data = d.data();
-      if (data.timestamp && data.timestamp < cutoff) {
+      let msgTime = 0;
+      if (data.createdAt) {
+        if (typeof data.createdAt.toMillis === 'function') msgTime = data.createdAt.toMillis();
+        else if (typeof data.createdAt.toDate === 'function') msgTime = data.createdAt.toDate().getTime();
+        else msgTime = new Date(data.createdAt).getTime();
+      }
+      if (msgTime > 0 && msgTime < cutoff) {
         batch.delete(d.ref);
         deletedCount++;
       }

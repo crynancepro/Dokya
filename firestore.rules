@@ -98,6 +98,18 @@ service cloud.firestore {
       }
     }
 
+    match /support_chats/{chatId} {
+      allow read, write, delete: if true;
+
+      match /messages/{messageId} {
+        allow read, write, delete: if true;
+      }
+      
+      match /{allSubcollections=**} {
+        allow read, write, delete: if true;
+      }
+    }
+
     match /test/connection {
       allow read: if true;
     }

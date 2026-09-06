@@ -875,19 +875,24 @@ export interface AffiliatePayoutRequest {
 
 export type SupportConversationStatus = 'AI_ASSISTED' | 'HUMAN_REQUESTED' | 'IN_PROGRESS' | 'RESOLVED';
 export type SupportSenderType = 'user' | 'ai' | 'agent' | 'system';
+export type SupportSenderRole = 'USER' | 'ADMIN';
+export type SupportMessageType = 'TEXT' | 'IMAGE' | 'AUDIO';
 
 export interface SupportMessage {
   id: string;
-  conversationId: string;
-  senderId: string; // 'ai' | user.uid | admin.uid | 'system'
-  senderType: SupportSenderType;
-  senderName: string;
+  chatId?: string;
+  conversationId?: string;
+  senderId: string; // user.uid | admin.uid | 'system'
+  senderRole?: SupportSenderRole; // 'USER' | 'ADMIN'
+  senderType?: SupportSenderType; // 'user' | 'agent' | 'ai' | 'system'
+  senderName?: string;
   text: string;
-  mediaUrl?: string; // base64 or remote URL
+  mediaUrl?: string; // base64 or remote URL (optional)
+  type?: SupportMessageType; // 'TEXT' | 'IMAGE' | 'AUDIO'
   mediaType?: 'image' | 'audio';
   audioDuration?: number; // duration in seconds
-  createdAt: string; // ISO string
-  timestamp: number; // milliseconds for TTL 24h filtering
+  createdAt: any; // serverTimestamp() or Firestore Timestamp or string
+  timestamp?: number; // milliseconds
 }
 
 export interface SupportConversation {
@@ -897,11 +902,14 @@ export interface SupportConversation {
   userName: string;
   userPhone?: string;
   status: SupportConversationStatus;
-  lastMessageText: string;
-  lastMessageSender: SupportSenderType;
-  lastMessageAt: string;
-  createdAt: string;
+  lastMessage?: string;
+  lastMessageText?: string;
+  lastMessageSender?: string;
+  lastMessageAt: any;
+  unreadByAdmin?: boolean; // EXACTLY as required by Firestore schema
   unreadAdmin?: boolean;
   unreadUser?: boolean;
   urgent?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
 }

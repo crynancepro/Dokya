@@ -18,7 +18,8 @@ import {
   Phone,
   Mail,
   User,
-  ShieldCheck
+  ShieldCheck,
+  ArrowLeft
 } from 'lucide-react';
 import { SupportConversation, SupportMessage } from '../types';
 import { 
@@ -27,8 +28,10 @@ import {
   sendSupportMessage, 
   resolveSupportTicket, 
   reactivateAiSupport,
-  purgeOldSupportMessages
+  purgeOldSupportMessages,
+  db
 } from '../lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 import { VoiceAudioPlayer } from './DokyaSupportChat';
 
 interface AdminSupportChatViewProps {
@@ -38,7 +41,7 @@ interface AdminSupportChatViewProps {
 export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ adminEmail }) => {
   const [conversations, setConversations] = useState<SupportConversation[]>([]);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'urgent' | 'in_progress' | 'resolved'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'urgent' | 'unread' | 'in_progress' | 'resolved'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Active chat state
@@ -58,16 +61,26 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior });
+    }
+  };
+
   // 1. Subscribe to all active conversations in real-time
   useEffect(() => {
     const unsub = subscribeToActiveSupportConversations((convList) => {
       setConversations(convList);
-      // If no conversation is selected, select the first urgent or first available
-      setSelectedConvId((prev) => {
-        if (prev && convList.some((c) => c.id === prev)) return prev;
-        const urgentFirst = convList.find((c) => c.urgent);
-        return urgentFirst ? urgentFirst.id : convList[0]?.id || null;
-      });
+      
+      // On desktop (>= 768px), auto-select first conversation if none selected
+      // On mobile (< 768px), keep null so the admin lands on conversation list
+      if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+        setSelectedConvId((prev) => {
+          if (prev && convList.some((c) => c.id === prev)) return prev;
+          const urgentFirst = convList.find((c) => c.urgent || c.unreadByAdmin);
+          return urgentFirst ? urgentFirst.id : convList[0]?.id || null;
+        });
+      }
     });
 
     return () => unsub();
@@ -80,9 +93,18 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
       return;
     }
 
+    // Auto mark as read by admin when opening conversation
+    const targetConv = conversations.find(c => c.id === selectedConvId);
+    if (targetConv?.unreadByAdmin || targetConv?.unreadAdmin) {
+      updateDoc(doc(db, 'support_chats', selectedConvId), {
+        unreadByAdmin: false,
+        unreadAdmin: false,
+      }).catch((e) => console.warn('[Admin Chat] Mark read error:', e));
+    }
+
     const unsub = subscribeToSupportMessages(selectedConvId, (msgs) => {
       setMessages(msgs);
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      setTimeout(() => scrollToBottom('smooth'), 120);
     });
 
     return () => unsub();
@@ -93,18 +115,31 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
   // Filter conversations
   const filteredConversations = conversations.filter((c) => {
     if (activeFilter === 'urgent' && !c.urgent && c.status !== 'HUMAN_REQUESTED') return false;
+    if (activeFilter === 'unread' && !c.unreadByAdmin && !c.unreadAdmin) return false;
     if (activeFilter === 'in_progress' && c.status !== 'IN_PROGRESS') return false;
     if (activeFilter === 'resolved' && c.status !== 'RESOLVED') return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchName = c.userName?.toLowerCase().includes(q);
-      const matchEmail = c.userEmail?.toLowerCase().includes(q);
-      const matchMsg = c.lastMessageText?.toLowerCase().includes(q);
+      const matchName = (c.userName || '').toLowerCase().includes(q);
+      const matchEmail = (c.userEmail || '').toLowerCase().includes(q);
+      const matchMsg = (c.lastMessage || c.lastMessageText || '').toLowerCase().includes(q);
       return matchName || matchEmail || matchMsg;
     }
     return true;
   });
+
+  const handleSelectConversation = async (convId: string) => {
+    setSelectedConvId(convId);
+    try {
+      await updateDoc(doc(db, 'support_chats', convId), {
+        unreadByAdmin: false,
+        unreadAdmin: false,
+      });
+    } catch (err) {
+      console.warn('Could not clear unreadByAdmin:', err);
+    }
+  };
 
   // Handle image upload
   const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,11 +197,11 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
               selectedConvId,
               {
                 senderId: adminEmail,
-                senderType: 'agent',
+                senderRole: 'ADMIN',
                 senderName: 'Support Dokya (Admin)',
                 text: '🎙️ Message vocal du conseiller',
                 mediaUrl: base64Audio,
-                mediaType: 'audio',
+                type: 'AUDIO',
                 audioDuration: recordingSeconds || 5,
               },
               {
@@ -174,8 +209,7 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
                 userEmail: selectedConv.userEmail,
                 userName: selectedConv.userName,
                 status: 'IN_PROGRESS',
-                unreadAdmin: false,
-                unreadUser: true,
+                unreadByAdmin: false,
                 urgent: false,
               }
             );
@@ -237,13 +271,13 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
     try {
       const msgPayload: any = {
         senderId: adminEmail,
-        senderType: 'agent',
+        senderRole: 'ADMIN',
         senderName: 'Support Dokya',
         text,
+        type: imageToSend ? 'IMAGE' : 'TEXT',
       };
       if (imageToSend) {
         msgPayload.mediaUrl = imageToSend;
-        msgPayload.mediaType = 'image';
       }
 
       await sendSupportMessage(
@@ -254,8 +288,7 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
           userEmail: selectedConv.userEmail,
           userName: selectedConv.userName,
           status: 'IN_PROGRESS', // Switch to IN_PROGRESS as admin has taken over
-          unreadAdmin: false,
-          unreadUser: true,
+          unreadByAdmin: false,
           urgent: false, // Relayed, so no longer unhandled urgent
         }
       );
@@ -286,22 +319,40 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
     }
   };
 
+  const unreadCount = conversations.filter(c => c.unreadByAdmin || c.unreadAdmin).length;
+
+  const formatMessageTime = (dateVal: any) => {
+    if (!dateVal) return '';
+    if (typeof dateVal?.toDate === 'function') {
+      return dateVal.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
-    <div className="bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-[780px] max-h-[85vh]">
+    <div className="bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-[calc(100dvh-130px)] md:h-[780px] max-h-[85vh]">
       
       {/* ========================================================================= */}
-      {/* LEFT COLUMN: CONVERSATION LIST (WHATSAPP WEB STYLE)                      */}
+      {/* LEFT COLUMN: CONVERSATION LIST (VISIBLE ON MOBILE ONLY IF NO CHAT OPEN)  */}
       {/* ========================================================================= */}
-      <div className="w-full md:w-80 lg:w-96 border-r border-slate-800 flex flex-col bg-slate-900/90 shrink-0">
+      <div className={`w-full md:w-80 lg:w-96 border-r border-slate-800 flex-col bg-slate-900/95 shrink-0 ${
+        selectedConvId ? 'hidden md:flex' : 'flex'
+      }`}>
         
         {/* Header & Filter Tabs */}
-        <div className="p-4 border-b border-slate-800 space-y-3">
+        <div className="p-3.5 sm:p-4 border-b border-slate-800 space-y-2.5 sm:space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="font-black text-white text-base flex items-center gap-2">
+            <h3 className="font-black text-white text-sm sm:text-base flex items-center gap-2">
               <span>Support Client</span>
               <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-violet-950 text-violet-300 border border-violet-800">
                 {conversations.length}
               </span>
+              {unreadCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white animate-pulse">
+                  {unreadCount} non lu{unreadCount > 1 ? 's' : ''}
+                </span>
+              )}
             </h3>
           </div>
 
@@ -318,9 +369,10 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
           </div>
 
           {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pt-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pt-0.5">
             {[
               { id: 'all', label: 'Toutes' },
+              { id: 'unread', label: '🔴 Non lus' },
               { id: 'urgent', label: '🚨 Urgent' },
               { id: 'in_progress', label: 'En cours' },
               { id: 'resolved', label: 'Résolues' },
@@ -351,16 +403,19 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
             filteredConversations.map((conv) => {
               const isSelected = conv.id === selectedConvId;
               const isUrgent = conv.urgent || conv.status === 'HUMAN_REQUESTED';
+              const isUnread = conv.unreadByAdmin || conv.unreadAdmin;
 
               return (
                 <button
                   key={conv.id}
                   type="button"
-                  onClick={() => setSelectedConvId(conv.id)}
-                  className={`w-full text-left p-3.5 sm:p-4 transition-colors flex items-start gap-3 cursor-pointer ${
+                  onClick={() => handleSelectConversation(conv.id)}
+                  className={`w-full text-left p-3.5 sm:p-4 transition-colors flex items-start gap-3 cursor-pointer relative ${
                     isSelected
-                      ? 'bg-slate-800/90 border-l-4 border-violet-500'
-                      : 'hover:bg-slate-800/40'
+                      ? 'bg-slate-800/95 border-l-4 border-violet-500'
+                      : isUnread
+                        ? 'bg-violet-950/20 hover:bg-slate-800/40'
+                        : 'hover:bg-slate-800/40'
                   }`}
                 >
                   {/* Avatar */}
@@ -376,21 +431,29 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <h4 className="font-bold text-slate-200 text-xs sm:text-sm truncate">
-                        {conv.userName || 'Candidat'}
-                      </h4>
-                      <span className="text-[10px] text-slate-500 shrink-0">
-                        {conv.lastMessageAt
-                          ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                          : ''}
+                      <div className="flex items-center gap-1.5 truncate">
+                        <h4 className={`text-xs sm:text-sm truncate ${isUnread ? 'font-black text-white' : 'font-bold text-slate-200'}`}>
+                          {conv.userName || 'Candidat'}
+                        </h4>
+                        {isUnread && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 shrink-0 font-mono">
+                        {formatMessageTime(conv.lastMessageAt)}
                       </span>
                     </div>
 
-                    <p className="text-[11px] text-slate-400 truncate mb-1">
-                      {conv.lastMessageText || 'Pas de message'}
+                    <p className={`text-[11px] truncate mb-1.5 ${isUnread ? 'font-semibold text-slate-200' : 'text-slate-400'}`}>
+                      {conv.lastMessage || conv.lastMessageText || 'Pas de message'}
                     </p>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {isUnread && (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-extrabold text-[10px]">
+                          Nouveau
+                        </span>
+                      )}
                       {isUrgent && (
                         <span className="px-2 py-0.5 rounded-md bg-rose-500/20 border border-rose-500/50 text-rose-300 font-extrabold text-[10px] animate-pulse">
                           🚨 Relais Humain
@@ -422,35 +485,49 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
       </div>
 
       {/* ========================================================================= */}
-      {/* RIGHT ZONE: DISCUSSION THREAD & ACTION TOOLBAR                            */}
+      {/* RIGHT ZONE: DISCUSSION THREAD & ACTION TOOLBAR (FULLSCREEN ON MOBILE)     */}
       {/* ========================================================================= */}
-      <div className="flex-1 flex flex-col bg-[#0b141a] min-w-0">
+      <div className={`flex-1 flex-col bg-[#0b141a] min-w-0 ${
+        !selectedConvId ? 'hidden md:flex' : 'flex'
+      }`}>
         {selectedConv ? (
           <>
             {/* Top Discussion Header */}
-            <div className="bg-slate-900 border-b border-slate-800 p-3 sm:px-6 flex flex-wrap items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center font-black text-white text-sm shrink-0">
+            <div className="bg-slate-900 border-b border-slate-800 p-3 sm:px-6 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                {/* Mobile Back Button (< 768px) */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedConvId(null)}
+                  className="md:hidden p-2 -ml-1 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl flex items-center gap-1 font-black text-xs cursor-pointer transition-colors bg-slate-800/80 border border-slate-700 shrink-0"
+                  title="Retour à la liste des discussions"
+                >
+                  <ArrowLeft className="w-4 h-4 text-violet-400" />
+                  <span>Retour</span>
+                </button>
+
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center font-black text-white text-xs sm:text-sm shrink-0">
                   {selectedConv.userName ? selectedConv.userName[0].toUpperCase() : 'C'}
                 </div>
+
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-black text-white text-sm sm:text-base truncate">
+                    <h3 className="font-black text-white text-xs sm:text-base truncate">
                       {selectedConv.userName || 'Candidat'}
                     </h3>
                     {selectedConv.urgent && (
-                      <span className="px-2 py-0.5 rounded-full bg-rose-950 border border-rose-700 text-rose-300 text-[10px] font-extrabold animate-pulse">
+                      <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-rose-950 border border-rose-700 text-rose-300 text-[9px] sm:text-[10px] font-extrabold animate-pulse shrink-0">
                         Urgent
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-[11px] text-slate-400 truncate">
-                    <span className="flex items-center gap-1">
-                      <Mail className="w-3 h-3 text-slate-500" />
-                      <span>{selectedConv.userEmail || 'Sans email'}</span>
+                  <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-slate-400 truncate">
+                    <span className="flex items-center gap-1 truncate">
+                      <Mail className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="truncate">{selectedConv.userEmail || 'Sans email'}</span>
                     </span>
                     {selectedConv.userPhone && (
-                      <span className="flex items-center gap-1 text-emerald-400">
+                      <span className="hidden sm:flex items-center gap-1 text-emerald-400 font-mono">
                         <Phone className="w-3 h-3" />
                         <span>{selectedConv.userPhone}</span>
                       </span>
@@ -460,31 +537,40 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleReactivateAi}
-                  className="px-3 py-1.5 rounded-xl bg-violet-950/80 hover:bg-violet-900 border border-violet-800 text-violet-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                  title="Réactiver le répondeur IA"
-                >
-                  <Bot className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">IA Gemini</span>
-                </button>
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                {selectedConv.status !== 'AI_ASSISTED' && (
+                  <button
+                    type="button"
+                    onClick={handleReactivateAi}
+                    className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-violet-950/70 hover:bg-violet-900 border border-violet-800 text-violet-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    title="Repasser la discussion à l'IA"
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Activer IA</span>
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  onClick={handleResolve}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                  title="Marquer comme résolu"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Résoudre</span>
-                </button>
+                {selectedConv.status !== 'RESOLVED' ? (
+                  <button
+                    type="button"
+                    onClick={handleResolve}
+                    className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                    title="Marquer ce ticket comme résolu"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Résolu</span>
+                  </button>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-xl bg-slate-800 text-slate-400 text-xs font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Résolu</span>
+                  </span>
+                )}
 
                 <button
                   type="button"
                   onClick={handlePurge}
-                  className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
                   title="Purger les messages > 24h"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -492,19 +578,21 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
               </div>
             </div>
 
-            {/* Discussion Thread */}
+            {/* Conversation Messages Container */}
             <div 
-              className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 relative"
+              className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4 bg-[#0b141a] relative scrollbar-thin scrollbar-thumb-slate-800"
               style={{
-                backgroundImage: `radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.25) 1px, transparent 1px)`,
+                backgroundImage: `radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px)`,
                 backgroundSize: '24px 24px'
               }}
             >
               {messages.map((msg) => {
-                const isAdmin = msg.senderType === 'agent';
-                const isUser = msg.senderType === 'user';
+                const isAdmin = msg.senderRole === 'ADMIN' || msg.senderType === 'agent';
+                const isUser = msg.senderRole === 'USER' || msg.senderType === 'user';
                 const isAi = msg.senderType === 'ai';
                 const isSystem = msg.senderType === 'system';
+                const isImg = msg.type === 'IMAGE' || msg.mediaType === 'image';
+                const isAud = msg.type === 'AUDIO' || msg.mediaType === 'audio';
 
                 if (isSystem) {
                   return (
@@ -522,7 +610,7 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
                     className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                   >
                     <div
-                      className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3 sm:p-3.5 shadow-md space-y-2 ${
+                      className={`max-w-[88%] sm:max-w-[70%] rounded-2xl p-3 sm:p-3.5 shadow-md space-y-2 ${
                         isAdmin
                           ? 'bg-[#005c4b] text-white rounded-tr-none'
                           : isAi
@@ -558,7 +646,7 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
                       )}
 
                       {/* Image Attachment */}
-                      {msg.mediaUrl && msg.mediaType === 'image' && (
+                      {msg.mediaUrl && isImg && (
                         <div className="relative group rounded-xl overflow-hidden cursor-pointer mt-1 max-w-[280px]">
                           <img
                             src={msg.mediaUrl}
@@ -576,15 +664,13 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
                       )}
 
                       {/* Voice Note */}
-                      {msg.mediaUrl && msg.mediaType === 'audio' && (
+                      {msg.mediaUrl && isAud && (
                         <VoiceAudioPlayer src={msg.mediaUrl} durationSec={msg.audioDuration} />
                       )}
 
                       {/* Timestamp */}
-                      <div className="text-[10px] text-slate-400 text-right">
-                        {msg.createdAt
-                          ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                          : ''}
+                      <div className="text-[10px] text-slate-400 text-right font-mono">
+                        {formatMessageTime(msg.createdAt)}
                       </div>
                     </div>
                   </div>
@@ -611,13 +697,13 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
               </div>
             )}
 
-            {/* Admin Input Bar */}
-            <div className="bg-slate-900 border-t border-slate-800 p-3 sm:p-4 shrink-0">
+            {/* Admin Input Bar (Sticky at bottom) */}
+            <div className="sticky bottom-0 z-20 bg-slate-900 border-t border-slate-800 p-2.5 sm:p-4 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {isRecording ? (
                 <div className="flex items-center justify-between gap-3 bg-rose-950/70 border border-rose-800/80 rounded-2xl p-2.5 px-4 animate-pulse">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
-                    <span className="text-xs font-black text-rose-300">Enregistrement audio admin en cours...</span>
+                    <span className="text-xs font-black text-rose-300">Enregistrement audio en cours...</span>
                     <span className="text-xs font-mono text-white font-bold">
                       {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
                     </span>
@@ -637,12 +723,12 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
                       className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer"
                     >
                       <Square className="w-3 h-3 fill-white" />
-                      <span>Envoyer au client</span>
+                      <span>Envoyer</span>
                     </button>
                   </div>
                 </div>
               ) : (
-                <form onSubmit={handleSendAdminReply} className="flex items-center gap-2">
+                <form onSubmit={handleSendAdminReply} className="flex items-center gap-1.5 sm:gap-2">
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -672,14 +758,15 @@ export const AdminSupportChatView: React.FC<AdminSupportChatViewProps> = ({ admi
                     type="text"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
+                    onFocus={() => setTimeout(() => scrollToBottom('smooth'), 200)}
                     placeholder="Répondre au client en tant que conseiller Dokya..."
-                    className="flex-1 py-3 px-4 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs sm:text-sm placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                    className="flex-1 py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs sm:text-sm placeholder-slate-500 focus:outline-none focus:border-violet-500"
                   />
 
                   <button
                     type="submit"
                     disabled={isSending || (!inputText.trim() && !selectedImage)}
-                    className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-slate-950 font-black shadow-lg shadow-emerald-600/30 transition-all cursor-pointer active:scale-95 shrink-0"
+                    className="p-2.5 sm:p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-slate-950 font-black shadow-lg shadow-emerald-600/30 transition-all cursor-pointer active:scale-95 shrink-0"
                     title="Envoyer"
                   >
                     {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
