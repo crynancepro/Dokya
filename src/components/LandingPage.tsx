@@ -24,6 +24,7 @@ import {
   Phone,
   LayoutDashboard
 } from 'lucide-react';
+import { DokyaLogo } from './DokyaLogo';
 import { auth } from '../lib/firebase';
 
 interface LandingPageProps {
@@ -89,22 +90,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
           
           {/* Logo */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-500/20">
-              <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xl font-black tracking-tight text-white font-sans">
-                  Dokya<span className="text-indigo-400">AI</span>
-                </span>
-                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  Pro
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400 font-medium">Suite Bureautique & Recrutement IA</p>
-            </div>
-          </div>
+          <DokyaLogo 
+            size="md"
+            subtitle="Suite Bureautique & Recrutement IA"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          />
 
           {/* Nav items (Section anchors) */}
           <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-slate-300">
@@ -753,9 +743,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* ========================================================================= */}
       <footer className="bg-slate-950 border-t border-slate-800/80 py-10 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-black text-white">Dokya AI Pro</span>
-            <span>•</span>
+          <div className="flex items-center gap-3">
+            <DokyaLogo size="xs" variant="compact" showBadge={false} />
+            <span className="text-slate-600">•</span>
             <span>Suite Documentaire & Recrutement IA</span>
           </div>
           <div className="flex items-center gap-4 text-[11px]">

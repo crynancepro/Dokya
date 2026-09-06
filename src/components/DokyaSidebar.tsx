@@ -28,6 +28,7 @@ import {
 import { CandidateProfile, SavedUserDocument, isUserVipActive } from '../types';
 import { auth } from '../lib/firebase';
 import { isAdminEmail } from '../lib/adminAuth';
+import { DokyaLogo } from './DokyaLogo';
 
 export type SidebarTab = 
   | 'dashboard_home'
@@ -35,6 +36,7 @@ export type SidebarTab =
   | 'documents'
   | 'entretiens'
   | 'business'
+  | 'affiliation'
   | 'gen_cv'
   | 'gen_letter'
   | 'gen_business'
@@ -152,22 +154,10 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
           
           {/* Brand Logo Header */}
           <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-500/20">
-                <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-base font-black tracking-tight text-white font-sans">
-                    Dokya<span className="text-indigo-400">AI</span>
-                  </span>
-                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    Pro
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-medium">Suite Bureautique & Recrutement</p>
-              </div>
-            </div>
+            <DokyaLogo 
+              size="md" 
+              subtitle="Suite Bureautique & Recrutement" 
+            />
 
             {/* Close Button on Mobile */}
             {onCloseMobile && (
@@ -348,6 +338,26 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </div>
               <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                 Business
+              </span>
+            </button>
+
+            {/* 2.4 Parrainage & Affiliation */}
+            <button
+              id="nav-affiliation"
+              type="button"
+              onClick={() => handleNavClick('affiliation')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'affiliation'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Users className="w-4 h-4 shrink-0 text-violet-400" />
+                <span>Parrainage & Affiliation</span>
+              </div>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                20% Gain
               </span>
             </button>
 

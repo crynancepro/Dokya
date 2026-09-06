@@ -11,7 +11,9 @@ import {
   AlertCircle, 
   CheckCircle2, 
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Tag,
+  Gift
 } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
@@ -19,6 +21,7 @@ import {
   signInWithPopup 
 } from 'firebase/auth';
 import { auth, googleProvider, initializeUserAccountDoc } from '../lib/firebase';
+import { DokyaLogo } from './DokyaLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -37,6 +40,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [referralCodeInput, setReferralCodeInput] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('dokya_ref_code') || sessionStorage.getItem('dokya_ref_code') || '';
+    }
+    return '';
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -48,6 +57,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
+
+    // Save referral code to storage if provided
+    if (referralCodeInput.trim() && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('dokya_ref_code', referralCodeInput.trim().toUpperCase());
+        sessionStorage.setItem('dokya_ref_code', referralCodeInput.trim().toUpperCase());
+      } catch (_e) {}
+    }
 
     try {
       if (mode === 'login') {
@@ -125,16 +142,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center mx-auto text-white shadow-lg shadow-violet-600/30">
-            <Sparkles className="w-6 h-6" />
+          <div className="flex justify-center mb-1">
+            <DokyaLogo size="lg" variant="icon" />
           </div>
           <h2 className="text-2xl font-black text-white tracking-tight">
-            {mode === 'login' ? 'Se connecter' : 'Créer un compte'}
+            {mode === 'login' ? 'Se connecter à Dokya AI' : 'Créer un compte Dokya AI'}
           </h2>
           <p className="text-xs text-neutral-400">
             {mode === 'login' 
-              ? 'Accédez à vos CV et lettres de motivation enregistrés'
-              : 'Rejoignez plus de 10 000 candidats au Sénégal'}
+              ? 'Accédez à votre espace sécurisé, vos CV et vos documents'
+              : 'Rejoignez les professionnels et candidats sur Dokya AI'}
           </p>
         </div>
 
@@ -235,6 +252,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               />
             </div>
           </div>
+
+          {mode === 'signup' && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-neutral-300">Code de parrainage</label>
+                <span className="text-[10px] text-neutral-500">(Facultatif)</span>
+              </div>
+              <div className="relative">
+                <Tag className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Ex: PETER25"
+                  value={referralCodeInput}
+                  onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-900 border border-slate-700 !text-amber-400 font-mono font-bold text-xs focus:outline-none focus:border-amber-500 transition-all !placeholder:text-slate-500"
+                />
+              </div>
+              {referralCodeInput && (
+                <p className="text-[11px] text-amber-300 flex items-center gap-1 mt-0.5">
+                  <Gift className="w-3 h-3 text-amber-400" />
+                  <span>Parrain détecté : {referralCodeInput}</span>
+                </p>
+              )}
+            </div>
+          )}
 
           <button
             type="submit"

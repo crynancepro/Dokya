@@ -34,6 +34,7 @@ import {
   AdminUserRecord, AdminKPIs, TransactionRecord, PlatformPricingConfig, 
   PromoCode, AuditLogEntry, UserSubscription, isUserVipActive, getTimestampMillis 
 } from '../types';
+import { AdminAffiliationView } from './AdminAffiliationView';
 
 interface AdminDashboardProps {
   onBackHome: () => void;
@@ -45,7 +46,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenEditor 
 }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(auth.currentUser);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'subscriptions' | 'pricing' | 'promo' | 'audit' | 'transactions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'subscriptions' | 'pricing' | 'promo' | 'audit' | 'transactions' | 'affiliations'>('overview');
   
   // Data States
   const [loading, setLoading] = useState<boolean>(true);
@@ -1528,6 +1529,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <CreditCard className="w-4 h-4" />
             <span>Transactions & Paiements</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('affiliations')}
+            type="button"
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'affiliations'
+                ? 'bg-purple-500 text-slate-950 shadow-md shadow-purple-900/30 font-black'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Affiliations & Parrainages</span>
           </button>
 
         </div>
@@ -3231,6 +3245,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
           </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB: AFFILIATIONS & PARRAINAGES (VALIDATION COMMISSIONS & RETRAITS)        */}
+        {/* ========================================================================= */}
+        {activeTab === 'affiliations' && (
+          <AdminAffiliationView adminEmail={currentUser?.email || PRIMARY_ADMIN_EMAIL} />
         )}
 
       </main>

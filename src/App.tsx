@@ -384,6 +384,20 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       let reference = searchParams.get('reference') || searchParams.get('orderReference');
       let amountParam = Number(searchParams.get('amount') || 0);
 
+      // Traitement et détection automatique du code de parrainage (?ref=CODE)
+      const refParam = searchParams.get('ref') || (window.location.hash.includes('ref=') 
+        ? new URLSearchParams(window.location.hash.substring(window.location.hash.indexOf('?') + 1)).get('ref') 
+        : null);
+      if (refParam) {
+        const cleanRefCode = refParam.trim().toUpperCase();
+        try {
+          localStorage.setItem('dokya_ref_code', cleanRefCode);
+          sessionStorage.setItem('dokya_ref_code', cleanRefCode);
+          setSuccessMessage(`🤝 Invitation partenaire Dokya activée (Code : ${cleanRefCode}) !`);
+          setTimeout(() => setSuccessMessage(null), 5000);
+        } catch (_e) {}
+      }
+
       if (!status && window.location.hash.includes('?')) {
         const hashQuery = window.location.hash.substring(window.location.hash.indexOf('?') + 1);
         const hashParams = new URLSearchParams(hashQuery);

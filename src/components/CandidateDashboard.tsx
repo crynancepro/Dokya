@@ -37,6 +37,7 @@ import { EbookTemplate } from './EbookTemplate';
 import { A4PreviewContainer } from './A4PreviewContainer';
 import { isAdminEmail } from '../lib/adminAuth';
 import { DokyaBusinessView } from './DokyaBusinessView';
+import { DokyaAffiliateView } from './DokyaAffiliateView';
 
 interface CandidateDashboardProps {
   onLoadDocumentToEditor: (formData: CVFormData, aiData: any) => void;
@@ -741,6 +742,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     : activeSidebarTab === 'documents' ? 'Mes Documents Générés'
                     : activeSidebarTab === 'entretiens' ? 'Mes Fiches de Préparation d\'Entretien RH'
                     : activeSidebarTab === 'business' || activeSidebarTab === 'clients' ? 'Pôle Dokya Business • Gestion Clients & Ventes'
+                    : activeSidebarTab === 'affiliation' ? 'Programme d\'Affiliation & Commissions (20%)'
                     : activeSidebarTab === 'tarifs' ? 'Tarifs & Offres'
                     : activeSidebarTab === 'subscription' ? 'Mon Abonnement & Privilèges VIP'
                     : activeSidebarTab === 'profile' ? 'Mon Profil & Paramètres'
@@ -1610,6 +1612,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     onLoadBusinessDocToEditor(invoiceDocData);
                   }
                 }}
+              />
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB: AFFILIATION & PARRAINAGE (20% COMMISSION DIRECTE)                   */}
+          {/* ========================================================================= */}
+          {activeSidebarTab === 'affiliation' && (
+            <div className="space-y-6 animate-in fade-in">
+              <DokyaAffiliateView
+                profile={profile}
+                onGoToTab={(tab) => setActiveSidebarTab(tab as any)}
               />
             </div>
           )}

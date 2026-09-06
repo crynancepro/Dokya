@@ -7,6 +7,7 @@ import {
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail } from '../lib/adminAuth';
+import { DokyaLogo } from './DokyaLogo';
 
 interface HeaderProps {
   currentView?: string;
@@ -123,23 +124,12 @@ export const Header: React.FC<HeaderProps> = ({
           {/* ZONE 1 (LEFT): BRAND LOGO + BACK TO TEMPLATES / DASHBOARD ACTION */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Logo */}
-            <div 
-              className="flex items-center gap-2 cursor-pointer group shrink-0"
+            <DokyaLogo 
+              size="sm"
+              subtitle="Éditeur Dédié"
               onClick={onOpenDashboard}
-              title="Dokya AI - Retour au Tableau de Bord"
-            >
-              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 flex items-center justify-center text-white font-black text-base sm:text-lg shadow-md shadow-indigo-600/30 group-hover:scale-105 transition-transform shrink-0">
-                <span>D</span>
-              </div>
-              <div className="hidden md:flex flex-col">
-                <span className="text-sm sm:text-base font-black tracking-tight text-white leading-none">
-                  Dokya <span className="text-indigo-400">AI</span>
-                </span>
-                <span className="text-[9px] text-slate-400 font-medium tracking-wide">
-                  Éditeur Dédié
-                </span>
-              </div>
-            </div>
+              className="shrink-0"
+            />
 
             <div className="h-5 w-px bg-slate-800 hidden sm:block" />
 

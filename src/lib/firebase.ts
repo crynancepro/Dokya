@@ -10,7 +10,8 @@ import {
   CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, 
   CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode,
   UserSubscription, isUserVipActive, getTimestampMillis, formatRemainingSubscriptionTime, AdminUserRecord,
-  Customer, BusinessInvoice, UserBusiness, BusinessDocData
+  Customer, BusinessInvoice, UserBusiness, BusinessDocData,
+  AffiliateCommission, AffiliatePayoutRequest
 } from '../types';
 
 const app = initializeApp(firebaseConfig);
@@ -142,6 +143,17 @@ export async function fetchUserOrders(userId: string): Promise<OrderRecord[]> {
   }
 }
 
+export function generateUserReferralCode(email: string, displayName?: string): string {
+  if (email.toLowerCase().startsWith('peter25')) return 'PETER25';
+  const cleanBase = (displayName || email.split('@')[0] || 'DOKYA')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 6);
+  const prefix = cleanBase.length >= 3 ? cleanBase : 'DOKYA';
+  const randNum = Math.floor(10 + Math.random() * 90);
+  return `${prefix}${randNum}`;
+}
+
 export async function saveTransactionRecord(tx: TransactionRecord): Promise<boolean> {
   try {
     const txDocRef = doc(db, 'transactions', tx.id);
@@ -149,6 +161,19 @@ export async function saveTransactionRecord(tx: TransactionRecord): Promise<bool
       ...tx,
       updatedAt: new Date().toISOString()
     }), { merge: true });
+
+    // Détection et calcul automatique de commission d'affiliation (20% affilié / 80% admin)
+    if (tx.status === 'PENDING' && tx.userId && (tx.amount > 0 || (tx as any).totalAmount > 0)) {
+      const amount = tx.amount || (tx as any).totalAmount || 0;
+      createAffiliateCommissionIfReferred({
+        userId: tx.userId,
+        userDisplayName: tx.userEmail || tx.senderPhone || 'Client',
+        transactionId: tx.id,
+        totalAmount: amount,
+        serviceTitle: tx.documentTitle || (tx as any).planName || (tx.type === 'recharge' ? 'Recharge de solde' : 'Achat Dokya')
+      }).catch(err => console.warn('[Affiliate Commission Creation Error]:', err));
+    }
+
     return true;
   } catch (error) {
     console.warn('Could not save transaction to Firestore:', error);
@@ -165,9 +190,28 @@ export async function initializeUserAccountDoc(
 ): Promise<FirebaseUserProfile> {
   const userRef = doc(db, 'users', user.uid);
   try {
+    // Lookup pending referral code from storage
+    let pendingRefBy: string | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const storedRefCode = localStorage.getItem('dokya_ref_code') || sessionStorage.getItem('dokya_ref_code');
+        if (storedRefCode) {
+          const cleanRef = storedRefCode.trim().toUpperCase();
+          const qRef = query(collection(db, 'users'), where('referralCode', '==', cleanRef));
+          const snapRef = await getDocs(qRef);
+          if (!snapRef.empty && snapRef.docs[0].id !== user.uid) {
+            pendingRefBy = snapRef.docs[0].id;
+          }
+        }
+      } catch (e) {
+        console.warn('[Referral code check error]:', e);
+      }
+    }
+
     const snap = await getDoc(userRef);
     if (!snap.exists()) {
       const nowIso = new Date().toISOString();
+      const generatedCode = generateUserReferralCode(user.email || '', extra?.displayName || user.displayName || '');
       const initialProfile: FirebaseUserProfile = {
         uid: user.uid,
         email: user.email || '',
@@ -182,6 +226,10 @@ export async function initializeUserAccountDoc(
           expiresAt: null,
           autoRenew: false
         },
+        referralCode: generatedCode,
+        referredBy: pendingRefBy || undefined,
+        affiliateBalance: 0,
+        totalAffiliateEarnings: 0,
         createdAt: nowIso,
         updatedAt: nowIso,
         role: user.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate'
@@ -190,6 +238,19 @@ export async function initializeUserAccountDoc(
       return initialProfile;
     }
     const data = snap.data();
+
+    // Ensure existing user has a referralCode, affiliateBalance, and totalAffiliateEarnings
+    let userReferralCode = data.referralCode;
+    if (!userReferralCode) {
+      userReferralCode = generateUserReferralCode(data.email || user.email || '', data.displayName || user.displayName || '');
+      updateDoc(userRef, {
+        referralCode: userReferralCode,
+        affiliateBalance: data.affiliateBalance ?? 0,
+        totalAffiliateEarnings: data.totalAffiliateEarnings ?? 0,
+        updatedAt: new Date().toISOString()
+      }).catch(() => {});
+    }
+
     let calculatedStatus: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' = 'INACTIVE';
     const rawStatus = (data.subscription?.status || '').toUpperCase();
     const rawPlanId = data.subscription?.planId || (data.subscriptionStatus === 'unlimited' ? 'PASS_VIP' : 'FREE');
@@ -230,6 +291,11 @@ export async function initializeUserAccountDoc(
         adminNote: data.subscription?.adminNote,
         updatedBy: data.subscription?.updatedBy
       },
+      referralCode: userReferralCode,
+      referredBy: data.referredBy,
+      affiliateBalance: typeof data.affiliateBalance === 'number' ? data.affiliateBalance : 0,
+      totalAffiliateEarnings: typeof data.totalAffiliateEarnings === 'number' ? data.totalAffiliateEarnings : 0,
+      phone: data.phone || data.phoneNumber || data.personalInfo?.phone || '',
       createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: data.updatedAt || new Date().toISOString(),
       personalInfo: data.personalInfo || undefined,
@@ -2693,6 +2759,367 @@ export async function deleteBusinessInvoice(userId: string, invoiceId: string): 
   } catch (error) {
     console.warn("Erreur deleteBusinessInvoice Firestore:", error);
     return true;
+  }
+}
+
+// =========================================================================
+// MODULE D'AFFILIATION & PARRAINAGE AVEC VALIDATION ADMIN ET CALCUL DE MARGE
+// =========================================================================
+
+/**
+ * Génère automatiquement une commission en attente (20% affilié / 80% admin)
+ * si le client acheteur a été parrainé via un code d'affiliation.
+ */
+export async function createAffiliateCommissionIfReferred(params: {
+  userId: string;
+  userDisplayName?: string;
+  transactionId: string;
+  totalAmount: number;
+  serviceTitle?: string;
+}): Promise<AffiliateCommission | null> {
+  if (!params.userId || !params.transactionId || params.totalAmount <= 0) return null;
+
+  try {
+    // 1. Vérifier si une commission existe déjà pour cette transaction
+    const qExisting = query(collection(db, 'affiliate_commissions'), where('transactionId', '==', params.transactionId));
+    const existingSnap = await getDocs(qExisting);
+    if (!existingSnap.empty) {
+      return existingSnap.docs[0].data() as AffiliateCommission;
+    }
+
+    // 2. Trouver l'acheteur et vérifier son parrain
+    const userDocRef = doc(db, 'users', params.userId);
+    const userSnap = await getDoc(userDocRef);
+    if (!userSnap.exists()) return null;
+
+    const userData = userSnap.data();
+    const referrerId = userData.referredBy;
+    if (!referrerId || referrerId === params.userId) return null;
+
+    // 3. Charger les infos du parrain
+    const referrerDocRef = doc(db, 'users', referrerId);
+    const referrerSnap = await getDoc(referrerDocRef);
+    if (!referrerSnap.exists()) return null;
+
+    const referrerData = referrerSnap.data();
+    const referrerName = referrerData.displayName || referrerData.email?.split('@')[0] || 'Parrain Dokya';
+    const referrerPhone = referrerData.phone || referrerData.phoneNumber || referrerData.personalInfo?.phone || '';
+    const referrerEmail = referrerData.email || '';
+    const referrerCode = referrerData.referralCode || '';
+
+    // 4. Calcul de marge : 20% pour l'affilié, 80% pour l'admin
+    const totalAmount = Math.round(params.totalAmount);
+    const affiliateCommission = Math.round(totalAmount * 0.20); // 20%
+    const adminNetGain = totalAmount - affiliateCommission; // 80%
+
+    const commissionId = `COMM-${params.transactionId}`;
+    const commissionDocRef = doc(db, 'affiliate_commissions', commissionId);
+
+    const commission: AffiliateCommission = {
+      id: commissionId,
+      transactionId: params.transactionId,
+      referrerId,
+      referrerName,
+      referrerPhone,
+      referrerEmail,
+      referrerCode,
+      referredUserId: params.userId,
+      referredUserName: params.userDisplayName || userData.displayName || 'Client',
+      serviceTitle: params.serviceTitle || 'Service Dokya AI',
+      totalAmount,
+      affiliateCommission,
+      adminNetGain,
+      status: 'PENDING',
+      createdAt: new Date().toISOString()
+    };
+
+    await setDoc(commissionDocRef, cleanFirestorePayload(commission), { merge: true });
+    return commission;
+  } catch (error) {
+    console.warn('[Affiliate commission creation warn]:', error);
+    return null;
+  }
+}
+
+/**
+ * Valide une commission d'affiliation :
+ * - Passe le statut à APPROVED
+ * - Crédite atomiquement le solde d'affiliation (affiliateBalance) et le total des gains (totalAffiliateEarnings) du parrain
+ */
+export async function approveAffiliateCommission(
+  commissionId: string,
+  adminEmail: string,
+  note: string = 'Commission approuvée par l\'administrateur'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const commRef = doc(db, 'affiliate_commissions', commissionId);
+    const commSnap = await getDoc(commRef);
+    if (!commSnap.exists()) {
+      return { success: false, error: 'Commission introuvable.' };
+    }
+
+    const comm = commSnap.data() as AffiliateCommission;
+    if (comm.status === 'APPROVED') {
+      return { success: true };
+    }
+
+    // 1. Mettre à jour la commission
+    const nowIso = new Date().toISOString();
+    await updateDoc(commRef, {
+      status: 'APPROVED',
+      approvedAt: nowIso,
+      adminNote: `${note} (${adminEmail})`
+    });
+
+    // 2. Créditer atomiquement l'affilié
+    const referrerRef = doc(db, 'users', comm.referrerId);
+    await updateDoc(referrerRef, {
+      affiliateBalance: increment(comm.affiliateCommission),
+      totalAffiliateEarnings: increment(comm.affiliateCommission),
+      updatedAt: nowIso
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.warn('[Approve Affiliate Commission Error]:', error);
+    return { success: false, error: error.message || 'Erreur lors de l\'approbation.' };
+  }
+}
+
+/**
+ * Rejette une commission d'affiliation en cas d'annulation ou de transaction frauduleuse
+ */
+export async function rejectAffiliateCommission(
+  commissionId: string,
+  adminEmail: string,
+  note: string = 'Commission rejetée par l\'administrateur'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const commRef = doc(db, 'affiliate_commissions', commissionId);
+    await updateDoc(commRef, {
+      status: 'REJECTED',
+      rejectedAt: new Date().toISOString(),
+      adminNote: `${note} (${adminEmail})`
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.warn('[Reject Affiliate Commission Error]:', error);
+    return { success: false, error: error.message || 'Erreur lors du rejet.' };
+  }
+}
+
+/**
+ * Demande de retrait par un affilié (minimum 2 000 FCFA)
+ */
+export async function requestAffiliatePayout(
+  userId: string,
+  data: {
+    affiliateName?: string;
+    affiliatePhone?: string;
+    network: 'wave' | 'orange_money';
+    phoneNumber: string;
+    amount: number;
+  }
+): Promise<{ success: boolean; error?: string; requestId?: string }> {
+  try {
+    const amount = Math.round(Number(data.amount));
+    if (amount < 2000) {
+      return { success: false, error: 'Le montant minimum de retrait est de 2 000 FCFA.' };
+    }
+    if (!data.phoneNumber || data.phoneNumber.trim().length < 8) {
+      return { success: false, error: 'Veuillez saisir un numéro de téléphone mobile valide.' };
+    }
+
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+      return { success: false, error: 'Profil utilisateur introuvable.' };
+    }
+
+    const userData = userSnap.data();
+    const availableBalance = typeof userData.affiliateBalance === 'number' ? userData.affiliateBalance : 0;
+    if (availableBalance < amount) {
+      return { 
+        success: false, 
+        error: `Solde insuffisant (${availableBalance.toLocaleString('fr-FR')} FCFA disponible). Vous ne pouvez pas retirer plus que votre solde.` 
+      };
+    }
+
+    const requestId = `PAYOUT-${Date.now()}`;
+    const reqRef = doc(db, 'affiliate_payout_requests', requestId);
+
+    const payoutReq: AffiliatePayoutRequest = {
+      id: requestId,
+      affiliateId: userId,
+      affiliateName: data.affiliateName || userData.displayName || 'Affilié Dokya',
+      affiliatePhone: data.affiliatePhone || data.phoneNumber,
+      affiliateEmail: userData.email || '',
+      network: data.network,
+      phoneNumber: data.phoneNumber.trim(),
+      amount,
+      status: 'PENDING',
+      requestedAt: new Date().toISOString()
+    };
+
+    await setDoc(reqRef, cleanFirestorePayload(payoutReq));
+    return { success: true, requestId };
+  } catch (error: any) {
+    console.warn('[Request Affiliate Payout Error]:', error);
+    return { success: false, error: error.message || 'Erreur lors de la création de la demande de retrait.' };
+  }
+}
+
+/**
+ * Marque une demande de retrait comme payée :
+ * Déduit le montant du solde d'affiliation du parrain et clôture la demande
+ */
+export async function markAffiliatePayoutPaid(
+  requestId: string,
+  adminEmail: string,
+  note: string = 'Virement mobile envoyé par l\'administrateur'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const reqRef = doc(db, 'affiliate_payout_requests', requestId);
+    const reqSnap = await getDoc(reqRef);
+    if (!reqSnap.exists()) {
+      return { success: false, error: 'Demande de retrait introuvable.' };
+    }
+
+    const req = reqSnap.data() as AffiliatePayoutRequest;
+    if (req.status === 'PAID') {
+      return { success: true };
+    }
+
+    const nowIso = new Date().toISOString();
+    // 1. Clôturer la demande
+    await updateDoc(reqRef, {
+      status: 'PAID',
+      paidAt: nowIso,
+      adminNote: `${note} (${adminEmail})`
+    });
+
+    // 2. Déduire le montant du solde de l'affilié
+    const userRef = doc(db, 'users', req.affiliateId);
+    await updateDoc(userRef, {
+      affiliateBalance: increment(-req.amount),
+      updatedAt: nowIso
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.warn('[Mark Affiliate Payout Paid Error]:', error);
+    return { success: false, error: error.message || 'Erreur lors de la validation du paiement.' };
+  }
+}
+
+/**
+ * Rejette une demande de retrait
+ */
+export async function rejectAffiliatePayout(
+  requestId: string,
+  adminEmail: string,
+  note: string = 'Demande de retrait rejetée'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const reqRef = doc(db, 'affiliate_payout_requests', requestId);
+    await updateDoc(reqRef, {
+      status: 'REJECTED',
+      rejectedAt: new Date().toISOString(),
+      adminNote: `${note} (${adminEmail})`
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.warn('[Reject Affiliate Payout Error]:', error);
+    return { success: false, error: error.message || 'Erreur lors du rejet.' };
+  }
+}
+
+/**
+ * Écoute en temps réel les commissions d'affiliation
+ * - Pour un affilié spécifique si userId est fourni
+ * - Pour toutes les commissions (Admin) si userId est omis
+ */
+export function subscribeToAffiliateCommissions(
+  userId: string | undefined,
+  onUpdate: (commissions: AffiliateCommission[]) => void,
+  onError?: (error: any) => void
+): () => void {
+  try {
+    let q = query(collection(db, 'affiliate_commissions'));
+    if (userId) {
+      q = query(collection(db, 'affiliate_commissions'), where('referrerId', '==', userId));
+    }
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: AffiliateCommission[] = [];
+        snapshot.forEach((d) => {
+          list.push({ id: d.id, ...(d.data() as any) } as AffiliateCommission);
+        });
+        list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        onUpdate(list);
+      },
+      (err) => {
+        console.warn('[Firestore Affiliate Commissions Snapshot Warn]:', err);
+        if (onError) onError(err);
+      }
+    );
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore subscribeToAffiliateCommissions error]:', e);
+    return () => {};
+  }
+}
+
+/**
+ * Écoute en temps réel les demandes de retrait
+ * - Pour un affilié spécifique si userId est fourni
+ * - Pour toutes les demandes (Admin) si userId est omis
+ */
+export function subscribeToAffiliatePayoutRequests(
+  userId: string | undefined,
+  onUpdate: (requests: AffiliatePayoutRequest[]) => void,
+  onError?: (error: any) => void
+): () => void {
+  try {
+    let q = query(collection(db, 'affiliate_payout_requests'));
+    if (userId) {
+      q = query(collection(db, 'affiliate_payout_requests'), where('affiliateId', '==', userId));
+    }
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: AffiliatePayoutRequest[] = [];
+        snapshot.forEach((d) => {
+          list.push({ id: d.id, ...(d.data() as any) } as AffiliatePayoutRequest);
+        });
+        list.sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
+        onUpdate(list);
+      },
+      (err) => {
+        console.warn('[Firestore Affiliate Payouts Snapshot Warn]:', err);
+        if (onError) onError(err);
+      }
+    );
+    return unsubscribe;
+  } catch (e) {
+    console.warn('[Firestore subscribeToAffiliatePayoutRequests error]:', e);
+    return () => {};
+  }
+}
+
+/**
+ * Récupère le nombre de filleuls apportés par un utilisateur
+ */
+export async function getReferredUsersCount(referrerId: string): Promise<number> {
+  try {
+    const q = query(collection(db, 'users'), where('referredBy', '==', referrerId));
+    const snap = await getDocs(q);
+    return snap.size;
+  } catch (e) {
+    return 0;
   }
 }
 

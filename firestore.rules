@@ -78,6 +78,14 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /affiliate_commissions/{commissionId} {
+      allow read, write, delete: if true;
+    }
+
+    match /affiliate_payout_requests/{requestId} {
+      allow read, write, delete: if true;
+    }
+
     match /test/connection {
       allow read: if true;
     }
