@@ -8,8 +8,10 @@ import {
   Percent, Clock, Trash2, Ban, Unlock, Check, AlertTriangle, ArrowRight,
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
   Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity,
-  MessageSquare, Volume2, VolumeX, BellRing
+  MessageSquare, Volume2, VolumeX, BellRing, Menu, Building2, Briefcase,
+  PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
+import { AdminSidebar, AdminTabType } from './admin/AdminSidebar';
 import { 
   auth, 
   savePricingToFirestore, 
@@ -41,6 +43,7 @@ import {
 } from '../types';
 import { AdminAffiliationView } from './AdminAffiliationView';
 import { AdminSupportChatView } from './AdminSupportChatView';
+import { AdminBusinessView } from './admin/AdminBusinessView';
 import { 
   startEmergencyAlarm, 
   stopEmergencyAlarm, 
@@ -59,7 +62,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenEditor 
 }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(auth.currentUser);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'subscriptions' | 'pricing' | 'promo' | 'transactions' | 'affiliations' | 'support'>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTabType>('overview');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('dokya_admin_sidebar_collapsed') === 'true';
+    }
+    return false;
+  });
+
+  const handleToggleSidebarCollapse = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('dokya_admin_sidebar_collapsed', String(next));
+      }
+      return next;
+    });
+  };
   
   // Realtime Support & Emergency Alarm States
   const [supportConversations, setSupportConversations] = useState<SupportConversation[]>([]);
@@ -1401,258 +1421,161 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-white pb-20">
-      
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-8 py-3.5 shadow-xl">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          
-          {/* Logo & Super Admin Badge */}
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-white shadow-lg shadow-emerald-950/40 border border-emerald-400/30">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
-                  <span>Panneau Super Admin</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    Contrôle Total
-                  </span>
-                </h1>
-              </div>
-              <p className="text-xs text-slate-400 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Session active : <strong className="text-slate-200">{adminEmail}</strong></span>
-              </p>
-            </div>
-          </div>
+  const handleLogout = async () => {
+    try {
+      stopImpersonationSession();
+      await signOut(auth);
+    } catch (e) {
+      console.error('Sign out error:', e);
+    }
+    onBackHome();
+  };
 
-          {/* Quick Actions */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Siren Audio Alert Control / Manual Test */}
-            <button
-              type="button"
-              onClick={() => {
-                if (isAlarmTesting || isEmergencyAlarmActive()) {
-                  stopEmergencyAlarm();
-                  setIsAlarmTesting(false);
-                  setIsAlarmMuted(true);
-                } else {
-                  setIsAlarmMuted(false);
-                  setIsAlarmTesting(true);
-                  startEmergencyAlarm();
-                  setTimeout(() => {
+  return (
+    <div className="min-h-screen bg-[#070A12] text-slate-100 font-sans selection:bg-indigo-600 selection:text-white flex flex-col lg:flex-row">
+      
+      {/* Sidebar Navigation (Desktop Fixed / Mobile Drawer) */}
+      <AdminSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        usersCount={usersList.length}
+        pendingTransactionsCount={financialStats.pendingCount}
+        urgentSupportCount={urgentSupportCount}
+        promoCodesCount={promoCodesList.length}
+        activeVipCount={vipStats.active}
+        adminEmail={adminEmail}
+        onBackHome={onBackHome}
+        onLogout={handleLogout}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={handleToggleSidebarCollapse}
+      />
+
+      {/* Main Content Area */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen pb-20">
+        
+        {/* Top Header */}
+        <header className="sticky top-0 z-30 bg-[#090D16]/95 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-6 lg:px-8 py-3.5 shadow-xl">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            
+            {/* Mobile Hamburger / Desktop Collapse Toggle & Platform Badge */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="lg:hidden p-2 rounded-xl bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700/60 transition-all cursor-pointer"
+                aria-label="Ouvrir le menu de navigation"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleToggleSidebarCollapse}
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-all cursor-pointer text-xs"
+                title={isSidebarCollapsed ? "Agrandir le menu latéral" : "Réduire le menu latéral pour libérer de l'espace"}
+              >
+                {isSidebarCollapsed ? <PanelLeftOpen className="w-4 h-4 text-indigo-400" /> : <PanelLeftClose className="w-4 h-4 text-slate-400" />}
+                <span>{isSidebarCollapsed ? "Agrandir menu" : "Réduire menu"}</span>
+              </button>
+
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  SUPER ADMIN ACTIF
+                </span>
+                <span className="hidden sm:inline-block text-xs text-slate-400 font-medium font-mono">
+                  {adminEmail}
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Siren Audio Alert Control / Manual Test */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAlarmTesting || isEmergencyAlarmActive()) {
                     stopEmergencyAlarm();
                     setIsAlarmTesting(false);
-                  }, 4000);
-                }
-              }}
-              title={isAlarmMuted ? "Alarme coupée (Cliquer pour réactiver ou tester)" : "Sirène audio active pour les alertes urgentes"}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer border ${
-                isAlarmTesting || (!isAlarmMuted && totalEmergencyCount > 0)
-                  ? 'bg-rose-600 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-950/50'
-                  : isAlarmMuted
-                  ? 'bg-slate-800/80 text-slate-400 border-slate-700/60 hover:text-white'
-                  : 'bg-slate-800/90 text-emerald-300 border-emerald-500/30 hover:bg-slate-800'
-              }`}
-            >
-              {isAlarmMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-              <span>{isAlarmTesting ? 'Test Sirène...' : isAlarmMuted ? 'Sirène Coupée' : 'Sirène Active'}</span>
-            </button>
-
-            {adminEmail === PRIMARY_ADMIN_EMAIL && (
-              <button
-                onClick={() => setIsPurgeModalOpen(true)}
-                type="button"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-xl bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-600 hover:to-rose-600 text-amber-300 hover:text-white border border-amber-500/40 transition-all cursor-pointer shadow-sm"
-                title="Purger les faux reçus et réinitialiser les soldes de test pour le lancement réel"
+                    setIsAlarmMuted(true);
+                  } else {
+                    setIsAlarmMuted(false);
+                    setIsAlarmTesting(true);
+                    startEmergencyAlarm();
+                    setTimeout(() => {
+                      stopEmergencyAlarm();
+                      setIsAlarmTesting(false);
+                    }, 4000);
+                  }
+                }}
+                title={isAlarmMuted ? "Alarme coupée (Cliquer pour réactiver ou tester)" : "Sirène audio active pour les alertes urgentes"}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer border ${
+                  isAlarmTesting || (!isAlarmMuted && totalEmergencyCount > 0)
+                    ? 'bg-rose-600 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-950/50'
+                    : isAlarmMuted
+                    ? 'bg-slate-800/80 text-slate-400 border-slate-700/60 hover:text-white'
+                    : 'bg-slate-800/90 text-emerald-300 border-emerald-500/30 hover:bg-slate-800'
+                }`}
               >
-                <Flame className="w-3.5 h-3.5 text-amber-400" />
-                <span>🔥 Nettoyer les données de démo</span>
+                {isAlarmMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+                <span>{isAlarmTesting ? 'Test Sirène...' : isAlarmMuted ? 'Sirène Coupée' : 'Sirène Active'}</span>
               </button>
-            )}
 
-            <button
-              onClick={async () => {
-                await loadAdminData();
-                setSuccessMsg('Données administratives actualisées avec succès !');
-                setTimeout(() => setSuccessMsg(null), 3000);
-              }}
-              type="button"
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-all cursor-pointer disabled:opacity-50"
-              title="Rafraîchir les données"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
-              <span>Actualiser</span>
-            </button>
+              {adminEmail === PRIMARY_ADMIN_EMAIL && (
+                <button
+                  onClick={() => setIsPurgeModalOpen(true)}
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-xl bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-600 hover:to-rose-600 text-amber-300 hover:text-white border border-amber-500/40 transition-all cursor-pointer shadow-sm"
+                  title="Purger les faux reçus et réinitialiser les soldes de test pour le lancement réel"
+                >
+                  <Flame className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">🔥 Nettoyer démos</span>
+                </button>
+              )}
 
-            <button
-              onClick={onBackHome}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/30 transition-all cursor-pointer"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Voir le Site</span>
-            </button>
+              <button
+                onClick={async () => {
+                  await loadAdminData();
+                  setSuccessMsg('Données administratives actualisées avec succès !');
+                  setTimeout(() => setSuccessMsg(null), 3000);
+                }}
+                type="button"
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-all cursor-pointer disabled:opacity-50"
+                title="Rafraîchir les données"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
+                <span>Actualiser</span>
+              </button>
 
-            <button
-              onClick={async () => {
-                try {
-                  stopImpersonationSession();
-                  await signOut(auth);
-                } catch (e) {
-                  console.error('Sign out error:', e);
-                }
-                onBackHome();
-              }}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 transition-all cursor-pointer"
-              title="Se déconnecter de la session Administrateur"
-            >
-              <LogOut className="w-3.5 h-3.5 text-rose-400" />
-              <span>Déconnexion</span>
-            </button>
+              <button
+                onClick={onBackHome}
+                type="button"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950/30 transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Voir le Site</span>
+              </button>
+
+              <button
+                onClick={handleLogout}
+                type="button"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 transition-all cursor-pointer"
+                title="Se déconnecter de la session Administrateur"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                <span>Déconnexion</span>
+              </button>
+            </div>
+
           </div>
+        </header>
 
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="max-w-7xl mx-auto mt-4 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          <button
-            onClick={() => setActiveTab('overview')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'overview'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <TrendingUp className="w-4 h-4" />
-            <span>Vue d'ensemble</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('users')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'users'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Candidats & Comptes</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-900/60 text-slate-300 font-bold">
-              {usersList.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('subscriptions')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'subscriptions'
-                ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-900/40 font-black ring-2 ring-amber-300'
-                : 'text-amber-300 hover:text-amber-100 hover:bg-amber-950/40 border border-amber-500/20'
-            }`}
-          >
-            <Crown className="w-4 h-4 text-amber-400" />
-            <span>Pass VIP & Abonnements</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-              activeTab === 'subscriptions' ? 'bg-slate-950 text-amber-300' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-            }`}>
-              {vipStats.active}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('pricing')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'pricing'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <DollarSign className="w-4 h-4" />
-            <span>Gestion des Prix & Offres</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('promo')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'promo'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <Tag className="w-4 h-4" />
-            <span>Codes Promo & Réductions</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-900/60 text-slate-300 font-bold">
-              {promoCodesList.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('transactions')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'transactions'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            <span>Transactions & Paiements</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('affiliations')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'affiliations'
-                ? 'bg-purple-500 text-slate-950 shadow-md shadow-purple-900/30 font-black'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Affiliations & Parrainages</span>
-          </button>
-
-          {/* Support & Tchat Client Tab with Emergency Indicator */}
-          <button
-            onClick={() => setActiveTab('support')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer relative ${
-              activeTab === 'support'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black'
-                : urgentSupportCount > 0
-                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 animate-pulse'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <MessageSquare className={`w-4 h-4 ${urgentSupportCount > 0 ? 'text-rose-400 animate-bounce' : ''}`} />
-            <span>Support & Tchat Client</span>
-            {urgentSupportCount > 0 ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-600 text-white font-black animate-pulse shadow-sm">
-                🚨 {urgentSupportCount} URGENT
-              </span>
-            ) : supportConversations.length > 0 ? (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300 font-bold">
-                {supportConversations.length}
-              </span>
-            ) : null}
-          </button>
-
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 pt-6 space-y-6">
+        {/* Main Container */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-8 pt-6 space-y-6">
 
         {/* Urgent Emergency Alert Banner */}
         {totalEmergencyCount > 0 && (
@@ -3414,6 +3337,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <AdminSupportChatView adminEmail={currentUser?.email || PRIMARY_ADMIN_EMAIL} />
         )}
 
+        {/* ========================================================================= */}
+        {/* TAB: DOKYA BUSINESS & B2B (ENTREPRISES, FACTURES & DEVIS UEMOA)           */}
+        {/* ========================================================================= */}
+        {activeTab === 'business' && (
+          <AdminBusinessView
+            usersList={usersList}
+            transactionsList={transactionsList}
+            onNavigateToPricing={() => setActiveTab('pricing')}
+          />
+        )}
+
       </main>
 
       {/* ========================================================================= */}
@@ -4850,6 +4784,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      </div>
     </div>
   );
 };

@@ -1,18 +1,28 @@
 import React, { useState } from 'react';
-import { EbookData, EbookCoverProposal, EbookBackCoverProposal } from '../types';
+import { EbookData, EbookCoverProposal, EbookBackCoverProposal, BookPlanSection } from '../types';
 import { 
   AVAILABLE_EBOOK_LANGUAGES, AVAILABLE_EBOOK_GENRES, AVAILABLE_EBOOK_TONES,
   EBOOK_PAGE_COUNT_PRESETS,
   buildPollinationsImageUrl, generateContextualEbookProposals
 } from '../data/sampleEbookData';
-import { generateEbookCoversWithGemini, generateEbookContentWithGemini } from '../lib/geminiService';
+import { 
+  generateEbookCoversWithGemini, 
+  generateEbookContentWithGemini,
+  generateBookPlanWithGemini,
+  generateBookSectionWithGemini,
+  generateFullBookSequentially,
+  assembleChaptersFromSections,
+  getLastNWords,
+  SequentialBookGenerationProgress
+} from '../lib/geminiService';
 import { AIFormValidationBanner } from './AIFormValidationBanner';
 import { validateEbookForm } from '../lib/formValidationUtils';
 import { 
   BookOpen, Sparkles, RefreshCw, Upload, Image as ImageIcon, 
   Check, ArrowRight, ArrowLeft, Layers, PenTool, Layout, 
   Globe, User, Award, FileText, CheckCircle2, ChevronRight,
-  HelpCircle, Eye, Trash2, Plus, AlertCircle, Loader2, Palette, Wand2, Hash
+  HelpCircle, Eye, Trash2, Plus, AlertCircle, Loader2, Palette, Wand2, Hash,
+  ListOrdered, CheckCheck, Play, ArrowDown
 } from 'lucide-react';
 
 interface EbookWizardFormProps {
@@ -34,6 +44,27 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
   
   const [isGeneratingCovers, setIsGeneratingCovers] = useState<boolean>(false);
   const [isGeneratingContent, setIsGeneratingContent] = useState<boolean>(false);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState<boolean>(false);
+  const [isGeneratingSequential, setIsGeneratingSequential] = useState<boolean>(false);
+  const [showPlanDetails, setShowPlanDetails] = useState<boolean>(true);
+  const [sequentialProgress, setSequentialProgress] = useState<{
+    currentSectionIndex: number;
+    totalSections: number;
+    currentSectionTitle: string;
+    currentChapterTitle: string;
+    percent: number;
+    message: string;
+    totalWords: number;
+  }>({
+    currentSectionIndex: 0,
+    totalSections: 0,
+    currentSectionTitle: '',
+    currentChapterTitle: '',
+    percent: 0,
+    message: '',
+    totalWords: 0
+  });
+
   const [customFrontPrompt, setCustomFrontPrompt] = useState<string>(data.frontCover.customPrompt || '');
   const [customBackPrompt, setCustomBackPrompt] = useState<string>(data.backCover.customPrompt || '');
   const [selectedChapIndex, setSelectedChapIndex] = useState<number>(0);
@@ -265,36 +296,174 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
     }
   };
 
-  // Generate Ebook Chapters and TOC with Gemini
-  const handleGenerateContent = async () => {
-    setIsGeneratingContent(true);
+  // ÉTAPE A : Générer la structure globale du livre (Plan détaillé / Sommaire)
+  const handleGeneratePlan = async () => {
+    setIsGeneratingPlan(true);
     try {
-      const res = await generateEbookContentWithGemini({
-        title: data.title,
+      const res = await generateBookPlanWithGemini({
+        title: data.title || "Livre Numérique d'Excellence",
         subtitle: data.subtitle,
-        author: data.author,
+        author: data.author || "Auteur",
         genre: data.genre,
         language: data.language,
         targetAudience: data.targetAudience,
         tone: data.tone,
+        userSynopsisOrIdeas: data.userSynopsisOrIdeas || data.summaryOrPrompt,
         summaryOrPrompt: data.summaryOrPrompt,
         chapterCount: data.chapterCount || 5,
         targetPageCount: data.targetPageCount || 10
       });
 
+      if (res.success && res.plan?.length) {
+        setData(prev => ({
+          ...prev,
+          bookPlan: res.plan
+        }));
+        setShowPlanDetails(true);
+      }
+    } catch (err) {
+      console.error('Erreur génération du plan :', err);
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  };
+
+  // ÉTAPE B : Boucle séquentielle pour générer chaque section une par une
+  const handleStartSequentialGeneration = async (customPlan?: BookPlanSection[]) => {
+    setIsGeneratingSequential(true);
+    setIsGeneratingContent(true);
+
+    const planToUse = customPlan || data.bookPlan;
+
+    setSequentialProgress({
+      currentSectionIndex: 0,
+      totalSections: planToUse?.length || 0,
+      currentSectionTitle: '',
+      currentChapterTitle: '',
+      percent: 5,
+      message: 'Initialisation de la rédaction séquentielle IA...',
+      totalWords: 0
+    });
+
+    try {
+      const res = await generateFullBookSequentially({
+        data: {
+          title: data.title || "Livre Numérique d'Excellence",
+          subtitle: data.subtitle,
+          author: data.author || "Auteur",
+          genre: data.genre,
+          language: data.language,
+          targetAudience: data.targetAudience,
+          tone: data.tone,
+          userSynopsisOrIdeas: data.userSynopsisOrIdeas || data.summaryOrPrompt,
+          summaryOrPrompt: data.summaryOrPrompt,
+          chapterCount: data.chapterCount || 5,
+          targetPageCount: data.targetPageCount || 10,
+          existingPlan: planToUse && planToUse.length > 0 ? planToUse : undefined
+        },
+        onProgress: (prog: SequentialBookGenerationProgress) => {
+          setSequentialProgress({
+            currentSectionIndex: prog.currentSectionIndex,
+            totalSections: prog.totalSections,
+            currentSectionTitle: prog.currentSectionTitle,
+            currentChapterTitle: prog.currentChapterTitle,
+            percent: prog.percent,
+            message: prog.message,
+            totalWords: prog.totalWordsGenerated
+          });
+
+          // Update book plan live with completed sections
+          if (prog.plan && prog.plan.length > 0) {
+            setData(prev => ({
+              ...prev,
+              bookPlan: prog.plan
+            }));
+          }
+        }
+      });
+
       if (res.success && res.chapters?.length) {
         setData(prev => ({
           ...prev,
+          bookPlan: res.plan,
           tableOfContents: res.tableOfContents as any,
           chapters: res.chapters as any
         }));
         setSelectedChapIndex(0);
       }
     } catch (err) {
-      console.error('Erreur génération chapitres :', err);
+      console.error('Erreur génération séquentielle du livre :', err);
     } finally {
+      setIsGeneratingSequential(false);
       setIsGeneratingContent(false);
     }
+  };
+
+  // Régénérer une section individuelle spécifique
+  const handleRegenerateSingleSection = async (sectionIndex: number) => {
+    if (!data.bookPlan || !data.bookPlan[sectionIndex]) return;
+
+    const currentPlan = [...data.bookPlan];
+    const targetSection = currentPlan[sectionIndex];
+
+    // Trouver les 200 derniers mots de la section précédente si existante
+    let prevWords = '';
+    if (sectionIndex > 0 && currentPlan[sectionIndex - 1]?.content) {
+      prevWords = getLastNWords(currentPlan[sectionIndex - 1].content!, 200);
+    }
+
+    try {
+      // Marquer comme en cours
+      currentPlan[sectionIndex] = { ...targetSection, status: 'generating' };
+      setData(prev => ({ ...prev, bookPlan: currentPlan }));
+
+      const res = await generateBookSectionWithGemini({
+        section: targetSection,
+        bookInfo: {
+          title: data.title,
+          subtitle: data.subtitle,
+          author: data.author,
+          genre: data.genre,
+          language: data.language,
+          tone: data.tone,
+          targetAudience: data.targetAudience
+        },
+        previousSectionLastWords: prevWords,
+        sectionIndex,
+        totalSections: currentPlan.length
+      });
+
+      currentPlan[sectionIndex] = {
+        ...targetSection,
+        content: res.content,
+        wordCount: res.wordCount,
+        status: 'completed'
+      };
+
+      // Mettre à jour le plan et ré-assembler les chapitres
+      setData(prev => {
+        const assembled = assembleChaptersFromSections(currentPlan, {
+          title: prev.title,
+          author: prev.author,
+          targetPageCount: prev.targetPageCount
+        });
+        return {
+          ...prev,
+          bookPlan: currentPlan,
+          chapters: assembled.chapters,
+          tableOfContents: assembled.tableOfContents
+        };
+      });
+    } catch (err) {
+      console.error('Erreur régénération section :', err);
+      currentPlan[sectionIndex] = { ...targetSection, status: 'error' };
+      setData(prev => ({ ...prev, bookPlan: currentPlan }));
+    }
+  };
+
+  // Wrapper standard pour le bouton global
+  const handleGenerateContent = async () => {
+    await handleStartSequentialGeneration();
   };
 
   // Transition: Step 1 -> Step 2
@@ -317,9 +486,10 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
     setMaxCompletedStep(prev => Math.max(prev, 3));
     setActiveStep(3);
     setData(prev => ({ ...prev, currentStep: 3 }));
-    // Auto-generate content if chapters are empty
-    if (!data.chapters?.length) {
-      handleGenerateContent();
+    
+    // Si aucun plan n'existe encore, pré-générer le plan automatiquement
+    if (!data.bookPlan || data.bookPlan.length === 0) {
+      handleGeneratePlan();
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1279,8 +1449,8 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
       {activeStep === 3 && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6 animate-in fade-in duration-150">
           
-          {/* Header & AI Write Action */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          {/* Header & Architecture Banner */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-800 text-xs font-black uppercase tracking-wider">
@@ -1289,38 +1459,352 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-black border border-emerald-200">
                   🎯 Calibrage : {data.targetPageCount || 10} Pages Exactes
                 </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-800 text-[11px] font-black border border-purple-200">
+                  ⚡ Flux Séquentiel Anti-Répétition
+                </span>
               </div>
               <h2 className="text-base sm:text-xl font-black text-slate-900 mt-1 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-indigo-600" />
-                <span>Table des Matières & Rédaction des Chapitres</span>
+                <span>Plan Détaillé & Rédaction Séquentielle IA</span>
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Rédigé intégralement en <span className="font-bold text-indigo-600">{data.language || 'Français'}</span> selon les normes d'auto-édition KDP 6×9 ({Math.max(1, (data.targetPageCount || 10) - 3)} pages intérieures).
+                Génération en 2 temps : <span className="font-bold text-slate-700">1. Plan par section</span> → <span className="font-bold text-indigo-600">2. Boucle séquentielle avec mémoire des 200 mots précédents</span> pour une narration fluide sans phrases génériques.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleGenerateContent}
-              disabled={isGeneratingContent}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white font-black text-xs flex items-center gap-2 shadow-md shadow-indigo-600/30 cursor-pointer disabled:opacity-50 transition-all active:scale-95 shrink-0"
-            >
-              {isGeneratingContent ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Rédaction IA en cours...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>Rédiger tout l'Ebook avec l'IA</span>
-                </>
-              )}
-            </button>
+            {/* Quick Action Buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleGeneratePlan}
+                disabled={isGeneratingPlan || isGeneratingSequential}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all active:scale-95"
+              >
+                {isGeneratingPlan ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-600" />
+                    <span>Création du plan...</span>
+                  </>
+                ) : (
+                  <>
+                    <ListOrdered className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{data.bookPlan?.length ? "Régénérer le Plan" : "1. Générer le Plan"}</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleStartSequentialGeneration()}
+                disabled={isGeneratingSequential || isGeneratingPlan}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 hover:from-indigo-700 hover:to-purple-800 text-white font-black text-xs flex items-center gap-2 shadow-md shadow-indigo-600/30 cursor-pointer disabled:opacity-50 transition-all active:scale-95 shrink-0"
+              >
+                {isGeneratingSequential ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Rédaction séquentielle ({sequentialProgress.currentSectionIndex}/{sequentialProgress.totalSections})...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>2. Lancer la Rédaction Séquentielle IA</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
+          {/* ========================================================================= */}
+          {/* SECTION A : SAISIE DES IDÉES & SYNOPSIS DE L'AUTEUR (AVANT LE PLAN)       */}
+          {/* ========================================================================= */}
+          <div className="bg-slate-50/80 border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                  <PenTool className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900">
+                    Idées Clés, Synopsis & Directives de Rédaction
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Précisez vos thèmes de prédilection, études de cas ou arguments pour guider la structure du plan.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGeneratePlan}
+                disabled={isGeneratingPlan || isGeneratingSequential}
+                className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shadow-xs"
+              >
+                {isGeneratingPlan ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                ) : (
+                  <Wand2 className="w-3.5 h-3.5 text-amber-300" />
+                )}
+                <span>Mettre à jour le Plan IA</span>
+              </button>
+            </div>
+
+            <textarea
+              rows={3}
+              value={data.userSynopsisOrIdeas !== undefined ? data.userSynopsisOrIdeas : data.summaryOrPrompt}
+              onChange={(e) => {
+                const val = e.target.value;
+                setData(prev => ({
+                  ...prev,
+                  userSynopsisOrIdeas: val,
+                  summaryOrPrompt: val
+                }));
+              }}
+              placeholder="Ex: Explorer les opportunités du marché informel en Afrique de l'Ouest, intégrer des études de cas de jeunes entrepreneurs sénégalais et ivoiriens, fournir des checklists financières précises et un plan d'action sur 90 jours..."
+              className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed placeholder:text-slate-400"
+            />
+
+            {/* Quick Inspiration Chips */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Inspirations rapides :</span>
+              {[
+                "📊 Études de cas réelles & chiffres concrets",
+                "🌍 Focus Afrique & économie émergente",
+                "🛠️ Guide pratique pas à pas",
+                "💡 Narration immersive & dialogues vivants",
+                "📅 Feuille de route opérationnelle sur 90 jours"
+              ].map((chip, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    const current = (data.userSynopsisOrIdeas || data.summaryOrPrompt || '').trim();
+                    const updated = current ? `${current}. ${chip.replace(/^[^\s]+\s/, '')}` : chip.replace(/^[^\s]+\s/, '');
+                    setData(prev => ({
+                      ...prev,
+                      userSynopsisOrIdeas: updated,
+                      summaryOrPrompt: updated
+                    }));
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-[11px] font-medium text-slate-700 cursor-pointer transition-colors"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SECTION B : PLAN DÉTAILLÉ (SOMMAIRE DES SECTIONS [{ chapter, section, summary }]) */}
+          {/* ========================================================================= */}
+          {data.bookPlan && data.bookPlan.length > 0 && (
+            <div className="border border-indigo-100 bg-gradient-to-b from-indigo-50/40 to-slate-50/20 rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-purple-100 text-purple-700 rounded-lg">
+                    <ListOrdered className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-2">
+                      <span>Plan Détaillé de l'Ouvrage ({data.bookPlan.length} sections)</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                        Structuré pour Rédaction Séquentielle
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Chaque section ci-dessous est rédigée individuellement par l'IA (+500 mots, zéro répétition). Vous pouvez affiner les titres et résumés.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPlanDetails(!showPlanDetails)}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                  >
+                    {showPlanDetails ? "Masquer les détails" : "Afficher les détails"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextNum = (data.bookPlan?.length || 0) + 1;
+                      const newSec: BookPlanSection = {
+                        id: `plan-sec-${Date.now()}`,
+                        chapterTitle: `Chapitre ${(Math.floor((nextNum - 1) / 2) + 1)} : Développement Stratégique`,
+                        sectionTitle: `${Math.floor((nextNum - 1) / 2) + 1}.${((nextNum - 1) % 2) + 1} Nouveau Point Clé`,
+                        summary: "Description détaillée du contenu à aborder dans cette nouvelle section.",
+                        status: 'pending'
+                      };
+                      setData(prev => ({
+                        ...prev,
+                        bookPlan: [...(prev.bookPlan || []), newSec]
+                      }));
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-indigo-300 text-[11px] font-bold text-indigo-700 cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Ajouter section</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sections List */}
+              {showPlanDetails && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto pr-1">
+                  {data.bookPlan.map((section, idx) => {
+                    const isBeingGenerated = isGeneratingSequential && sequentialProgress.currentSectionIndex === idx + 1;
+                    const isCompleted = section.status === 'completed' || (section.content && section.content.length > 200);
+
+                    return (
+                      <div
+                        key={section.id || idx}
+                        className={`p-3.5 rounded-xl border transition-all text-xs space-y-2 ${
+                          isBeingGenerated 
+                            ? 'bg-purple-50/90 border-purple-400 ring-2 ring-purple-300 shadow-md animate-pulse'
+                            : isCompleted
+                            ? 'bg-white border-emerald-200/90 shadow-2xs'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 truncate max-w-[70%]">
+                            {section.chapterTitle}
+                          </span>
+
+                          <div className="flex items-center gap-1.5">
+                            {isBeingGenerated ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-600 text-white text-[10px] font-black animate-bounce">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span>En cours...</span>
+                              </span>
+                            ) : isCompleted ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                                <CheckCheck className="w-3 h-3 text-emerald-600" />
+                                <span>{section.wordCount || 500} mots</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
+                                En attente
+                              </span>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (data.bookPlan || []).filter((_, i) => i !== idx);
+                                setData(prev => ({ ...prev, bookPlan: updated }));
+                              }}
+                              className="text-slate-400 hover:text-rose-500 cursor-pointer p-0.5"
+                              title="Supprimer la section"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Title input */}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Titre de la section :</label>
+                          <input
+                            type="text"
+                            value={section.sectionTitle}
+                            onChange={(e) => {
+                              const updated = [...(data.bookPlan || [])];
+                              updated[idx].sectionTitle = e.target.value;
+                              setData(prev => ({ ...prev, bookPlan: updated }));
+                            }}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+
+                        {/* Summary input */}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Sujet spécifique à traiter :</label>
+                          <textarea
+                            rows={2}
+                            value={section.summary}
+                            onChange={(e) => {
+                              const updated = [...(data.bookPlan || [])];
+                              updated[idx].summary = e.target.value;
+                              setData(prev => ({ ...prev, bookPlan: updated }));
+                            }}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-[11px] text-slate-700 leading-relaxed outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+
+                        {/* Action individual section */}
+                        <div className="pt-1 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleRegenerateSingleSection(idx)}
+                            disabled={isGeneratingSequential}
+                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-500" />
+                            <span>{isCompleted ? "Régénérer cette section" : "Rédiger cette section seule"}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* BARRE DE PROGRESSION EN TEMPS RÉEL PENDANT LA GÉNÉRATION SÉQUENTIELLE     */}
+          {/* ========================================================================= */}
+          {isGeneratingSequential && (
+            <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-950 text-white rounded-2xl p-5 border border-indigo-500/40 shadow-xl space-y-3.5 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-indigo-500/30 rounded-xl border border-indigo-400/40 animate-spin">
+                    <Loader2 className="w-4 h-4 text-indigo-300" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
+                      <span>Rédaction Séquentielle IA en Cours</span>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/40 text-indigo-200 text-[10px] font-mono font-bold">
+                        {sequentialProgress.percent}%
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-indigo-200/80 font-medium">
+                      {sequentialProgress.message || "Génération séquentielle en cours..."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs font-mono font-bold text-indigo-200">
+                  <span>Section {sequentialProgress.currentSectionIndex} sur {sequentialProgress.totalSections}</span>
+                  <span>•</span>
+                  <span>{sequentialProgress.totalWords} mots rédigés</span>
+                </div>
+              </div>
+
+              {/* Progress Bar Track */}
+              <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden p-0.5 border border-white/10">
+                <div 
+                  className="h-full bg-gradient-to-r from-amber-400 via-indigo-400 to-emerald-400 rounded-full transition-all duration-300 shadow-sm"
+                  style={{ width: `${Math.max(5, sequentialProgress.percent)}%` }}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-indigo-300/80 pt-1">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Prompt expert actif : 500+ mots par section, sans phrases génériques répétitives</span>
+                </span>
+                <span className="text-amber-300 font-bold">
+                  🔗 Mémoire des 200 derniers mots transmise pour la continuité
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Chapters Manager & Live Content Editor */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
             
             {/* Left Column: Chapter List (Tabs) */}
             <div className="space-y-2 lg:border-r lg:border-slate-100 lg:pr-4">
@@ -1453,9 +1937,14 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
 
                   {/* Content Markdown Area */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold text-slate-700">
-                      {"Contenu Rédactionnel (Titres ##, listes -, citations >)"}
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-700">
+                        {"Contenu Rédactionnel (Titres ##, listes -, citations >)"}
+                      </label>
+                      <span className="text-[11px] font-mono text-slate-400">
+                        {data.chapters[selectedChapIndex].content?.split(/\s+/).filter(Boolean).length || 0} mots
+                      </span>
+                    </div>
                     <textarea
                       rows={12}
                       value={data.chapters[selectedChapIndex].content}
@@ -1469,8 +1958,20 @@ export const EbookWizardForm: React.FC<EbookWizardFormProps> = ({
                   </div>
                 </>
               ) : (
-                <div className="p-8 text-center text-slate-400">
-                  Aucun chapitre sélectionné. Cliquez sur "Rédiger tout l'Ebook avec l'IA" ci-dessus.
+                <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <Sparkles className="w-8 h-8 text-indigo-400 mx-auto mb-2 opacity-60" />
+                  <p className="font-bold text-slate-600 mb-1">Aucun chapitre rédigé pour l'instant</p>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto mb-4">
+                    Générez d'abord le plan détaillé (Étape A), puis lancez la rédaction séquentielle IA (Étape B) pour rédiger l'ouvrage section par section.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleStartSequentialGeneration()}
+                    disabled={isGeneratingSequential || isGeneratingPlan}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition cursor-pointer"
+                  >
+                    Lancer la rédaction séquentielle
+                  </button>
                 </div>
               )}
             </div>

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { CVFormData, InterviewPrepData, InterviewQuestionItem } from '../types';
+import { CVFormData, InterviewPrepData, InterviewQuestionItem, BookPlanSection, EbookChapter, EbookTOCItem } from '../types';
 import { generateContextualEbookProposals, buildPollinationsImageUrl } from '../data/sampleEbookData';
 
 /**
@@ -904,7 +904,529 @@ Tout le texte affiché (tagline, badge, résumé synopsis, bio auteur, citation,
 }
 
 /**
- * Generates the structured Table of Contents and in-depth chapters in the requested language
+ * Extracts the last N words from a text to provide seamless narrative continuity
+ */
+export function getLastNWords(text: string, count: number = 200): string {
+  if (!text || typeof text !== 'string') return '';
+  // Clean markdown noise slightly for cleaner narrative bridge
+  const cleaned = text.replace(/#+\s+/g, '').replace(/[>*_`]/g, '').trim();
+  const words = cleaned.split(/\s+/).filter(w => w.length > 0);
+  if (words.length <= count) return words.join(' ');
+  return words.slice(-count).join(' ');
+}
+
+export interface BookPlanParams {
+  title: string;
+  subtitle?: string;
+  author: string;
+  genre: string;
+  language: string;
+  targetAudience?: string;
+  tone?: string;
+  userSynopsisOrIdeas?: string;
+  summaryOrPrompt?: string;
+  chapterCount?: number;
+  targetPageCount?: number;
+}
+
+/**
+ * ÉTAPE A : Génère la structure globale du livre (Plan détaillé / Sommaire)
+ * sous forme d'un tableau JSON d'objets : [{ chapterTitle, sectionTitle, summary }]
+ */
+export async function generateBookPlanWithGemini(params: BookPlanParams): Promise<{
+  success: boolean;
+  plan: BookPlanSection[];
+}> {
+  const apiKey = getGeminiApiKey();
+  const lang = params.language || 'Français';
+  const genre = params.genre || 'Business & Entrepreneuriat';
+  const author = params.author || 'Auteur';
+  const title = params.title || 'Livre Numérique';
+  const totalTargetPages = Math.max(4, params.targetPageCount || 10);
+  const targetInteriorPages = Math.max(1, totalTargetPages - 3);
+  const targetChapterCount = params.chapterCount || Math.min(8, Math.max(3, Math.round(targetInteriorPages / 2)));
+  const userIdeas = (params.userSynopsisOrIdeas || params.summaryOrPrompt || '').trim();
+
+  // If no valid API key, return rich contextual plan based on genre & user ideas
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.includes('placeholder')) {
+    const defaultSections: BookPlanSection[] = [
+      {
+        id: 'plan-sec-1',
+        chapterTitle: `Chapitre 1 : Les Fondements & Diagnostic Stratégique`,
+        sectionTitle: `1.1 Cadrage général et réalités du terrain`,
+        summary: `Analyser le contexte actuel, identifier les blocages majeurs et poser le cadre méthodologique pour aborder ${title} avec clarté.`
+      },
+      {
+        id: 'plan-sec-2',
+        chapterTitle: `Chapitre 1 : Les Fondements & Diagnostic Stratégique`,
+        sectionTitle: `1.2 Déconstruction des croyances limitantes`,
+        summary: `Examiner les erreurs fréquentes commises par les praticiens et présenter une nouvelle grille de lecture sans complaisance.`
+      },
+      {
+        id: 'plan-sec-3',
+        chapterTitle: `Chapitre 2 : Méthodologie & Cadre Opérationnel`,
+        sectionTitle: `2.1 Architecture du système et leviers prioritaires`,
+        summary: `Décortiquer les principes d'action, les étapes de mise en œuvre concrètes et les mécanismes d'accélération étape par étape.`
+      },
+      {
+        id: 'plan-sec-4',
+        chapterTitle: `Chapitre 2 : Méthodologie & Cadre Opérationnel`,
+        sectionTitle: `2.2 Outils, protocoles et gestion des imprévus`,
+        summary: `Définir les protocoles de validation, les indicateurs clés de performance et les ajustements tactiques en temps réel.`
+      },
+      {
+        id: 'plan-sec-5',
+        chapterTitle: `Chapitre 3 : Passage à l'Échelle & Vision Pérenne`,
+        sectionTitle: `3.1 Études de cas approfondies et retours d'expérience`,
+        summary: `Illustrer par des exemples réels, des réussites documentées et des trajectoires d'excellence inspirantes.`
+      },
+      {
+        id: 'plan-sec-6',
+        chapterTitle: `Chapitre 3 : Passage à l'Échelle & Vision Pérenne`,
+        sectionTitle: `3.2 Feuille de route personnelle et plan d'action`,
+        summary: `Fournir un plan d'action opérationnel sur 30, 60 et 90 jours pour consolider les acquis et maximiser l'impact à long terme.`
+      }
+    ];
+
+    return {
+      success: true,
+      plan: defaultSections
+    };
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `Tu es un éditeur littéraire chevronné et directeur de collection (Amazon KDP, auto-édition d'excellence).
+Conçois le plan détaillé et exhaustif (sommaire complet des sections) du livre suivant :
+
+DÉTAILS DU LIVRE :
+- Titre : "${title}"
+- Sous-titre : "${params.subtitle || ''}"
+- Auteur : "${author}"
+- Genre : "${genre}"
+- Langue obligatoire : "${lang}"
+- Public cible : "${params.targetAudience || 'Professionnels & Grand public'}"
+- Style & Tonalité : "${params.tone || 'Inspirant, rigoureux et immersif'}"
+- Synopsis / Idées et directives de l'auteur : "${userIdeas || 'Livre complet, captivant et orienté impact.'}"
+- Volume calibré : ${totalTargetPages} pages au total (soit environ ${targetChapterCount} chapitres).
+
+MISSION STRICTE :
+Génère la structure globale du livre sous forme d'un tableau JSON d'objets :
+[{ chapterTitle, sectionTitle, summary }]
+
+EXIGENCES POUR LE PLAN :
+1. Crée entre ${Math.max(4, targetChapterCount)} et ${Math.min(12, targetChapterCount * 2)} sections ordonnées de façon logique et progressive.
+2. "chapterTitle" : Intitulé clair du grand chapitre (ex: "Chapitre 1 : Les Origines du Paradigme").
+3. "sectionTitle" : Intitulé précis et dynamique de la section (ex: "1.1 Anatomie des freins invisibles").
+4. "summary" : Résumé très détaillé et spécifique des notions, arguments clés, études ou développements narratifs à traiter dans cette section précise. Ce résumé doit être riche (3 à 5 phrases) pour guider parfaitement la rédaction séquentielle sans ambiguïté.
+5. AUCUNE répétition ni phrase générique creuse. Chaque section doit avoir un angle unique et substantiel.
+6. Tout le contenu (titres, sections, résumés) DOIT être rédigé intégralement en ${lang}.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              chapterTitle: { type: Type.STRING },
+              sectionTitle: { type: Type.STRING },
+              summary: { type: Type.STRING }
+            },
+            required: ['chapterTitle', 'sectionTitle', 'summary']
+          }
+        }
+      }
+    });
+
+    const parsed = JSON.parse(response.text || '[]');
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const formattedPlan: BookPlanSection[] = parsed.map((item, idx) => ({
+        id: `plan-sec-${idx + 1}`,
+        chapterTitle: item.chapterTitle || `Chapitre ${Math.floor(idx / 2) + 1}`,
+        sectionTitle: item.sectionTitle || `Section ${idx + 1}`,
+        summary: item.summary || 'Développement approfondi des concepts clés.',
+        status: 'pending'
+      }));
+
+      return {
+        success: true,
+        plan: formattedPlan
+      };
+    }
+
+    throw new Error("Plan JSON invalide retourné par le modèle.");
+  } catch (err: any) {
+    console.warn('[Gemini Book Plan] Fallback activé :', err?.message);
+    return {
+      success: true,
+      plan: [
+        {
+          id: 'plan-sec-1',
+          chapterTitle: `Chapitre 1 : Les Fondements & Diagnostic`,
+          sectionTitle: `1.1 Cadrage & Réalités du Terrain`,
+          summary: `Analyse approfondie du contexte, identification des opportunités majeures et mise en place des fondations stratégiques de ${title}.`
+        },
+        {
+          id: 'plan-sec-2',
+          chapterTitle: `Chapitre 1 : Les Fondements & Diagnostic`,
+          sectionTitle: `1.2 Déconstruction des Freins Invisibles`,
+          summary: `Examen des erreurs fréquentes et mise en lumière des leviers d'action indispensables pour franchir un cap.`
+        },
+        {
+          id: 'plan-sec-3',
+          chapterTitle: `Chapitre 2 : Méthodes & Déploiement Opérationnel`,
+          sectionTitle: `2.1 Architecture du Système d'Action`,
+          summary: `Guide méthodique pas à pas détaillant chaque étape concrète pour mettre en pratique les principes fondamentaux.`
+        },
+        {
+          id: 'plan-sec-4',
+          chapterTitle: `Chapitre 2 : Méthodes & Déploiement Opérationnel`,
+          sectionTitle: `2.2 Protocoles d'Exécution & Études de Cas`,
+          summary: `Analyses d'exemples réels, gestion des aléas et optimisation continue pour des résultats tangibles.`
+        },
+        {
+          id: 'plan-sec-5',
+          chapterTitle: `Chapitre 3 : Consolidation & Perspectives d'Avenir`,
+          sectionTitle: `3.1 Feuille de Route Stratégique`,
+          summary: `Plan d'action structuré pour pérenniser les acquis, éviter les rechutes et maximiser l'impact à long terme.`
+        }
+      ]
+    };
+  }
+}
+
+/**
+ * ÉTAPE B : Génère une section individuelle avec le SYSTEM PROMPT strict
+ * et la mémoire des 200 derniers mots de la section précédente pour une continuité fluide.
+ */
+export async function generateBookSectionWithGemini(params: {
+  section: BookPlanSection;
+  bookInfo: {
+    title: string;
+    subtitle?: string;
+    author: string;
+    genre: string;
+    language: string;
+    tone?: string;
+    targetAudience?: string;
+  };
+  previousSectionLastWords?: string;
+  sectionIndex: number;
+  totalSections: number;
+}): Promise<{
+  content: string;
+  wordCount: number;
+}> {
+  const apiKey = getGeminiApiKey();
+  const { section, bookInfo, previousSectionLastWords, sectionIndex, totalSections } = params;
+  const lang = bookInfo.language || 'Français';
+
+  // Fallback generation if no key or fallback needed
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.includes('placeholder')) {
+    const sampleContent = `### ${section.sectionTitle}
+
+L'investigation rigoureuse de ce sujet démontre que la réussite repose sur une articulation précise entre la clarté conceptuelle et l'exécution méthodique. Loin des théories abstraites ou des poncifs habituels, ce volet s'attache à décortiquer les mécanismes concrets qui transforment une intention louable en un résultat mesurable et reproductible.
+
+Dans le prolongement des réflexions engagées, il apparaît manifeste que les acteurs les plus performants adoptent une posture proactive. Au lieu de subir les aléas de leur environnement, ils construisent des systèmes résilients capables d'absorber les chocs tout en capitalisant sur chaque opportunité émergente. Cette approche exige une discipline constante et le refus systématique des raccourcis illusoires.
+
+Pour appréhender pleinement les enjeux propres à **${section.sectionTitle}**, il convient d'analyser trois dimensions opérationnelles incontournables :
+
+1. **La granularité de l'analyse** : Examiner chaque paramètre avec minutie afin de déceler les points de friction avant qu'ils ne deviennent bloquants.
+2. **L'alignement des ressources** : Allouer le temps, l'énergie et les compétences là où l'effet de levier est maximal.
+3. **Le principe de rétroaction dynamique** : Recueillir des données fiables sur le terrain pour réajuster continuellement la trajectoire.
+
+Plusieurs retours d'expérience concrets confirment cette dynamique. À titre d'illustration, lorsqu'une méthodologie structurée est mise en œuvre de manière cohérente, les gains d'efficacité dépassent fréquemment les prévisions initiales. La clé réside dans la constance du geste et la capacité à maintenir une vision stratégique claire malgré le tumulte du quotidien.
+
+En conclusion de cette étape, retenez que chaque décision doit s'inscrire dans une logique d'ensemble. En consolidant ces bases méthodologiques, vous préparez le terrain pour les étapes ultérieures qui viendront renforcer et pérenniser votre dispositif.`;
+
+    const wordCount = sampleContent.split(/\s+/).filter(w => w.length > 0).length;
+    return { content: sampleContent, wordCount };
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+
+    // SYSTEM PROMPT EXACTEMENT CONFORME AUX DIRECTIVES UTILISATEUR :
+    const prompt = `Tu es un écrivain professionnel expert. Rédige le contenu complet de la section suivante : ${section.sectionTitle}.
+Sujet spécifique à traiter : ${section.summary}.
+
+CONTEXTE DU LIVRE :
+- Titre : "${bookInfo.title}"
+- Sous-titre : "${bookInfo.subtitle || ''}"
+- Chapitre de rattachement : "${section.chapterTitle}"
+- Auteur : "${bookInfo.author}"
+- Genre : "${bookInfo.genre}"
+- Langue de rédaction obligatoire : "${lang}"
+- Progression : Section ${sectionIndex + 1} sur ${totalSections}
+${previousSectionLastWords && previousSectionLastWords.trim() ? `
+DERNIERS MOTS DE LA SECTION PRÉCÉDENTE (pour assurer une liaison narrative fluide et une transition naturelle sans rupture ni répétition) :
+« ... ${previousSectionLastWords.trim()} »` : ''}
+
+RÈGLES STRICTES :
+- Ne réutilise PAS de phrases d'introduction génériques ou de citations répétitives.
+- Entre directement dans le vif du sujet avec un contenu riche, détaillé et fluide.
+- Adapte le ton au genre du livre (si fiction : narration/dialogues ; si non-fiction : explications/exemples).
+- Longueur minimale de cette section : 500 mots.
+- Rédige directement le texte de la section en Markdown soigné (avec sous-titres ### pertinents, paragraphes denses et étoffés, listes numérotées ou à puces si adapté, et illustrations concrètes).
+- N'inclus PAS de formules méta (pas de "Voici la section", pas de "Dans cette section", pas de salutations). Démarre immédiatement au cœur du propos.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: prompt,
+      config: {
+        maxOutputTokens: 4096,
+        temperature: 0.7
+      }
+    });
+
+    const generatedText = (response.text || '').trim();
+    if (!generatedText) {
+      throw new Error("Contenu vide retourné par l'IA");
+    }
+
+    const wordCount = generatedText.split(/\s+/).filter(w => w.length > 0).length;
+    return {
+      content: generatedText,
+      wordCount
+    };
+  } catch (err: any) {
+    console.warn(`[Gemini Section ${section.sectionTitle}] Erreur génération, fallback actif :`, err?.message);
+    const fallbackText = `### ${section.sectionTitle}
+
+L'analyse approfondie de **${section.summary}** démontre l'importance capitale d'une méthode rigoureuse et ancrée dans le réel. Chaque développement doit s'appuyer sur des données probantes et une articulation logique sans faille.
+
+En abordant ce volet avec discernement, nous constatons que les principes d'action les plus solides reposent sur la constance et l'élimination des superflu. Les praticiens expérimentés s'accordent sur la nécessité d'une structure claire et d'une exécution soignée à chaque étape du processus.
+
+1. **Premier levier fondamental** : Poser des bases inébranlables par l'analyse critique des faits observés.
+2. **Deuxième levier d'action** : Structurer la mise en œuvre selon des jalons progressifs et vérifiables.
+3. **Troisième levier de pérennité** : Évaluer l'impact et ajuster continuellement les paramètres opérationnels.
+
+En poursuivant cette démarche, les résultats se consolident de manière durable et offrent une assise solide pour l'ensemble des chapitres à venir.`;
+    const wordCount = fallbackText.split(/\s+/).filter(w => w.length > 0).length;
+    return {
+      content: fallbackText,
+      wordCount
+    };
+  }
+}
+
+/**
+ * Helper: Regroupe les sections générées par grand chapitre et génère chapters & tableOfContents
+ */
+export function assembleChaptersFromSections(
+  sections: BookPlanSection[],
+  bookInfo: { title: string; author: string; targetPageCount?: number }
+): {
+  chapters: EbookChapter[];
+  tableOfContents: EbookTOCItem[];
+} {
+  const chapterMap = new Map<string, BookPlanSection[]>();
+
+  sections.forEach(sec => {
+    const chTitle = sec.chapterTitle || 'Chapitre Principal';
+    if (!chapterMap.has(chTitle)) {
+      chapterMap.set(chTitle, []);
+    }
+    chapterMap.get(chTitle)!.push(sec);
+  });
+
+  const chapters: EbookChapter[] = [];
+  const tableOfContents: EbookTOCItem[] = [];
+
+  let chapIndex = 1;
+  chapterMap.forEach((secList, chTitle) => {
+    // Combine section contents with clean markdown headings
+    const combinedContent = secList
+      .map(s => {
+        const secHeading = s.sectionTitle.startsWith('#') ? s.sectionTitle : `## ${s.sectionTitle}`;
+        return `${secHeading}\n\n${s.content || s.summary}`;
+      })
+      .join('\n\n---\n\n');
+
+    const totalWords = secList.reduce((acc, s) => acc + (s.wordCount || 300), 0);
+    const readingTime = Math.max(3, Math.round(totalWords / 180));
+
+    // Extract takeaways
+    const keyTakeaways = secList.slice(0, 3).map(s => `Maîtriser les enjeux clés de : ${s.sectionTitle}`);
+
+    chapters.push({
+      id: `chap-${chapIndex}`,
+      chapterNumber: chapIndex,
+      title: chTitle,
+      subtitle: secList[0]?.summary || `Étude approfondie et cadre pratique du ${chTitle}`,
+      content: combinedContent,
+      keyTakeaways: keyTakeaways.length > 0 ? keyTakeaways : [`Assimiler les concepts prioritaires du ${chTitle}`],
+      readingTimeMinutes: readingTime
+    });
+
+    tableOfContents.push({
+      id: `toc-${chapIndex}`,
+      chapterNumber: chapIndex,
+      title: chTitle,
+      summary: secList[0]?.summary || `Vue d'ensemble et plan d'action du ${chTitle}`
+    });
+
+    chapIndex++;
+  });
+
+  return { chapters, tableOfContents };
+}
+
+export interface SequentialBookGenerationProgress {
+  step: 'planning' | 'section_start' | 'section_complete' | 'completed' | 'error';
+  currentSectionIndex: number;
+  totalSections: number;
+  currentSectionTitle: string;
+  currentChapterTitle: string;
+  percent: number;
+  message: string;
+  plan: BookPlanSection[];
+  completedSections: BookPlanSection[];
+  totalWordsGenerated: number;
+}
+
+/**
+ * ORCHESTRATEUR PRINCIPAL SÉQUENTIEL (FLUX EN 2 ÉTAPES)
+ * Étape A : Génération ou récupération du Plan Détaillé [{ chapterTitle, sectionTitle, summary }]
+ * Étape B : Boucle séquentielle pour chaque section avec envoi du summary + 200 derniers mots précédents
+ */
+export async function generateFullBookSequentially(params: {
+  data: BookPlanParams & { existingPlan?: BookPlanSection[] };
+  onProgress?: (progress: SequentialBookGenerationProgress) => void;
+}): Promise<{
+  success: boolean;
+  plan: BookPlanSection[];
+  chapters: EbookChapter[];
+  tableOfContents: EbookTOCItem[];
+  totalWordsGenerated: number;
+}> {
+  const { data, onProgress } = params;
+
+  // ÉTAPE A : Établissement du Plan
+  let plan: BookPlanSection[] = [];
+  if (data.existingPlan && data.existingPlan.length > 0) {
+    plan = data.existingPlan;
+  } else {
+    onProgress?.({
+      step: 'planning',
+      currentSectionIndex: 0,
+      totalSections: 0,
+      currentSectionTitle: '',
+      currentChapterTitle: '',
+      percent: 5,
+      message: `Conception du plan détaillé et structuration du sommaire...`,
+      plan: [],
+      completedSections: [],
+      totalWordsGenerated: 0
+    });
+
+    const planRes = await generateBookPlanWithGemini(data);
+    plan = planRes.plan;
+  }
+
+  const totalSections = plan.length;
+  const completedSections: BookPlanSection[] = [];
+  let totalWordsGenerated = 0;
+  let previousSectionLastWords = '';
+
+  // ÉTAPE B : Boucle séquentielle pour générer chaque section une par une
+  for (let i = 0; i < totalSections; i++) {
+    const currentSection = plan[i];
+    const progressPercent = Math.round(10 + ((i) / totalSections) * 85);
+
+    onProgress?.({
+      step: 'section_start',
+      currentSectionIndex: i + 1,
+      totalSections,
+      currentSectionTitle: currentSection.sectionTitle,
+      currentChapterTitle: currentSection.chapterTitle,
+      percent: progressPercent,
+      message: `Génération de la section ${i + 1} sur ${totalSections} : « ${currentSection.sectionTitle} »...`,
+      plan,
+      completedSections: [...completedSections],
+      totalWordsGenerated
+    });
+
+    // Appel API pour cette section spécifique
+    const secResult = await generateBookSectionWithGemini({
+      section: currentSection,
+      bookInfo: {
+        title: data.title,
+        subtitle: data.subtitle,
+        author: data.author,
+        genre: data.genre,
+        language: data.language,
+        tone: data.tone,
+        targetAudience: data.targetAudience
+      },
+      previousSectionLastWords,
+      sectionIndex: i,
+      totalSections
+    });
+
+    const finishedSection: BookPlanSection = {
+      ...currentSection,
+      content: secResult.content,
+      wordCount: secResult.wordCount,
+      status: 'completed'
+    };
+
+    completedSections.push(finishedSection);
+    totalWordsGenerated += secResult.wordCount;
+
+    // Récupération des 200 derniers mots pour la section suivante
+    previousSectionLastWords = getLastNWords(secResult.content, 200);
+
+    onProgress?.({
+      step: 'section_complete',
+      currentSectionIndex: i + 1,
+      totalSections,
+      currentSectionTitle: currentSection.sectionTitle,
+      currentChapterTitle: currentSection.chapterTitle,
+      percent: Math.round(10 + ((i + 1) / totalSections) * 85),
+      message: `Section ${i + 1}/${totalSections} rédigée avec succès (${secResult.wordCount} mots).`,
+      plan,
+      completedSections: [...completedSections],
+      totalWordsGenerated
+    });
+  }
+
+  // Assemblage final des chapitres et du sommaire
+  const { chapters, tableOfContents } = assembleChaptersFromSections(completedSections, {
+    title: data.title,
+    author: data.author,
+    targetPageCount: data.targetPageCount
+  });
+
+  onProgress?.({
+    step: 'completed',
+    currentSectionIndex: totalSections,
+    totalSections,
+    currentSectionTitle: '',
+    currentChapterTitle: '',
+    percent: 100,
+    message: `Livre rédigé intégralement avec succès ! (${totalWordsGenerated} mots au total sur ${totalSections} sections).`,
+    plan: completedSections,
+    completedSections,
+    totalWordsGenerated
+  });
+
+  return {
+    success: true,
+    plan: completedSections,
+    chapters,
+    tableOfContents,
+    totalWordsGenerated
+  };
+}
+
+/**
+ * Wrapper de compatibilité pour les appels existants
+ * Redirige vers la nouvelle génération séquentielle
  */
 export async function generateEbookContentWithGemini(data: {
   title: string;
@@ -915,174 +1437,25 @@ export async function generateEbookContentWithGemini(data: {
   targetAudience?: string;
   tone?: string;
   summaryOrPrompt?: string;
+  userSynopsisOrIdeas?: string;
   chapterCount?: number;
   targetPageCount?: number;
+  existingPlan?: BookPlanSection[];
+  onProgress?: (progress: SequentialBookGenerationProgress) => void;
 }) {
-  const apiKey = getGeminiApiKey();
-  const lang = data.language || 'Français';
-  const genre = data.genre || 'Business & Entrepreneuriat';
-  const author = data.author || 'Auteur';
-  const title = data.title || 'Livre Numérique';
-  const totalTargetPages = Math.max(4, data.targetPageCount || 10);
-  const targetInteriorPages = Math.max(1, totalTargetPages - 3);
-  const count = data.chapterCount || Math.min(10, Math.max(3, Math.round(targetInteriorPages / 2)));
+  const result = await generateFullBookSequentially({
+    data: {
+      ...data,
+      userSynopsisOrIdeas: data.userSynopsisOrIdeas || data.summaryOrPrompt
+    },
+    onProgress: data.onProgress
+  });
 
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.includes('placeholder')) {
-    // Generate high quality chapters based on title and language
-    const sampleTOC = [
-      { id: 'toc-1', chapterNumber: 1, title: `Introduction & Fondements : Comprendre ${title}`, summary: "Les bases indispensables et la mise en contexte." },
-      { id: 'toc-2', chapterNumber: 2, title: `Les Piliers Clés & Stratégies Éprouvées`, summary: "Méthodologie et cadre opérationnel." },
-      { id: 'toc-3', chapterNumber: 3, title: `Mise en Pratique : Du Concept à l'Exécution`, summary: "Guide pas à pas avec exemples concrets." },
-      { id: 'toc-4', chapterNumber: 4, title: `Optimisation, Évolution & Évitement des Pièges`, summary: "Résolution des problèmes et passage à l'échelle." },
-      { id: 'toc-5', chapterNumber: 5, title: `Feuille de Route & Conclusion Stratégique`, summary: "Plan d'action personnel pour un succès pérenne." }
-    ].slice(0, count);
-
-    const sampleChapters = sampleTOC.map((toc) => ({
-      id: `chap-${toc.chapterNumber}`,
-      chapterNumber: toc.chapterNumber,
-      title: toc.title,
-      subtitle: toc.summary,
-      readingTimeMinutes: 7 + toc.chapterNumber,
-      keyTakeaways: [
-        `Comprendre les enjeux prioritaires du chapitre ${toc.chapterNumber}.`,
-        `Appliquer directement les conseils pratiques dans votre quotidien.`,
-        `Mesurer vos progrès grâce à des indicateurs clairs.`
-      ],
-      content: `## ${toc.chapterNumber}.1 Vue d'Ensemble & Objectifs
-
-Dans ce chapitre dédié à **${toc.title}**, nous posons les jalons d'une compréhension approfondie et sans compromis. L'objectif est de vous doter d'une grille de lecture claire, pratique et directement applicable.
-
-L'auto-édition et la transmission de savoir exigent rigueur et méthode. Trop de manuels se contentent de survoler la surface sans jamais donner les leviers opérationnels. Ici, chaque paragraphe est pensé pour vous faire gagner un temps précieux.
-
-> *« Le savoir n'a de valeur que lorsqu'il est mis au service d'une action délibérée et constante. »*
-
-## ${toc.chapterNumber}.2 Les Concepts Opérationnels
-
-Pour réussir votre démarche, concentrez-vous sur ces aspects essentiels :
-
-1. **La Clarté d'Intention** : Définir précisément le résultat attendu avant d'engager des ressources.
-2. **La Systématisation** : Remplacer l'improvisation par des processus reproductibles.
-3. **Le Feedback Continu** : Tester, mesurer et ajuster en temps réel.
-
-## ${toc.chapterNumber}.3 Exercice Pratique & Plan d'Action
-
-Prenez 10 minutes pour formaliser votre propre plan :
-- Notez les 3 enseignements clés que vous retenez.
-- Choisissez une action immédiate à réaliser dans les 24 heures.
-- Partagez vos conclusions avec un pair ou dans votre carnet de bord.`
-    }));
-
-    return {
-      success: true,
-      tableOfContents: sampleTOC,
-      chapters: sampleChapters
-    };
-  }
-
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `Tu es un auteur à succès et éditeur chevronné de livres numériques et livres professionnels au format auto-édition (Amazon KDP 6x9 pouces).
-Ta mission est de concevoir la TABLE DES MATIÈRES (Sommaire) et de RÉDIGER INTÉGRALEMENT LES ${count} CHAPITRES d'un livre d'excellence.
-
-CALIBRAGE STRICT DU NOMBRE EXACT DE PAGES :
-Le livre complet doit faire EXACTEMENT ${totalTargetPages} PAGES au total :
-- Page 1 : 1re de Couverture Avant (Titre, Auteur, Illustration)
-- Page 2 : Page de Titre & Copyright / Mentions Légales
-- Page 3 : Table des Matières / Sommaire
-- Pages 4 à ${totalTargetPages - 1} (soit exactement ${targetInteriorPages} pages intérieures rédigées) : Corps du livre réparti sur les ${count} chapitres
-- Page ${totalTargetPages} : 4e de Couverture Arrière (Synopsis, Points clés, Bio auteur, Code-barres)
-
-IMPORTANT : Le livre entier (titres, sous-titres, résumés, contenu détaillé des chapitres, points clés à retenir) DOIT être rédigé UNIQUEMENT en ${lang}.
-
-Détails du livre :
-- Titre : "${title}"
-- Sous-titre : "${data.subtitle || ''}"
-- Auteur : "${author}"
-- Genre : "${genre}"
-- Langue exigée : "${lang}"
-- Public cible : "${data.targetAudience || 'Professionnels et grand public'}"
-- Ton : "${data.tone || 'Pédagogique, Inspirant & Actionnable'}"
-- Contexte / Synopsis : "${data.summaryOrPrompt || ''}"
-- Nombre total de pages exact exigé : ${totalTargetPages} pages (dont ${targetInteriorPages} pages intérieures)
-- Nombre de chapitres exigé : ${count} chapitres
-
-Instructions de rédaction pour chaque chapitre :
-1. Chaque chapitre doit contenir un contenu riche, professionnel, volumineux et substantiel avec des sous-titres markdown (##), des paragraphes bien développés, des citations inspirantes (>), des listes structurées, et des exemples concrets, parfaitement dimensionné pour remplir l'équivalent de ${Math.max(1, Math.round(targetInteriorPages / count))} page(s) imprimée(s).
-2. Fournis 3 points clés à retenir (keyTakeaways) par chapitre.
-3. Estime le temps de lecture en minutes (readingTimeMinutes).`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        maxOutputTokens: 8192,
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            tableOfContents: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  chapterNumber: { type: Type.NUMBER },
-                  title: { type: Type.STRING },
-                  summary: { type: Type.STRING },
-                },
-                required: ['chapterNumber', 'title', 'summary'],
-              },
-            },
-            chapters: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  chapterNumber: { type: Type.NUMBER },
-                  title: { type: Type.STRING },
-                  subtitle: { type: Type.STRING },
-                  content: { type: Type.STRING },
-                  keyTakeaways: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                  },
-                  readingTimeMinutes: { type: Type.NUMBER },
-                },
-                required: ['chapterNumber', 'title', 'content'],
-              },
-            },
-          },
-          required: ['tableOfContents', 'chapters'],
-        },
-      },
-    });
-
-    const parsed = JSON.parse(response.text || '{}');
-    return {
-      success: true,
-      tableOfContents: Array.isArray(parsed.tableOfContents) ? parsed.tableOfContents : [],
-      chapters: Array.isArray(parsed.chapters) ? parsed.chapters : []
-    };
-  } catch (err: any) {
-    console.warn('[Gemini Ebook Content] Fallback activé :', err?.message);
-    const sampleTOC = [
-      { id: 'toc-1', chapterNumber: 1, title: `Fondements : Comprendre ${title}`, summary: "Introduction et cadrage stratégique." },
-      { id: 'toc-2', chapterNumber: 2, title: `Méthodes & Principes Clés`, summary: "Les piliers essentiels pour réussir." },
-      { id: 'toc-3', chapterNumber: 3, title: `Passage à l'Action & Études de Cas`, summary: "Applications concrètes et retours d'expérience." }
-    ];
-    return {
-      success: true,
-      tableOfContents: sampleTOC,
-      chapters: sampleTOC.map((t) => ({
-        id: `chap-${t.chapterNumber}`,
-        chapterNumber: t.chapterNumber,
-        title: t.title,
-        subtitle: t.summary,
-        readingTimeMinutes: 8,
-        keyTakeaways: [`Appliquer les principes du chapitre ${t.chapterNumber}`],
-        content: `## ${t.chapterNumber}.1 Introduction\n\nBienvenue dans ce chapitre consacré à ${t.title}.\n\n> *« La constance est le secret des grands accomplissements. »*`
-      }))
-    };
-  }
+  return {
+    success: result.success,
+    tableOfContents: result.tableOfContents,
+    chapters: result.chapters,
+    plan: result.plan,
+    totalWordsGenerated: result.totalWordsGenerated
+  };
 }

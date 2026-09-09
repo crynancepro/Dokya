@@ -109,6 +109,16 @@ export interface EbookChapter {
   readingTimeMinutes?: number;
 }
 
+export interface BookPlanSection {
+  id?: string;
+  chapterTitle: string;
+  sectionTitle: string;
+  summary: string;
+  content?: string;
+  wordCount?: number;
+  status?: 'pending' | 'generating' | 'completed' | 'error';
+}
+
 export interface EbookData {
   id: string;
   title: string;
@@ -119,6 +129,7 @@ export interface EbookData {
   targetAudience: string;
   tone: string;
   summaryOrPrompt: string;
+  userSynopsisOrIdeas?: string;
   chapterCount: number;
   targetPageCount: number; // Nombre exact de pages que le livre doit contenir (ex: 5, 10, 15, 20, 30, 50, 100...)
   pageFormat: '6x9' | 'A5' | 'A4'; // 6x9 standard self-publishing
@@ -144,6 +155,7 @@ export interface EbookData {
   };
 
   // Étape 3 : Rédaction & Structure
+  bookPlan?: BookPlanSection[];
   tableOfContents: EbookTOCItem[];
   chapters: EbookChapter[];
   
