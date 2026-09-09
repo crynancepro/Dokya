@@ -3731,3 +3731,439 @@ export async function purgeOldSupportMessages(chatId: string): Promise<number> {
   }
 }
 
+export interface RealtimeSalesCategory {
+  id: string;
+  name: string;
+  subtitle: string;
+  color: string;
+  barColor: string;
+  revenue: number;
+  count: number;
+  percentage: number;
+}
+
+export interface RealtimeAdminMetrics {
+  // KPI Cards
+  totalRevenue: number;
+  totalDocumentsCount: number;
+  totalUsersCount: number;
+  totalCirculatingBalance: number;
+
+  // Financial Statistics
+  todayRevenue: number;
+  weekRevenue: number;
+  monthRevenue: number;
+  successRate: number;
+  totalAttempts: number;
+  successfulCount: number;
+  failedCount: number;
+  pendingCount: number;
+
+  // Real Sales Breakdown
+  salesBreakdown: RealtimeSalesCategory[];
+
+  // Real users list (for table and synchronizing)
+  realtimeUsers: AdminUserRecord[];
+
+  // Real transactions list
+  transactions: TransactionRecord[];
+}
+
+/**
+ * Real-time Firestore onSnapshot synchronization for the Admin Dashboard.
+ * 100% genuine data calculated from Firestore collections ('users', 'payments', 'transactions', 'orders', 'user_documents', 'documents', 'generated_cvs').
+ */
+export function subscribeToRealtimeAdminDashboardMetrics(
+  onUpdate: (metrics: RealtimeAdminMetrics) => void,
+  onError?: (err: any) => void
+): Unsubscribe {
+  // Local state caches across listeners
+  let cachedUsers: AdminUserRecord[] = [];
+  let cachedUsersDocCount = 0;
+  let cachedCirculatingBalance = 0;
+
+  let cachedPaymentsDocs: Map<string, any> = new Map();
+  let cachedTransactionsDocs: Map<string, any> = new Map();
+  let cachedOrdersDocs: Map<string, any> = new Map();
+
+  let userDocsCount = 0;
+  let generalDocsCount = 0;
+  let generatedCvsCount = 0;
+
+  const calculateAndEmit = () => {
+    // 1. Deduplicate payments, transactions, orders into single map
+    const mergedTxMap = new Map<string, any>();
+    
+    // Add transactions first
+    cachedTransactionsDocs.forEach((doc, id) => {
+      mergedTxMap.set(id, { id, ...doc });
+    });
+    
+    // Add payments (override or supplement)
+    cachedPaymentsDocs.forEach((doc, id) => {
+      if (!mergedTxMap.has(id)) {
+        mergedTxMap.set(id, { id, ...doc });
+      } else {
+        mergedTxMap.set(id, { ...mergedTxMap.get(id), ...doc });
+      }
+    });
+
+    // Add orders
+    cachedOrdersDocs.forEach((doc, id) => {
+      if (!mergedTxMap.has(id)) {
+        mergedTxMap.set(id, { id, ...doc });
+      }
+    });
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+    const sevenDaysAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+
+    let totalRevenue = 0;
+    let todayRevenue = 0;
+    let weekRevenue = 0;
+    let monthRevenue = 0;
+
+    let successfulCount = 0;
+    let failedCount = 0;
+    let pendingCount = 0;
+
+    let duoRev = 0; let duoCount = 0;
+    let cvRev = 0; let cvCount = 0;
+    let letterRev = 0; let letterCount = 0;
+    let unlimitedRev = 0; let unlimitedCount = 0;
+    let businessRev = 0; let businessCount = 0;
+    let otherRev = 0; let otherCount = 0;
+
+    const allTxList: TransactionRecord[] = [];
+
+    mergedTxMap.forEach((item, id) => {
+      const statusRaw = String(item.status || item.paymentStatus || '').toLowerCase().trim();
+      const isSuccess = ['completed', 'success', 'validated_by_ai', 'manually_validated', 'paid', 'approved'].includes(statusRaw);
+      const isFailed = ['failed', 'rejected', 'rejected_by_ai', 'rejected_by_admin', 'cancelled', 'cancel', 'expired'].includes(statusRaw);
+      const isPending = !isSuccess && !isFailed;
+
+      if (isSuccess) successfulCount++;
+      else if (isFailed) failedCount++;
+      else if (isPending) pendingCount++;
+
+      // Extract amount
+      const rawAmt = item.amount ?? item.extractedAmount ?? item.expectedAmount ?? item.price ?? 0;
+      const amount = typeof rawAmt === 'number' ? Math.abs(rawAmt) : Math.abs(parseFloat(String(rawAmt).replace(/[^0-9.-]/g, '')) || 0);
+
+      // Parse timestamp
+      let txTime = 0;
+      if (item.createdAt) {
+        if (typeof item.createdAt === 'number') txTime = item.createdAt;
+        else if (item.createdAt.seconds) txTime = item.createdAt.seconds * 1000;
+        else if (typeof item.createdAt.toMillis === 'function') txTime = item.createdAt.toMillis();
+        else if (typeof item.createdAt.toDate === 'function') txTime = item.createdAt.toDate().getTime();
+        else {
+          const p = new Date(item.createdAt).getTime();
+          txTime = isNaN(p) ? 0 : p;
+        }
+      }
+
+      if (isSuccess) {
+        totalRevenue += amount;
+
+        if (txTime > 0) {
+          if (txTime >= startOfToday && txTime <= now.getTime()) {
+            todayRevenue += amount;
+          }
+          if (txTime >= sevenDaysAgo) {
+            weekRevenue += amount;
+          }
+          if (txTime >= startOfMonth) {
+            monthRevenue += amount;
+          }
+        }
+
+        // Categorize for product sales breakdown
+        const desc = `${item.itemType || ''} ${item.mode || ''} ${item.serviceType || ''} ${item.service || ''} ${item.plan || ''} ${item.formula || ''} ${item.title || ''} ${item.description || ''}`.toLowerCase();
+
+        if (desc.includes('pack duo') || desc.includes('full_pack') || desc.includes('duo') || (desc.includes('cv') && desc.includes('lettre'))) {
+          duoRev += amount;
+          duoCount++;
+        } else if (desc.includes('lettre') || desc.includes('letter_only') || desc.includes('cover_letter') || desc.includes('motivation')) {
+          letterRev += amount;
+          letterCount++;
+        } else if (desc.includes('cv_only') || desc.includes('cv ats') || desc.includes('cv unique') || desc.includes('ats') || desc.includes('cv')) {
+          cvRev += amount;
+          cvCount++;
+        } else if (desc.includes('illimit') || desc.includes('unlimited') || desc.includes('vip') || desc.includes('abonnement') || desc.includes('pass')) {
+          unlimitedRev += amount;
+          unlimitedCount++;
+        } else if (desc.includes('devis') || desc.includes('facture') || desc.includes('business') || desc.includes('entreprise')) {
+          businessRev += amount;
+          businessCount++;
+        } else {
+          otherRev += amount;
+          otherCount++;
+        }
+      }
+
+      // Collect transaction record
+      allTxList.push({
+        id: item.id || id,
+        userId: item.userId || item.userUid || 'anonymous',
+        userEmail: item.userEmail || item.email,
+        amount: item.amount || amount,
+        currency: item.currency || 'FCFA',
+        extractedAmount: item.extractedAmount || amount,
+        expectedAmount: item.expectedAmount || amount,
+        type: item.type || 'subscription_or_doc',
+        status: item.status || (isSuccess ? 'success' : isFailed ? 'failed' : 'pending'),
+        paymentMethod: item.paymentMethod || item.method || 'wave',
+        createdAt: item.createdAt || new Date(txTime || Date.now()).toISOString(),
+        description: item.description || item.title || item.plan || 'Paiement service Dokya',
+        receiptUrl: item.receiptUrl || item.proofUrl || item.extractedReceiptUrl,
+        receiptOriginalName: item.receiptOriginalName,
+        smsBody: item.smsBody,
+        senderPhone: item.senderPhone || item.phoneNumber,
+        transactionId: item.transactionId || item.reference || id
+      } as TransactionRecord);
+    });
+
+    allTxList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    const totalAttempts = successfulCount + failedCount + pendingCount;
+    const successRate = totalAttempts > 0 ? Math.round((successfulCount / totalAttempts) * 100) : 100;
+
+    const totalSalesSum = duoRev + cvRev + letterRev + unlimitedRev + businessRev + otherRev;
+
+    const salesBreakdown: RealtimeSalesCategory[] = [
+      {
+        id: 'cv_ats',
+        name: 'CV ATS Unique',
+        subtitle: '500 FCFA / 1 000 FCFA - Optimisé Recruteurs',
+        color: 'teal',
+        barColor: 'bg-teal-500',
+        revenue: cvRev,
+        count: cvCount,
+        percentage: totalSalesSum > 0 ? Math.round((cvRev / totalSalesSum) * 100) : 0,
+      },
+      {
+        id: 'duo',
+        name: 'Pack Duo (CV + Lettre)',
+        subtitle: '1 500 FCFA - Formule Complète IA',
+        color: 'emerald',
+        barColor: 'bg-emerald-500',
+        revenue: duoRev,
+        count: duoCount,
+        percentage: totalSalesSum > 0 ? Math.round((duoRev / totalSalesSum) * 100) : 0,
+      },
+      {
+        id: 'letter',
+        name: 'Lettre de Motivation',
+        subtitle: '500 FCFA - Ciblée Offre d\'Emploi',
+        color: 'cyan',
+        barColor: 'bg-cyan-500',
+        revenue: letterRev,
+        count: letterCount,
+        percentage: totalSalesSum > 0 ? Math.round((letterRev / totalSalesSum) * 100) : 0,
+      },
+      {
+        id: 'unlimited',
+        name: 'Pass Illimité (VIP)',
+        subtitle: '5 000 FCFA / mois - Accès Candidat Illimité',
+        color: 'amber',
+        barColor: 'bg-amber-500',
+        revenue: unlimitedRev,
+        count: unlimitedCount,
+        percentage: totalSalesSum > 0 ? Math.round((unlimitedRev / totalSalesSum) * 100) : 0,
+      },
+      {
+        id: 'business',
+        name: 'Pack Business & Devis UEMOA',
+        subtitle: '1 000 FCFA / 3 000 FCFA - Facturation & Devis',
+        color: 'violet',
+        barColor: 'bg-violet-500',
+        revenue: businessRev,
+        count: businessCount,
+        percentage: totalSalesSum > 0 ? Math.round((businessRev / totalSalesSum) * 100) : 0,
+      }
+    ];
+
+    if (otherRev > 0 || otherCount > 0) {
+      salesBreakdown.push({
+        id: 'other',
+        name: 'Recharges Portefeuille & Divers',
+        subtitle: 'Crédits portefeuilles & services additionnels',
+        color: 'blue',
+        barColor: 'bg-blue-500',
+        revenue: otherRev,
+        count: otherCount,
+        percentage: totalSalesSum > 0 ? Math.round((otherRev / totalSalesSum) * 100) : 0,
+      });
+    }
+
+    const totalDocsCount = userDocsCount + generalDocsCount + generatedCvsCount;
+
+    onUpdate({
+      totalRevenue,
+      totalDocumentsCount: totalDocsCount,
+      totalUsersCount: cachedUsersDocCount,
+      totalCirculatingBalance: cachedCirculatingBalance,
+      todayRevenue,
+      weekRevenue,
+      monthRevenue,
+      successRate,
+      totalAttempts,
+      successfulCount,
+      failedCount,
+      pendingCount,
+      salesBreakdown,
+      realtimeUsers: cachedUsers,
+      transactions: allTxList
+    });
+  };
+
+  const unsubs: Unsubscribe[] = [];
+
+  // A. Listen to 'users' collection
+  try {
+    const usersCol = collection(db, 'users');
+    const unsubUsers = onSnapshot(usersCol, (snap) => {
+      cachedUsersDocCount = snap.size;
+      let totalBal = 0;
+      const list: AdminUserRecord[] = [];
+
+      snap.forEach((docSnap) => {
+        const d = docSnap.data();
+        const bal = Number(d.walletBalance ?? d.credits ?? d.balance ?? 0);
+        totalBal += isNaN(bal) ? 0 : bal;
+
+        list.push({
+          uid: docSnap.id,
+          email: d.email || 'candidat@dokya.sn',
+          firstName: d.firstName || d.personalInfo?.firstName || '',
+          lastName: d.lastName || d.personalInfo?.lastName || '',
+          phone: d.phone || d.personalInfo?.phone,
+          city: d.city || d.personalInfo?.city,
+          targetJob: d.targetJob || d.personalInfo?.targetJob,
+          balance: bal,
+          credits: d.credits || 0,
+          subscriptionStatus: d.subscriptionStatus || 'free',
+          ordersCount: d.ordersCount || 0,
+          documentsCount: d.documentsCount || 0,
+          createdAt: d.createdAt || d.updatedAt || new Date().toISOString(),
+          updatedAt: d.updatedAt || new Date().toISOString(),
+          status: d.status || 'active',
+          role: d.role === 'admin' ? 'admin' : 'candidate'
+        });
+      });
+
+      cachedCirculatingBalance = totalBal;
+      cachedUsers = list;
+      calculateAndEmit();
+    }, (err) => {
+      console.warn('[Firestore Users Snapshot Warn]:', err);
+      if (onError) onError(err);
+    });
+    unsubs.push(unsubUsers);
+  } catch (err) {
+    console.warn('[Firestore Users Listen Init Warn]:', err);
+  }
+
+  // B. Listen to 'transactions' collection
+  try {
+    const txCol = collection(db, 'transactions');
+    const unsubTx = onSnapshot(txCol, (snap) => {
+      cachedTransactionsDocs.clear();
+      snap.forEach((d) => {
+        cachedTransactionsDocs.set(d.id, d.data());
+      });
+      calculateAndEmit();
+    }, (err) => {
+      console.warn('[Firestore Transactions Snapshot Warn]:', err);
+    });
+    unsubs.push(unsubTx);
+  } catch (err) {
+    console.warn('[Firestore Transactions Listen Init Warn]:', err);
+  }
+
+  // C. Listen to 'payments' collection
+  try {
+    const paymentsCol = collection(db, 'payments');
+    const unsubPayments = onSnapshot(paymentsCol, (snap) => {
+      cachedPaymentsDocs.clear();
+      snap.forEach((d) => {
+        cachedPaymentsDocs.set(d.id, d.data());
+      });
+      calculateAndEmit();
+    }, (err) => {
+      console.warn('[Firestore Payments Snapshot Warn]:', err);
+    });
+    unsubs.push(unsubPayments);
+  } catch (err) {
+    console.warn('[Firestore Payments Listen Init Warn]:', err);
+  }
+
+  // D. Listen to 'orders' collection
+  try {
+    const ordersCol = collection(db, 'orders');
+    const unsubOrders = onSnapshot(ordersCol, (snap) => {
+      cachedOrdersDocs.clear();
+      snap.forEach((d) => {
+        cachedOrdersDocs.set(d.id, d.data());
+      });
+      calculateAndEmit();
+    }, (err) => {
+      console.warn('[Firestore Orders Snapshot Warn]:', err);
+    });
+    unsubs.push(unsubOrders);
+  } catch (err) {
+    console.warn('[Firestore Orders Listen Init Warn]:', err);
+  }
+
+  // E. Listen to 'user_documents' collection
+  try {
+    const userDocsCol = collection(db, 'user_documents');
+    const unsubUserDocs = onSnapshot(userDocsCol, (snap) => {
+      userDocsCount = snap.size;
+      calculateAndEmit();
+    }, (err) => {
+      console.warn('[Firestore user_documents Snapshot Warn]:', err);
+    });
+    unsubs.push(unsubUserDocs);
+  } catch (err) {
+    console.warn('[Firestore user_documents Listen Init Warn]:', err);
+  }
+
+  // F. Listen to 'documents' collection
+  try {
+    const docsCol = collection(db, 'documents');
+    const unsubDocs = onSnapshot(docsCol, (snap) => {
+      generalDocsCount = snap.size;
+      calculateAndEmit();
+    }, (err) => {
+      // Non-blocking if collection does not exist
+    });
+    unsubs.push(unsubDocs);
+  } catch (err) {
+    // Non-blocking
+  }
+
+  // G. Listen to 'generated_cvs' collection
+  try {
+    const cvsCol = collection(db, 'generated_cvs');
+    const unsubCvs = onSnapshot(cvsCol, (snap) => {
+      generatedCvsCount = snap.size;
+      calculateAndEmit();
+    }, (err) => {
+      // Non-blocking if collection does not exist
+    });
+    unsubs.push(unsubCvs);
+  } catch (err) {
+    // Non-blocking
+  }
+
+  return () => {
+    unsubs.forEach(unsub => {
+      try { unsub(); } catch (_e) {}
+    });
+  };
+}
+

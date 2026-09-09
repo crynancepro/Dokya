@@ -60,6 +60,18 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /payments/{paymentId} {
+      allow read, write: if true;
+    }
+
+    match /documents/{docId} {
+      allow read, write: if true;
+    }
+
+    match /generated_cvs/{cvId} {
+      allow read, write: if true;
+    }
+
     match /transactions/{txId} {
       allow read, write, delete: if true;
     }

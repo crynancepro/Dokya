@@ -26,7 +26,10 @@ import {
   fetchAllAdminUsersWithSubscriptions,
   manageUserSubscriptionInFirestore,
   subscribeToActiveSupportConversations,
-  purgeExpiredPaymentReceipts
+  purgeExpiredPaymentReceipts,
+  subscribeToRealtimeAdminDashboardMetrics,
+  RealtimeAdminMetrics,
+  RealtimeSalesCategory
 } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail, PRIMARY_ADMIN_EMAIL, getAdminHeaders } from '../lib/adminAuth';
@@ -65,6 +68,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Data States
   const [loading, setLoading] = useState<boolean>(true);
+  const [isRealtimeStatsLoading, setIsRealtimeStatsLoading] = useState<boolean>(true);
+  const [realtimeMetrics, setRealtimeMetrics] = useState<RealtimeAdminMetrics | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   
@@ -340,9 +345,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       });
 
+      // Real-time Firestore onSnapshot listener for 100% genuine Dashboard metrics
+      const unsubRealtimeMetrics = subscribeToRealtimeAdminDashboardMetrics((liveMetrics) => {
+        setRealtimeMetrics(liveMetrics);
+        setIsRealtimeStatsLoading(false);
+        if (liveMetrics.realtimeUsers && liveMetrics.realtimeUsers.length > 0) {
+          setUsersList(liveMetrics.realtimeUsers);
+        }
+        if (liveMetrics.transactions && liveMetrics.transactions.length > 0) {
+          setTransactionsList(liveMetrics.transactions);
+        }
+      }, (err) => {
+        console.warn('[AdminDashboard Realtime Metrics Error]:', err);
+        setIsRealtimeStatsLoading(false);
+      });
+
       return () => {
         unsubTx();
         unsubSupport();
+        unsubRealtimeMetrics();
         stopEmergencyAlarm();
       };
     }
@@ -444,6 +465,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Financial Analytics & Metrics (Aujourd'hui, Cette Semaine, Ce Mois, Global)
   const financialStats = useMemo(() => {
+    if (realtimeMetrics) {
+      return {
+        todayRevenue: realtimeMetrics.todayRevenue,
+        weekRevenue: realtimeMetrics.weekRevenue,
+        monthRevenue: realtimeMetrics.monthRevenue,
+        totalRevenue: realtimeMetrics.totalRevenue,
+        validatedCount: realtimeMetrics.successfulCount,
+        rejectedCount: realtimeMetrics.failedCount,
+        pendingCount: realtimeMetrics.pendingCount,
+        successRate: realtimeMetrics.successRate
+      };
+    }
+
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
 
@@ -493,10 +527,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     });
 
-    if (kpis?.totalRevenue && totalRevenue === 0) {
-      totalRevenue = kpis.totalRevenue;
-    }
-
     return {
       todayRevenue,
       weekRevenue,
@@ -505,9 +535,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       validatedCount,
       rejectedCount,
       pendingCount,
-      successRate: (validatedCount + rejectedCount) > 0 ? Math.round((validatedCount / (validatedCount + rejectedCount)) * 100) : 99
+      successRate: (validatedCount + rejectedCount) > 0 ? Math.round((validatedCount / (validatedCount + rejectedCount)) * 100) : 100
     };
-  }, [transactionsList, kpis]);
+  }, [realtimeMetrics, transactionsList]);
+
+  // Effective Real-Time KPIs derived directly from Firestore
+  const effectiveKPIs = useMemo(() => {
+    if (realtimeMetrics) {
+      return {
+        totalRevenue: realtimeMetrics.totalRevenue,
+        totalCVsGenerated: realtimeMetrics.totalDocumentsCount,
+        totalUsersCount: realtimeMetrics.totalUsersCount || usersList.length,
+        totalTransactionsCount: realtimeMetrics.transactions.length,
+        totalCirculatingBalance: realtimeMetrics.totalCirculatingBalance,
+        successPaymentRate: realtimeMetrics.successRate,
+        revenueByService: {
+          cvOnly: realtimeMetrics.salesBreakdown.find(s => s.id === 'cv_ats')?.revenue || 0,
+          letterOnly: realtimeMetrics.salesBreakdown.find(s => s.id === 'letter')?.revenue || 0,
+          fullPack: realtimeMetrics.salesBreakdown.find(s => s.id === 'duo')?.revenue || 0,
+          devis: 0,
+          facture: 0,
+          businessPack: realtimeMetrics.salesBreakdown.find(s => s.id === 'business')?.revenue || 0,
+          unlimitedPass: realtimeMetrics.salesBreakdown.find(s => s.id === 'unlimited')?.revenue || 0,
+          walletRecharge: realtimeMetrics.salesBreakdown.find(s => s.id === 'other')?.revenue || 0,
+        },
+        dailyRevenueTrend: kpis?.dailyRevenueTrend || []
+      };
+    }
+    return kpis;
+  }, [realtimeMetrics, usersList.length, kpis]);
 
   // Helper Drapeau & Pays
   const getCountryInfo = (tx: TransactionRecord) => {
@@ -1725,13 +1781,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    {(financialStats.totalRevenue || kpis?.totalRevenue || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-emerald-400">FCFA</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400 font-semibold">{financialStats.successRate}%</span> validation IA & Mobile Money
-                  </p>
+                  {isRealtimeStatsLoading ? (
+                    <div className="space-y-2">
+                      <div className="h-8 w-36 bg-slate-800 animate-pulse rounded-xl"></div>
+                      <div className="h-3.5 w-44 bg-slate-800/60 animate-pulse rounded-md"></div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                        {(financialStats.totalRevenue || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-emerald-400">FCFA</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                        <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400 font-semibold">{financialStats.successRate}%</span> validation IA & Mobile Money
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1745,10 +1810,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    {(kpis?.totalCVsGenerated || 0).toLocaleString('fr-FR')}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">CV ATS, Lettres, Devis & Ebooks</p>
+                  {isRealtimeStatsLoading ? (
+                    <div className="space-y-2">
+                      <div className="h-8 w-24 bg-slate-800 animate-pulse rounded-xl"></div>
+                      <div className="h-3.5 w-40 bg-slate-800/60 animate-pulse rounded-md"></div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                        {(effectiveKPIs?.totalCVsGenerated || 0).toLocaleString('fr-FR')}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">CV ATS, Lettres, Devis & Ebooks</p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1762,10 +1836,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    {(kpis?.totalUsersCount || usersList.length).toLocaleString('fr-FR')}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">Sénégal, UEMOA & Diaspora</p>
+                  {isRealtimeStatsLoading ? (
+                    <div className="space-y-2">
+                      <div className="h-8 w-24 bg-slate-800 animate-pulse rounded-xl"></div>
+                      <div className="h-3.5 w-36 bg-slate-800/60 animate-pulse rounded-md"></div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                        {(effectiveKPIs?.totalUsersCount || usersList.length).toLocaleString('fr-FR')}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">Sénégal, UEMOA & Diaspora</p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1779,10 +1862,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    {(kpis?.totalCirculatingBalance || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-amber-400">FCFA</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">Crédits en circulation chez les candidats</p>
+                  {isRealtimeStatsLoading ? (
+                    <div className="space-y-2">
+                      <div className="h-8 w-32 bg-slate-800 animate-pulse rounded-xl"></div>
+                      <div className="h-3.5 w-44 bg-slate-800/60 animate-pulse rounded-md"></div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                        {(effectiveKPIs?.totalCirculatingBalance || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-amber-400">FCFA</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">Crédits en circulation chez les candidats</p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1813,33 +1905,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
                 <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                   <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Aujourd'hui</div>
-                  <div className="text-lg sm:text-xl font-black text-emerald-400 mt-1">
-                    {financialStats.todayRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Encaissements du jour</div>
+                  {isRealtimeStatsLoading ? (
+                    <div className="h-7 w-24 bg-slate-800 animate-pulse rounded-lg my-1"></div>
+                  ) : (
+                    <div className="text-lg sm:text-xl font-black text-emerald-400 mt-1">
+                      {financialStats.todayRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
+                    </div>
+                  )}
+                  <div className="text-[10px] text-slate-500 mt-0.5">Minuit à maintenant</div>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                   <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cette Semaine</div>
-                  <div className="text-lg sm:text-xl font-black text-white mt-1">
-                    {financialStats.weekRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
-                  </div>
+                  {isRealtimeStatsLoading ? (
+                    <div className="h-7 w-24 bg-slate-800 animate-pulse rounded-lg my-1"></div>
+                  ) : (
+                    <div className="text-lg sm:text-xl font-black text-white mt-1">
+                      {financialStats.weekRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
+                    </div>
+                  )}
                   <div className="text-[10px] text-slate-500 mt-0.5">7 derniers jours</div>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                   <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ce Mois-ci</div>
-                  <div className="text-lg sm:text-xl font-black text-white mt-1">
-                    {financialStats.monthRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Mois en cours</div>
+                  {isRealtimeStatsLoading ? (
+                    <div className="h-7 w-24 bg-slate-800 animate-pulse rounded-lg my-1"></div>
+                  ) : (
+                    <div className="text-lg sm:text-xl font-black text-white mt-1">
+                      {financialStats.monthRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
+                    </div>
+                  )}
+                  <div className="text-[10px] text-slate-500 mt-0.5">Depuis le 1er du mois</div>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30">
-                  <div className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">Taux de Succès IA</div>
-                  <div className="text-lg sm:text-xl font-black text-emerald-300 mt-1">
-                    {financialStats.successRate}%
-                  </div>
+                  <div className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">Taux de Succès</div>
+                  {isRealtimeStatsLoading ? (
+                    <div className="h-7 w-16 bg-slate-800 animate-pulse rounded-lg my-1"></div>
+                  ) : (
+                    <div className="text-lg sm:text-xl font-black text-emerald-300 mt-1">
+                      {financialStats.successRate}%
+                    </div>
+                  )}
                   <div className="text-[10px] text-emerald-400/80 mt-0.5">{financialStats.validatedCount} paiements validés</div>
                 </div>
               </div>
@@ -1848,54 +1956,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Performance Grid: Services & Trend */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               
-              {/* Répartition par Service */}
+              {/* Répartition par Service (Dynamique Firestore onSnapshot) */}
               <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4">
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-emerald-400" />
-                  <span>Répartition des Ventes</span>
-                </h2>
-
-                <div className="space-y-3 pt-2">
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-300 font-semibold">Pack Duo (CV + Lettre) - 1 500F</span>
-                      <span className="font-bold text-white">84 000 FCFA</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-emerald-500 rounded-full w-[35%]"></div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-300 font-semibold">CV ATS Unique - 500F / 1 000F</span>
-                      <span className="font-bold text-white">75 000 FCFA</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-teal-500 rounded-full w-[30%]"></div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-300 font-semibold">Pack Business & Devis UEMOA</span>
-                      <span className="font-bold text-white">54 000 FCFA</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-cyan-500 rounded-full w-[20%]"></div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-300 font-semibold">Pass Illimité Mensuel</span>
-                      <span className="font-bold text-white">30 000 FCFA</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-amber-500 rounded-full w-[15%]"></div>
-                    </div>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-emerald-400" />
+                    <span>Répartition des Ventes</span>
+                  </h2>
+                  <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    Temps réel
+                  </span>
                 </div>
+
+                {isRealtimeStatsLoading ? (
+                  <div className="space-y-4 pt-2">
+                    {[1, 2, 3, 4, 5].map((idx) => (
+                      <div key={idx} className="space-y-2 animate-pulse">
+                        <div className="flex justify-between">
+                          <div className="h-3.5 w-40 bg-slate-800 rounded"></div>
+                          <div className="h-3.5 w-16 bg-slate-800 rounded"></div>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-3.5 pt-2">
+                    {(realtimeMetrics?.salesBreakdown || []).map((item) => (
+                      <div key={item.id} className="space-y-1.5 group/item">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                            <span className="text-slate-300 font-semibold truncate">{item.name}</span>
+                            {item.count > 0 && (
+                              <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">
+                                ({item.count} vente{item.count > 1 ? 's' : ''})
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 font-mono">
+                            <span className={`font-bold ${item.revenue > 0 ? 'text-white' : 'text-slate-500'}`}>
+                              {item.revenue.toLocaleString('fr-FR')} FCFA
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-400 w-7 text-right">
+                              {item.percentage}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div 
+                            className={`h-full ${item.barColor} rounded-full transition-all duration-700 ease-out`}
+                            style={{ width: `${Math.max(0, Math.min(100, item.percentage))}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Raccourcis d'administration rapide */}
@@ -1952,7 +2068,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
                   <span>Passerelle Mobile Money (Wave / OM OCR) : <strong className="text-emerald-400">Opérationnelle</strong></span>
-                  <span>Taux de succès : <strong className="text-white">99.1%</strong></span>
+                  <span>Taux de succès : <strong className="text-white">{financialStats.successRate}%</strong></span>
                 </div>
               </div>
 

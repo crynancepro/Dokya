@@ -2922,47 +2922,53 @@ function recordAuditLog(
 app.get('/api/admin/stats', requireAdmin, (req, res) => {
   try {
     const totalUsers = adminStore.users.length;
-    const totalCVs = adminStore.users.reduce((acc, u) => acc + (u.documentsCount || 0), 0) + 128; // realistic baseline
+    const totalCVs = adminStore.users.reduce((acc, u) => acc + (u.documentsCount || 0), 0);
     
     // Calculate total revenue from successful credit/recharge/purchase transactions
-    const totalRevenue = adminStore.transactions
-      .filter(t => t.status === 'success' && t.amount > 0 && t.paymentMethod !== 'admin_manual')
-      .reduce((acc, t) => acc + t.amount, 0) + 245000; // baseline
-
+    const successfulTx = adminStore.transactions.filter(
+      t => (t.status === 'success' || t.status === 'completed' || t.status === 'VALIDATED_BY_AI' || t.status === 'MANUALLY_VALIDATED') && t.amount > 0
+    );
+    const totalRevenue = successfulTx.reduce((acc, t) => acc + t.amount, 0);
     const totalCirculatingBalance = adminStore.users.reduce((acc, u) => acc + (u.balance || 0), 0);
-    const totalTransactions = adminStore.transactions.length + 86;
+    const totalTransactions = adminStore.transactions.length;
 
-    // Daily breakdown for trend charts
-    const dailyStats = [
-      { date: '2026-08-11', label: 'Lun 11', revenue: 24500, transactionsCount: 14, documentsCount: 19 },
-      { date: '2026-08-12', label: 'Mar 12', revenue: 31000, transactionsCount: 18, documentsCount: 25 },
-      { date: '2026-08-13', label: 'Mer 13', revenue: 28500, transactionsCount: 16, documentsCount: 22 },
-      { date: '2026-08-14', label: 'Jeu 14', revenue: 42000, transactionsCount: 23, documentsCount: 31 },
-      { date: '2026-08-15', label: 'Ven 15', revenue: 38000, transactionsCount: 21, documentsCount: 28 },
-      { date: '2026-08-16', label: 'Sam 16', revenue: 54000, transactionsCount: 29, documentsCount: 42 },
-      { date: '2026-08-17', label: 'Dim 17', revenue: 47000, transactionsCount: 26, documentsCount: 37 },
-    ];
+    const cvOnlyRevenue = successfulTx
+      .filter(t => (t.description || '').toLowerCase().includes('cv') && !(t.description || '').toLowerCase().includes('lettre'))
+      .reduce((acc, t) => acc + t.amount, 0);
+    const fullPackRevenue = successfulTx
+      .filter(t => (t.description || '').toLowerCase().includes('pack') || (t.description || '').toLowerCase().includes('duo'))
+      .reduce((acc, t) => acc + t.amount, 0);
+    const letterRevenue = successfulTx
+      .filter(t => (t.description || '').toLowerCase().includes('lettre'))
+      .reduce((acc, t) => acc + t.amount, 0);
+    const unlimitedRevenue = successfulTx
+      .filter(t => (t.description || '').toLowerCase().includes('illimit') || (t.description || '').toLowerCase().includes('vip'))
+      .reduce((acc, t) => acc + t.amount, 0);
+
+    const successRate = totalTransactions > 0 
+      ? Math.round((successfulTx.length / totalTransactions) * 100) 
+      : 100;
 
     return res.json({
       success: true,
       stats: {
         totalRevenue,
         totalCVsGenerated: totalCVs,
-        totalUsersCount: totalUsers + 48,
+        totalUsersCount: totalUsers,
         totalTransactionsCount: totalTransactions,
         totalCirculatingBalance,
-        successPaymentRate: 98.4,
+        successPaymentRate: successRate,
         revenueByService: {
-          cvOnly: 75000,
-          letterOnly: 32000,
-          fullPack: 84000,
-          devis: 28000,
-          facture: 26000,
-          businessPack: 45000,
-          unlimitedPass: 30000,
-          walletRecharge: 110000,
+          cvOnly: cvOnlyRevenue,
+          letterOnly: letterRevenue,
+          fullPack: fullPackRevenue,
+          devis: 0,
+          facture: 0,
+          businessPack: 0,
+          unlimitedPass: unlimitedRevenue,
+          walletRecharge: 0,
         },
-        dailyRevenueTrend: dailyStats
+        dailyRevenueTrend: []
       }
     });
   } catch (err: any) {
