@@ -3,8 +3,9 @@ import { getAuth, GoogleAuthProvider, User as FirebaseUser } from 'firebase/auth
 import { 
   initializeFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, 
   collection, query, where, getDocs, onSnapshot, Unsubscribe, runTransaction,
-  serverTimestamp, writeBatch, increment, Timestamp, addDoc, orderBy
+  serverTimestamp, writeBatch, increment, Timestamp, addDoc, orderBy, limit
 } from 'firebase/firestore';
+import { getStorage, ref as storageRef, deleteObject, listAll, getMetadata } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { 
   CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, 
@@ -21,6 +22,7 @@ export const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
 }, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+export const storage = getStorage(app, firebaseConfig.storageBucket);
 export const googleProvider = new GoogleAuthProvider();
 
 export enum OperationType {
@@ -563,9 +565,28 @@ export async function saveUserDocument(userDoc: SavedUserDocument): Promise<bool
     // For unauthenticated guest sessions, document is saved in local storage
     return true;
   }
+
+  // Optimisation du stockage : nettoyer les photos ou données binaires volumineuses (>50KB)
+  // pour conserver une structure texte minimale et ultra-légère dans Firestore
+  const sanitizedDoc = { ...userDoc };
+  const pInfo = sanitizedDoc.formData?.personalInfo as any;
+  if (pInfo) {
+    const rawPhoto = pInfo.photoUrl || pInfo.photo;
+    if (rawPhoto && typeof rawPhoto === 'string' && rawPhoto.length > 50000) {
+      sanitizedDoc.formData = {
+        ...sanitizedDoc.formData,
+        personalInfo: {
+          ...pInfo,
+          photoUrl: '' // Conservé localement dans la session utilisateur, omis du document cloud lourd
+        }
+      };
+    }
+  }
+
   const cleanDoc = cleanFirestorePayload({
-    ...userDoc,
-    userId: auth.currentUser.uid
+    ...sanitizedDoc,
+    userId: auth.currentUser.uid,
+    updatedAt: new Date().toISOString()
   });
   const path = `user_documents/${cleanDoc.id}`;
   try {
@@ -858,15 +879,47 @@ export async function recordTransactionEverywhere(tx: TransactionRecord): Promis
 }
 
 /**
- * Real-time listener for ALL transactions for the Admin Panel (ordering by date desc)
+ * Real-time listener STRICTEMENT limité aux 20 dernières transactions en attente (PENDING)
+ * Utilisé pour détecter immédiatement les nouveaux paiements et reçus soumis sans surcharger Firestore.
+ */
+export function subscribeToPendingTransactions(
+  onUpdate: (pendingTxs: TransactionRecord[]) => void,
+  onError?: (err: any) => void
+): Unsubscribe {
+  const colRef = collection(db, 'transactions');
+  const q = query(
+    colRef,
+    where('status', 'in', ['PENDING', 'WAITING_FOR_ADMIN', 'WAITING_VALIDATION', 'PENDING_APPROVAL']),
+    limit(20)
+  );
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: TransactionRecord[] = [];
+      snapshot.forEach((d) => {
+        list.push({ id: d.id, ...(d.data() as any) } as TransactionRecord);
+      });
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      onUpdate(list);
+    },
+    (err) => {
+      console.warn('[Firestore Pending Transactions Snapshot Warn]:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Real-time listener pour les transactions avec une limite stricte de 20 (ordering by date desc)
  */
 export function subscribeToAllTransactions(
   onUpdate: (txs: TransactionRecord[]) => void,
   onError?: (err: any) => void
 ): Unsubscribe {
   const colRef = collection(db, 'transactions');
+  const q = query(colRef, limit(20));
   return onSnapshot(
-    colRef,
+    q,
     (snapshot) => {
       const list: TransactionRecord[] = [];
       snapshot.forEach((d) => {
@@ -880,6 +933,192 @@ export function subscribeToAllTransactions(
       if (onError) onError(err);
     }
   );
+}
+
+/**
+ * PURGE AUTOMATIQUE DES REÇUS DE PAIEMENT (24 HEURES)
+ * 
+ * Pour les transactions validées ou rejetées par l'Admin (status == "APPROVED" ou "REJECTED") :
+ * - Supprime le fichier de capture du reçu dans Firebase Storage ('payment_proofs/') 24h après validation/rejet.
+ * - Dans le document Firestore de la transaction, remplace 'receiptUrl' par "PURGED" pour libérer la mémoire,
+ *   tout en conservant la ligne de texte pour l'historique comptable.
+ */
+export async function purgeExpiredPaymentReceipts(
+  transactionsToInspect?: TransactionRecord[]
+): Promise<{ purgedCount: number; errorsCount: number }> {
+  let purgedCount = 0;
+  let errorsCount = 0;
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  try {
+    let list = transactionsToInspect;
+    if (!list || list.length === 0) {
+      list = await fetchAllFirestoreTransactions();
+    }
+
+    // Filtrer les transactions terminées (validées ou rejetées) datant de plus de 24 heures avec un reçu actif
+    const candidates = list.filter((tx) => {
+      const isTerminal = 
+        tx.status === 'APPROVED' || 
+        tx.status === 'MANUALLY_VALIDATED' || 
+        tx.status === 'VALIDATED_BY_AI' || 
+        tx.status === 'success' || 
+        tx.status === 'COMPLETED' ||
+        tx.status === 'REJECTED' || 
+        tx.status === 'REJECTED_BY_ADMIN' || 
+        tx.status === 'REJECTED_BY_AI' || 
+        tx.status === 'failed' || 
+        tx.status === 'cancel';
+
+      if (!isTerminal) return false;
+
+      // Possède encore une image ou URL de reçu non purgée
+      const isPurged = tx.receiptUrl === 'PURGED' || tx.receiptUrl === 'Purger' || tx.receiptPurged;
+      const hasActiveReceipt = 
+        !isPurged && (
+          (Boolean(tx.receiptUrl) && tx.receiptUrl !== 'null') || 
+          Boolean(tx.receiptImage)
+        );
+      if (!hasActiveReceipt) return false;
+
+      // Déterminer la date de décision (validation, rejet ou mise à jour)
+      const decisionTime = 
+        (tx as any).approvedAt || 
+        (tx as any).manuallyValidatedAt || 
+        (tx as any).rejectedAt || 
+        (tx as any).updatedAt || 
+        tx.createdAt;
+      if (!decisionTime) return false;
+
+      const decisionMillis = new Date(decisionTime).getTime();
+      return !isNaN(decisionMillis) && (now - decisionMillis > TWENTY_FOUR_HOURS_MS);
+    });
+
+    for (const tx of candidates) {
+      try {
+        const txDocId = tx.id || (tx as any).transactionId;
+        if (!txDocId) continue;
+
+        // 1. Si le reçu est stocké dans Firebase Storage ('payment_proofs/'), supprimer le fichier
+        const receiptRefOrUrl = tx.receiptUrl || tx.receiptImage || '';
+        if (receiptRefOrUrl.includes('payment_proofs/') || receiptRefOrUrl.includes('firebasestorage')) {
+          try {
+            let pathInStorage = '';
+            if (receiptRefOrUrl.includes('/o/')) {
+              const encoded = receiptRefOrUrl.split('/o/')[1]?.split('?')[0];
+              if (encoded) pathInStorage = decodeURIComponent(encoded);
+            } else if (receiptRefOrUrl.startsWith('payment_proofs/')) {
+              pathInStorage = receiptRefOrUrl;
+            }
+            if (pathInStorage) {
+              const fileRef = storageRef(storage, pathInStorage);
+              await deleteObject(fileRef).catch(() => {});
+            }
+          } catch (_delErr) {
+            // Ignorer silencieusement si déjà supprimé
+          }
+        }
+
+        // 2. Mettre à jour Firestore : passer receiptUrl à "PURGED", receiptImage à null
+        // La ligne comptable (id, montant, date, expéditeur, statut) est préservée 100%
+        const txRef = doc(db, 'transactions', txDocId);
+        await updateDoc(txRef, {
+          receiptUrl: 'PURGED',
+          receiptImage: null,
+          receiptPurged: true,
+          receiptPurgedAt: new Date().toISOString()
+        });
+
+        purgedCount++;
+      } catch (itemErr) {
+        console.warn(`[Purge Tx ${tx.id} Warn]:`, itemErr);
+        errorsCount++;
+      }
+    }
+
+    // 3. Scanner également le dossier 'payment_proofs/' dans Firebase Storage pour purger les fichiers orphelins de plus de 24h
+    try {
+      const folderRef = storageRef(storage, 'payment_proofs');
+      const listRes = await listAll(folderRef);
+      for (const item of listRes.items) {
+        try {
+          const meta = await getMetadata(item);
+          if (meta.timeCreated) {
+            const createdMillis = new Date(meta.timeCreated).getTime();
+            if (now - createdMillis > TWENTY_FOUR_HOURS_MS) {
+              await deleteObject(item);
+              purgedCount++;
+            }
+          }
+        } catch (_metaErr) {}
+      }
+    } catch (_listErr) {
+      // Dossier payment_proofs inexistant ou non provisionné, sans impact
+    }
+
+  } catch (globalErr) {
+    console.warn('[purgeExpiredPaymentReceipts Warn]:', globalErr);
+  }
+
+  return { purgedCount, errorsCount };
+}
+
+/**
+ * PURGE AUTOMATIQUE DES FICHIERS PDF TEMPORAIRES (24 HEURES)
+ * 
+ * Supprime automatiquement les fichiers PDF et documents temporaires stockés dans Firebase Storage après 24 heures
+ * pour éviter d'encombrer le serveur et la mémoire cloud.
+ */
+export async function purgeExpiredTemporaryStorageFiles(): Promise<{ purgedFilesCount: number }> {
+  let purgedFilesCount = 0;
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  const tempFolders = ['temp_pdfs', 'temp_documents', 'generated_pdfs', 'interview_prep_pdfs', 'user_pdfs'];
+
+  for (const folder of tempFolders) {
+    try {
+      const folderRef = storageRef(storage, folder);
+      const listRes = await listAll(folderRef);
+      for (const item of listRes.items) {
+        try {
+          const meta = await getMetadata(item);
+          if (meta.timeCreated) {
+            const createdMillis = new Date(meta.timeCreated).getTime();
+            if (now - createdMillis > TWENTY_FOUR_HOURS_MS) {
+              await deleteObject(item);
+              purgedFilesCount++;
+            }
+          }
+        } catch (_metaErr) {
+          // Déjà supprimé
+        }
+      }
+    } catch (_folderErr) {
+      // Dossier inexistant ou vide
+    }
+  }
+
+  // Nettoyage des caches locaux de prévisualisations PDF temporaires expirés
+  try {
+    const keysToClean = ['dokya_temp_pdf_cache', 'dokya_temp_preview_blob'];
+    for (const k of keysToClean) {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed?.timestamp && (now - Number(parsed.timestamp) > TWENTY_FOUR_HOURS_MS)) {
+            localStorage.removeItem(k);
+          }
+        } catch (_e) {
+          localStorage.removeItem(k);
+        }
+      }
+    }
+  } catch (_localErr) {}
+
+  return { purgedFilesCount };
 }
 
 /**
@@ -1474,20 +1713,6 @@ export async function manageUserSubscriptionInFirestore(
           updatedAt: nowIso
         }));
       }
-    } catch (_e) {}
-
-    // Record audit log entry
-    try {
-      const auditRef = doc(collection(db, 'audit_logs'));
-      await setDoc(auditRef, cleanFirestorePayload({
-        id: auditRef.id,
-        action: `SUBSCRIPTION_${action.toUpperCase()}`,
-        adminEmail,
-        targetUserId: userId,
-        targetUserEmail: userData.email,
-        details: adminNote || `Action ${action} effectuée sur l'abonnement VIP (${durationDays} jours)`,
-        timestamp: nowIso
-      }));
     } catch (_e) {}
 
     // Notify backend
@@ -3047,9 +3272,9 @@ export function subscribeToAffiliateCommissions(
   onError?: (error: any) => void
 ): () => void {
   try {
-    let q = query(collection(db, 'affiliate_commissions'));
+    let q = query(collection(db, 'affiliate_commissions'), limit(20));
     if (userId) {
-      q = query(collection(db, 'affiliate_commissions'), where('referrerId', '==', userId));
+      q = query(collection(db, 'affiliate_commissions'), where('referrerId', '==', userId), limit(20));
     }
 
     const unsubscribe = onSnapshot(
@@ -3085,9 +3310,9 @@ export function subscribeToAffiliatePayoutRequests(
   onError?: (error: any) => void
 ): () => void {
   try {
-    let q = query(collection(db, 'affiliate_payout_requests'));
+    let q = query(collection(db, 'affiliate_payout_requests'), limit(20));
     if (userId) {
-      q = query(collection(db, 'affiliate_payout_requests'), where('affiliateId', '==', userId));
+      q = query(collection(db, 'affiliate_payout_requests'), where('affiliateId', '==', userId), limit(20));
     }
 
     const unsubscribe = onSnapshot(
@@ -3194,8 +3419,8 @@ export function subscribeToSupportMessages(
   onUpdate: (messages: SupportMessage[]) => void
 ): Unsubscribe {
   const messagesCol = collection(db, 'support_chats', chatId, 'messages');
-  // Order by createdAt ascending as strictly specified
-  const q = query(messagesCol, orderBy('createdAt', 'asc'));
+  // Order by createdAt descending with limit(20) to only fetch the latest 20 messages in real-time
+  const q = query(messagesCol, orderBy('createdAt', 'desc'), limit(20));
 
   return onSnapshot(q, (querySnap) => {
     const msgs: SupportMessage[] = [];
@@ -3234,13 +3459,14 @@ export function subscribeToSupportMessages(
         timestamp: createdMillis,
       });
     });
-    // Ensure strict ascending sorting even if server timestamp is momentarily local estimate
+    // Ensure strict ascending sorting chronologically for display
     msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
     onUpdate(msgs);
   }, (err) => {
-    console.warn('[Support Chat] Error with orderBy query, falling back:', err);
+    console.warn('[Support Chat] Error with orderBy query, falling back with limit(20):', err);
     // Fallback if index is being built or offline
-    const fallbackUnsub = onSnapshot(messagesCol, (querySnap) => {
+    const fallbackQ = query(messagesCol, limit(20));
+    const fallbackUnsub = onSnapshot(fallbackQ, (querySnap) => {
       const msgs: SupportMessage[] = [];
       querySnap.forEach((docSnap) => {
         const data = docSnap.data() as any;
@@ -3404,7 +3630,8 @@ export function subscribeToActiveSupportConversations(
   onUpdate: (conversations: SupportConversation[]) => void
 ): Unsubscribe {
   const convCol = collection(db, 'support_chats');
-  return onSnapshot(convCol, (querySnap) => {
+  const q = query(convCol, limit(20));
+  return onSnapshot(q, (querySnap) => {
     const list: SupportConversation[] = [];
     querySnap.forEach((docSnap) => {
       const data = docSnap.data() as any;

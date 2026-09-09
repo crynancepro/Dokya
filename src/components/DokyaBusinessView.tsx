@@ -7,10 +7,10 @@ import {
 } from 'lucide-react';
 import { Customer, BusinessInvoice, BusinessDocData, UserBusiness } from '../types';
 import { 
-  fetchCustomers, saveCustomer, deleteCustomer, subscribeToCustomers,
+  fetchCustomers, saveCustomer, deleteCustomer,
   fetchBusinessInvoices, saveBusinessInvoice, updateInvoicePaymentStatus, 
-  deleteBusinessInvoice, subscribeToBusinessInvoices,
-  subscribeToUserBusinesses, deleteUserBusiness, setDefaultUserBusiness,
+  deleteBusinessInvoice, fetchUserBusinesses,
+  deleteUserBusiness, setDefaultUserBusiness,
   updateQuoteStatus, convertQuoteToInvoice, saveOrUpdateBusinessDocument
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
@@ -75,27 +75,31 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Real-time Firestore Subscriptions
-  useEffect(() => {
-    setIsLoading(true);
-    const unsubCustomers = subscribeToCustomers(currentUid, (data) => {
-      setCustomers(data);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Chargement des données à la demande (getDocs) sans écouteur permanent onSnapshot
+  const loadBusinessData = async () => {
+    if (!currentUid) return;
+    setIsRefreshing(true);
+    try {
+      const [customersData, invoicesData, businessesData] = await Promise.all([
+        fetchCustomers(currentUid),
+        fetchBusinessInvoices(currentUid),
+        fetchUserBusinesses(currentUid)
+      ]);
+      setCustomers(customersData);
+      setInvoices(invoicesData);
+      setBusinesses(businessesData);
+    } catch (e) {
+      console.warn('Error fetching business data:', e);
+    } finally {
       setIsLoading(false);
-    });
+      setIsRefreshing(false);
+    }
+  };
 
-    const unsubInvoices = subscribeToBusinessInvoices(currentUid, (data) => {
-      setInvoices(data);
-    });
-
-    const unsubBusinesses = subscribeToUserBusinesses(currentUid, (data) => {
-      setBusinesses(data);
-    });
-
-    return () => {
-      unsubCustomers();
-      unsubInvoices();
-      unsubBusinesses();
-    };
+  useEffect(() => {
+    loadBusinessData();
   }, [currentUid]);
 
   // Keep selected client updated if customers list changes
@@ -251,6 +255,7 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
         if (selectedClientForDetails && selectedClientForDetails.id === saved.id) {
           setSelectedClientForDetails(saved);
         }
+        await loadBusinessData();
       }
     } catch (err) {
       setFormError('Erreur lors de la sauvegarde. Veuillez réessayer.');
@@ -268,6 +273,7 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
       setSelectedClientForDetails(null);
     }
     showToast(`Client "${clientName}" supprimé.`);
+    await loadBusinessData();
   };
 
   // Toggle Invoice Payment Status avec mise à jour immédiate et synchro financière
@@ -276,12 +282,14 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
     const now = new Date().toISOString();
     await updateInvoicePaymentStatus(currentUid, invoice.id, newStatus, newStatus === 'PAID' ? now : undefined);
     showToast(`Facture ${invoice.docNumber} marquée comme ${newStatus === 'PAID' ? 'PAYÉE' : 'IMPAYÉE'}`);
+    await loadBusinessData();
   };
 
   // Mise à jour du statut d'un devis
   const handleUpdateQuoteStatus = async (invoice: BusinessInvoice, newStatus: 'BROUILLON' | 'EN_ATTENTE' | 'ACCEPTE' | 'REFUSE') => {
     await updateQuoteStatus(currentUid, invoice.id, newStatus);
     showToast(`Statut du devis ${invoice.docNumber} : ${newStatus}`);
+    await loadBusinessData();
   };
 
   // Conversion 1-clic d'un Devis en Facture avec statut initial "IMPAYÉE"
@@ -292,6 +300,7 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
     const newInvoice = await convertQuoteToInvoice(currentUid, invoice.id);
     if (newInvoice) {
       showToast(`Devis ${invoice.docNumber} converti en Facture ${newInvoice.docNumber} !`);
+      await loadBusinessData();
       if (onLoadInvoiceToEditor && newInvoice.businessDocData) {
         onLoadInvoiceToEditor(newInvoice.businessDocData);
       }
@@ -304,6 +313,7 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
     }
     await deleteBusinessInvoice(currentUid, invoiceId);
     showToast(`Document ${docNumber} supprimé.`);
+    await loadBusinessData();
   };
 
   return (
@@ -342,6 +352,17 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
 
         {/* Quick Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={loadBusinessData}
+            disabled={isRefreshing}
+            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            title="Rafraîchir les données"
+          >
+            <RefreshCw className={`w-4 h-4 text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Actualiser</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {

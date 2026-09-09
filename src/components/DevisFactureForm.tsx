@@ -14,8 +14,8 @@ import { generateBusinessDocWithGemini } from '../lib/geminiService';
 import { AIFormValidationBanner } from './AIFormValidationBanner';
 import { validateBusinessDoc } from '../lib/formValidationUtils';
 import { 
-  auth, subscribeToCustomers, saveCustomer, 
-  subscribeToUserBusinesses, saveUserBusiness,
+  auth, fetchCustomers, saveCustomer, 
+  fetchUserBusinesses, saveUserBusiness,
   saveOrUpdateBusinessDocument, updateInvoicePaymentStatus,
   updateQuoteStatus, convertQuoteToInvoice
 } from '../lib/firebase';
@@ -68,10 +68,12 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
   const [isProcessingIssuerLogo, setIsProcessingIssuerLogo] = useState(false);
   const issuerFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Subscribe to businesses
+  // Load saved businesses on demand
   useEffect(() => {
+    let isMounted = true;
     const currentUid = auth.currentUser?.uid || 'guest';
-    const unsub = subscribeToUserBusinesses(currentUid, (list) => {
+    fetchUserBusinesses(currentUid).then((list) => {
+      if (!isMounted) return;
       setSavedBusinesses(list);
 
       // Auto-apply default business if document has no business selected or only generic name
@@ -94,8 +96,11 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
           });
         }
       }
-    });
-    return () => unsub();
+    }).catch(err => console.warn('[DevisFactureForm fetchUserBusinesses error]:', err));
+
+    return () => {
+      isMounted = false;
+    };
   }, [data.businessId]);
 
   useEffect(() => {
@@ -202,11 +207,17 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
   };
 
   useEffect(() => {
+    let isMounted = true;
     const currentUid = auth.currentUser?.uid || 'guest';
-    const unsub = subscribeToCustomers(currentUid, (list) => {
-      setSavedCustomers(list);
-    });
-    return () => unsub();
+    fetchCustomers(currentUid).then((list) => {
+      if (isMounted) {
+        setSavedCustomers(list);
+      }
+    }).catch(err => console.warn('[DevisFactureForm fetchCustomers error]:', err));
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {

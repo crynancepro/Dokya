@@ -792,7 +792,7 @@ export const DokyaSupportChat: React.FC<DokyaSupportChatProps> = ({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onFocus={() => setTimeout(() => scrollToBottom('smooth'), 200)}
+              onFocus={() => setTimeout(scrollToBottom, 200)}
               placeholder="Posez votre question ou décrivez votre demande..."
               className="flex-1 py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs sm:text-sm placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors"
             />

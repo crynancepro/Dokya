@@ -606,6 +606,28 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
 
       </div>
 
+      {/* Avertissement Archivage & Téléchargement */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="text-base shrink-0">⚡</span>
+          <p className="font-semibold text-slate-800">
+            Pensez à télécharger ou copier votre document. Vos fichiers générés sont archivés sous 24h à 48h.
+          </p>
+        </div>
+        {isEffectivePaid && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleTriggerPDF}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Télécharger mon document</span>
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* ========================================================================= */}
       {/* 2. MAIN DOCUMENT STAGE (CENTERED SINGLE A4 SHEET WITH DROP SHADOW)        */}
       {/* ========================================================================= */}

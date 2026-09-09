@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -4268,6 +4269,47 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   }
   next(err);
 });
+
+// =========================================================================
+// TÂCHE DE PURGE PÉRIODIQUE BACKEND (TOUTES LES 6 HEURES)
+// Nettoie les fichiers temporaires et les reçus de plus de 24h
+// =========================================================================
+const PURGE_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 heures
+
+function runPeriodicStorageCleanup() {
+  console.log('[Storage Purge] Exécution de la tâche planifiée de nettoyage des fichiers temporaires (+24h)...');
+  try {
+    const tempDir = path.join(process.cwd(), 'temp_uploads');
+    if (fs.existsSync(tempDir)) {
+      const files = fs.readdirSync(tempDir);
+      const now = Date.now();
+      const maxAgeMs = 24 * 60 * 60 * 1000; // 24 heures
+      let count = 0;
+      for (const file of files) {
+        const filePath = path.join(tempDir, file);
+        try {
+          const stats = fs.statSync(filePath);
+          if (now - stats.mtimeMs > maxAgeMs) {
+            fs.unlinkSync(filePath);
+            count++;
+          }
+        } catch (err) {
+          // ignore error on single file
+        }
+      }
+      if (count > 0) {
+        console.log(`[Storage Purge] ${count} fichier(s) temporaire(s) de plus de 24h nettoyé(s).`);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Storage Purge Warn]:', err?.message || err);
+  }
+}
+
+if (!process.env.VERCEL) {
+  setInterval(runPeriodicStorageCleanup, PURGE_INTERVAL_MS);
+  setTimeout(runPeriodicStorageCleanup, 30 * 1000); // 30s après démarrage
+}
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {

@@ -108,6 +108,24 @@ export const InterviewPrepView: React.FC<InterviewPrepViewProps> = ({
         </div>
       </div>
 
+      {/* Avertissement Archivage & Copie */}
+      <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200 shadow-md">
+        <div className="flex items-center gap-2.5">
+          <span className="text-base shrink-0">⚡</span>
+          <p className="font-semibold text-amber-100">
+            Pensez à télécharger ou copier votre document. Vos fichiers générés sont archivés sous 24h à 48h.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopyPitch}
+          className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold text-xs border border-amber-500/40 transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto active:scale-95"
+        >
+          <Copy className="w-3.5 h-3.5 text-amber-300" />
+          <span>{copiedPitch ? 'Copié !' : 'Copier tout le pitch'}</span>
+        </button>
+      </div>
+
       {/* ========================================================================= */}
       {/* HEADER FICHE : DESIGN BLOC-NOTES MODERNE & ÉPURÉ                         */}
       {/* ========================================================================= */}

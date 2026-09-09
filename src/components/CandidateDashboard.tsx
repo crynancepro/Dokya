@@ -206,15 +206,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           });
         });
 
-        // 2. Real-time Firestore Transactions & Orders Subscription
-        if (unsubTransactionsSnapshot) unsubTransactionsSnapshot();
-        unsubTransactionsSnapshot = subscribeToUserTransactions(u.uid, (liveTxs) => {
-          setTransactions(liveTxs);
-          try {
-            localStorage.setItem('senegal_cv_transactions', JSON.stringify(liveTxs));
-          } catch (_e) {}
-        });
-
+        // 2. Chargement des documents et historique des transactions via getDocs() (chargement initial à la demande)
         try {
           const remoteDocs = await fetchUserDocuments(u.uid);
           if (remoteDocs && remoteDocs.length > 0) {
@@ -237,17 +229,15 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           unsubProfileSnapshot();
           unsubProfileSnapshot = null;
         }
-        if (unsubTransactionsSnapshot) {
-          unsubTransactionsSnapshot();
-          unsubTransactionsSnapshot = null;
-        }
       }
     });
 
     return () => {
       unsubscribe();
-      if (unsubProfileSnapshot) unsubProfileSnapshot();
-      if (unsubTransactionsSnapshot) unsubTransactionsSnapshot();
+      if (unsubProfileSnapshot) {
+        unsubProfileSnapshot();
+        unsubProfileSnapshot = null;
+      }
     };
   }, []);
 

@@ -13,28 +13,27 @@ import {
 import { 
   auth, 
   savePricingToFirestore, 
-  subscribeToPricing, 
   savePromoCodeToFirestore, 
   deletePromoCodeFromFirestore, 
-  subscribeToPromoCodes,
   DEFAULT_PLATFORM_PRICING,
   fetchAllFirestoreTransactions,
   fetchAllFirestoreUserProfiles,
   saveTransactionRecord,
-  subscribeToAllTransactions,
+  subscribeToPendingTransactions,
   approveTransactionWithAtomicFirestore,
   rejectTransactionWithFirestore,
   purgeDemoDataInFirestore,
   fetchAllAdminUsersWithSubscriptions,
   manageUserSubscriptionInFirestore,
-  subscribeToActiveSupportConversations
+  subscribeToActiveSupportConversations,
+  purgeExpiredPaymentReceipts
 } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail, PRIMARY_ADMIN_EMAIL, getAdminHeaders } from '../lib/adminAuth';
 import { startImpersonationSession, stopImpersonationSession, getImpersonatedSession } from '../lib/impersonation';
 import { 
   AdminUserRecord, AdminKPIs, TransactionRecord, PlatformPricingConfig, 
-  PromoCode, AuditLogEntry, UserSubscription, isUserVipActive, getTimestampMillis,
+  PromoCode, UserSubscription, isUserVipActive, getTimestampMillis,
   SupportConversation
 } from '../types';
 import { AdminAffiliationView } from './AdminAffiliationView';
@@ -57,7 +56,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenEditor 
 }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(auth.currentUser);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'subscriptions' | 'pricing' | 'promo' | 'audit' | 'transactions' | 'affiliations' | 'support'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'subscriptions' | 'pricing' | 'promo' | 'transactions' | 'affiliations' | 'support'>('overview');
   
   // Realtime Support & Emergency Alarm States
   const [supportConversations, setSupportConversations] = useState<SupportConversation[]>([]);
@@ -95,7 +94,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     updatedAt: new Date().toISOString()
   });
   const [promoCodesList, setPromoCodesList] = useState<PromoCode[]>([]);
-  const [auditLogsList, setAuditLogsList] = useState<AuditLogEntry[]>([]);
   
   // Impersonation state
   const [activeImpersonation, setActiveImpersonation] = useState(getImpersonatedSession);
@@ -118,10 +116,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [manualValidationNote, setManualValidationNote] = useState<string>('');
   const [isValidatingTx, setIsValidatingTx] = useState<boolean>(false);
   const [isRejectingTx, setIsRejectingTx] = useState<boolean>(false);
-
-  // Audit filters
-  const [auditSearch, setAuditSearch] = useState<string>('');
-  const [auditCategoryFilter, setAuditCategoryFilter] = useState<string>('all');
+  const [isPurgingReceipts, setIsPurgingReceipts] = useState<boolean>(false);
 
   // Modal Adjustment State
   const [selectedUserForAdjust, setSelectedUserForAdjust] = useState<AdminUserRecord | null>(null);
@@ -208,21 +203,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       const headers = getAdminHeaders(adminEmail);
       
-      // Parallel fetch across all administrative endpoints
+      // Parallel fetch across essential administrative endpoints
       const [
         statsData,
         usersData,
         txData,
         pricingData,
-        promoData,
-        auditData
+        promoData
       ] = await Promise.all([
         safeFetchJson<{ success: boolean; stats: AdminKPIs }>('/api/admin/stats', headers),
         safeFetchJson<{ success: boolean; users: AdminUserRecord[] }>('/api/admin/users?limit=100', headers),
         safeFetchJson<{ success: boolean; transactions: TransactionRecord[] }>('/api/admin/transactions', headers),
         safeFetchJson<{ success: boolean; pricing: PlatformPricingConfig }>('/api/admin/pricing', headers),
-        safeFetchJson<{ success: boolean; promoCodes: PromoCode[] }>('/api/admin/promo-codes', headers),
-        safeFetchJson<{ success: boolean; auditLogs: AuditLogEntry[] }>('/api/admin/audit-logs', headers)
+        safeFetchJson<{ success: boolean; promoCodes: PromoCode[] }>('/api/admin/promo-codes', headers)
       ]);
 
       // 1. Stats
@@ -302,10 +295,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setPromoCodesList(promoData.promoCodes);
       }
 
-      // 6. Audit Logs
-      if (auditData?.success && Array.isArray(auditData.auditLogs)) {
-        setAuditLogsList(auditData.auditLogs);
-      }
+      // 6. Nettoyage et purge automatique des reçus expirés (>24h) en arrière-plan
+      try {
+        purgeExpiredPaymentReceipts().catch((err) => console.warn('Background receipts purge error:', err));
+      } catch (_pErr) {}
 
     } catch (err: any) {
       console.error('Error during admin data loading:', err);
@@ -323,31 +316,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (isAuthorized) {
       loadAdminData();
 
-      // Real-time Firestore transactions listener (instantly detects new pending recharges and receipts)
-      const unsubTx = subscribeToAllTransactions((liveTxs) => {
-        if (Array.isArray(liveTxs)) {
-          setTransactionsList(liveTxs);
+      // Real-time Firestore PENDING transactions listener with strict limit(20)
+      // Minimise l'overhead Firestore tout en détectant immédiatement les nouveaux reçus et paiements soumis
+      const unsubTx = subscribeToPendingTransactions((livePendingTxs) => {
+        if (Array.isArray(livePendingTxs)) {
+          setTransactionsList((prev) => {
+            const pendingMap = new Map(livePendingTxs.map(t => [t.id, t]));
+            const updated = prev.map(t => pendingMap.get(t.id) || t);
+            livePendingTxs.forEach(pt => {
+              if (!updated.some(t => t.id === pt.id)) {
+                updated.unshift(pt);
+              }
+            });
+            return updated;
+          });
         }
       });
 
-      // Real-time Firestore pricing listener
-      const unsubPricing = subscribeToPricing((livePricing) => {
-        setPricingConfig(livePricing);
-        setEditingPricing(prev => ({
-          ...livePricing,
-          // Preserve active input focus if currently editing
-          ...prev
-        }));
-      });
-
-      // Real-time Firestore promo codes listener
-      const unsubPromos = subscribeToPromoCodes((livePromos) => {
-        if (Array.isArray(livePromos)) {
-          setPromoCodesList(livePromos);
-        }
-      });
-
-      // Real-time Firestore support conversations listener (detects human escalation immediately)
+      // Real-time Firestore support conversations listener (avec limit(20) strict)
       const unsubSupport = subscribeToActiveSupportConversations((liveConvs) => {
         if (Array.isArray(liveConvs)) {
           setSupportConversations(liveConvs);
@@ -356,18 +342,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       return () => {
         unsubTx();
-        unsubPricing();
-        unsubPromos();
         unsubSupport();
         stopEmergencyAlarm();
       };
     }
   }, [isAuthorized, adminEmail]);
-
-  // Request Push Notification permission on mount
-  useEffect(() => {
-    requestAdminNotificationPermission().catch(() => {});
-  }, []);
 
   // Compute emergency counts
   const urgentSupportCount = useMemo(() => {
@@ -380,18 +359,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const totalEmergencyCount = urgentSupportCount + pendingReceiptsCount;
 
-  // Background Audio Alarm & Push Notification Trigger
+  // Sirène manuelle ou sur test uniquement - Désactivation des alarmes automatiques intrusives
   useEffect(() => {
-    if (totalEmergencyCount > 0 && !isAlarmMuted) {
-      startEmergencyAlarm();
-      triggerAdminPushNotification(
-        '🚨 ALERTE ADMIN DOKYA URGENTE',
-        `${totalEmergencyCount} action(s) requise(s) : ${urgentSupportCount} demande(s) de support et ${pendingReceiptsCount} reçu(s) en attente.`
-      );
-    } else if (totalEmergencyCount === 0 && !isAlarmTesting) {
+    if (!isAlarmTesting) {
       stopEmergencyAlarm();
     }
-  }, [totalEmergencyCount, isAlarmMuted, urgentSupportCount, pendingReceiptsCount, isAlarmTesting]);
+  }, [isAlarmTesting]);
 
   // Sync impersonation state listener
   useEffect(() => {
@@ -558,22 +531,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (tx.countryName) return { flag: '🌍', name: tx.countryName };
     return { flag: '🇸🇳', name: 'Sénégal' };
   };
-
-  // Filtered Audit Logs
-  const filteredAuditLogs = useMemo(() => {
-    return auditLogsList.filter((log) => {
-      if (auditSearch) {
-        const query = auditSearch.toLowerCase();
-        const matchesAction = log.action.toLowerCase().includes(query);
-        const matchesDetails = log.details.toLowerCase().includes(query);
-        const matchesActor = log.actorEmail.toLowerCase().includes(query);
-        const matchesTarget = (log.targetUserEmail || '').toLowerCase().includes(query);
-        if (!matchesAction && !matchesDetails && !matchesActor && !matchesTarget) return false;
-      }
-      if (auditCategoryFilter !== 'all' && log.category !== auditCategoryFilter) return false;
-      return true;
-    });
-  }, [auditLogsList, auditSearch, auditCategoryFilter]);
 
   // 1. IMPERSONATION (Prise de contrôle)
   const handleStartImpersonation = async (user: AdminUserRecord) => {
@@ -1333,30 +1290,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     document.body.removeChild(link);
   };
 
-  const handleExportAuditLogsCSV = () => {
-    if (filteredAuditLogs.length === 0) return;
-    const csvRows = [
-      ['ID Log', 'Date', 'Catégorie', 'Action', 'Acteur', 'Rôle Acteur', 'Cible Email', 'Détails', 'Statut'],
-      ...filteredAuditLogs.map(l => [
-        l.id,
-        l.timestamp,
-        l.category,
-        l.action,
-        l.actorEmail,
-        l.actorRole,
-        l.targetUserEmail || '',
-        `"${(l.details || '').replace(/"/g, '""')}"`,
-        l.status
-      ])
-    ];
-    const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map(e => e.join(',')).join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `senegalcv_audit_logs_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // 10. PURGE DES REÇUS EXPIRÉS (>24H)
+  const handlePurgeReceipts = async () => {
+    setIsPurgingReceipts(true);
+    try {
+      const res = await purgeExpiredPaymentReceipts(transactionsList);
+      if (res.purgedCount > 0) {
+        setSuccessMsg(`🧹 ${res.purgedCount} reçu(s) (+24h) purgé(s) du stockage avec succès. Historique comptable conservé.`);
+      } else {
+        setSuccessMsg("Tous les reçus validés ou rejetés depuis plus de 24h ont déjà été purgés.");
+      }
+      setTimeout(() => setSuccessMsg(null), 4500);
+    } catch (e: any) {
+      console.warn('Erreur lors de la purge des reçus:', e);
+      setErrorMsg("Une erreur est survenue lors de la purge des reçus.");
+      setTimeout(() => setErrorMsg(null), 4000);
+    } finally {
+      setIsPurgingReceipts(false);
+    }
   };
 
   // Access Guard
@@ -1588,19 +1539,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-900/60 text-slate-300 font-bold">
               {promoCodesList.length}
             </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('audit')}
-            type="button"
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'audit'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            <span>Journal d'activités (Audit)</span>
           </button>
 
           <button
@@ -2978,127 +2916,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 5: JOURNAL D'ACTIVITÉS (AUDIT LOGS) */}
-        {/* ========================================================================= */}
-        {activeTab === 'audit' && (
-          <div className="space-y-4">
-            
-            {/* Filter & Export Bar */}
-            <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-              
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Filtrer le journal par action, utilisateur, email ou mot-clé..."
-                  value={auditSearch}
-                  onChange={(e) => setAuditSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm !text-white !placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 transition-all caret-blue-500"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <select
-                  value={auditCategoryFilter}
-                  onChange={(e: any) => setAuditCategoryFilter(e.target.value)}
-                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
-                >
-                  <option value="all" className="bg-slate-900 text-white">Toutes Catégories</option>
-                  <option value="auth" className="bg-slate-900 text-white">Inscriptions & Auth</option>
-                  <option value="payment" className="bg-slate-900 text-white">Paiements Mobile Money</option>
-                  <option value="wallet" className="bg-slate-900 text-white">Soldes & Portefeuilles</option>
-                  <option value="document" className="bg-slate-900 text-white">Téléchargements Docs</option>
-                  <option value="admin_action" className="bg-slate-900 text-white">Actions Admin</option>
-                  <option value="pricing" className="bg-slate-900 text-white">Changements de Prix</option>
-                  <option value="promo" className="bg-slate-900 text-white">Codes Promo</option>
-                  <option value="security" className="bg-slate-900 text-white">Sécurité & Impersonation</option>
-                </select>
-
-                <button
-                  onClick={handleExportAuditLogsCSV}
-                  type="button"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Exporter CSV</span>
-                </button>
-              </div>
-
-            </div>
-
-            {/* Audit Logs Stream */}
-            <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
-              <div className="divide-y divide-slate-800/60">
-                {filteredAuditLogs.length === 0 ? (
-                  <div className="p-12 text-center text-slate-500 text-sm">
-                    Aucun événement d'audit ne correspond à vos critères.
-                  </div>
-                ) : (
-                  filteredAuditLogs.map((log) => {
-                    const isError = log.status === 'error';
-                    const isWarning = log.status === 'warning';
-                    
-                    return (
-                      <div key={log.id} className="p-4 sm:p-5 hover:bg-slate-800/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                        
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            
-                            {/* Category Badge */}
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
-                              {log.category}
-                            </span>
-
-                            {/* Action Tag */}
-                            <span className={`font-mono font-bold ${
-                              isError ? 'text-rose-400' : isWarning ? 'text-amber-400' : 'text-emerald-400'
-                            }`}>
-                              {log.action}
-                            </span>
-
-                            {/* Timestamp */}
-                            <span className="text-slate-500 text-[11px]">
-                              {log.timestamp ? new Date(log.timestamp).toLocaleString('fr-FR') : '—'}
-                            </span>
-                          </div>
-
-                          {/* Details */}
-                          <p className="text-slate-200 text-xs sm:text-sm font-medium">
-                            {log.details}
-                          </p>
-
-                          {/* Actor & Target */}
-                          <div className="flex items-center gap-3 text-[11px] text-slate-400">
-                            <span>Acteur : <strong className="text-slate-300">{log.actorEmail}</strong> ({log.actorRole})</span>
-                            {log.targetUserEmail && (
-                              <span>Cible : <strong className="text-amber-300">{log.targetUserEmail}</strong></span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Status Icon */}
-                        <div className="shrink-0 flex items-center gap-2">
-                          {isError ? (
-                            <AlertCircle className="w-5 h-5 text-rose-400" />
-                          ) : isWarning ? (
-                            <AlertTriangle className="w-5 h-5 text-amber-400" />
-                          ) : (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                          )}
-                        </div>
-
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* TAB 6: TRANSACTIONS & PAIEMENTS (GESTION OCR IA WAVE / ORANGE MONEY) */}
+        {/* TAB 5: TRANSACTIONS & PAIEMENTS (GESTION OCR IA WAVE / ORANGE MONEY) */}
         {/* ========================================================================= */}
         {activeTab === 'transactions' && (
           <div className="space-y-6">
@@ -3135,6 +2953,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div className="px-3 py-1.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-[11px] text-sky-300">
                   Validés Manuels : <strong className="font-bold">{transactionsList.filter(t => t.status === 'MANUALLY_VALIDATED').length}</strong>
+                </div>
+                <div className="px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-300">
+                  Reçus Purgés (+24h) : <strong className="font-bold">{transactionsList.filter(t => t.receiptPurged || t.receiptUrl === 'PURGED' || t.receiptUrl === 'Purger').length}</strong>
                 </div>
               </div>
             </div>
@@ -3186,6 +3007,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   <Download className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Exporter CSV</span>
+                </button>
+
+                <button
+                  onClick={handlePurgeReceipts}
+                  disabled={isPurgingReceipts}
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                  title="Purger immédiatement les images des reçus validés ou rejetés depuis plus de 24h"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isPurgingReceipts ? 'animate-spin' : ''}`} />
+                  <span>{isPurgingReceipts ? 'Purge...' : 'Purger reçus (+24h)'}</span>
                 </button>
               </div>
 
@@ -3375,6 +3207,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     className="w-full h-full object-cover group-hover/thumb:scale-110 transition-transform"
                                   />
                                 </div>
+                              ) : (tx.receiptPurged || tx.receiptUrl === 'PURGED' || tx.receiptUrl === 'Purger' || (!tx.receiptUrl && !tx.receiptImage && (isApproved || isRejected))) ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedTxForInspection(tx);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold cursor-pointer transition-all"
+                                  title="Capture purgée après 24h conformément à la politique d'optimisation. Cliquez pour inspecter."
+                                >
+                                  <span>PURGÉ (+24h)</span>
+                                </button>
                               ) : (
                                 <div className="w-8 h-8 mx-auto rounded-lg bg-slate-800/80 border border-slate-700/80 flex items-center justify-center text-slate-500">
                                   <Receipt className="w-4 h-4" />
@@ -4040,7 +3884,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </span>
                 </div>
 
-                {selectedTxForInspection.receiptUrl || selectedTxForInspection.receiptImage || (selectedTxForInspection as any).screenshotUrl ? (
+                {selectedTxForInspection.receiptPurged || selectedTxForInspection.receiptUrl === 'PURGED' || selectedTxForInspection.receiptUrl === 'Purger' ? (
+                  <div className="rounded-2xl p-6 bg-slate-950 border border-indigo-500/30 shadow-inner space-y-3 text-center">
+                    <div className="w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 mx-auto flex items-center justify-center border border-indigo-500/20">
+                      <ShieldCheck className="w-6 h-6" />
+                    </div>
+                    <h4 className="text-sm font-bold text-white">Capture de reçu purgée (+24h)</h4>
+                    <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+                      Conformément à la politique d'allègement de la base de données et de protection des données Dokya, l'image du reçu a été purgée après 24 heures de traitement.
+                    </p>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold border border-emerald-500/20">
+                      <Check className="w-3.5 h-3.5" />
+                      Données comptables vérifiées & conservées
+                    </div>
+                  </div>
+                ) : (selectedTxForInspection.receiptUrl && selectedTxForInspection.receiptUrl !== 'PURGED' && selectedTxForInspection.receiptUrl !== 'Purger') || selectedTxForInspection.receiptImage || (selectedTxForInspection as any).screenshotUrl ? (
                   <div className="relative rounded-2xl overflow-hidden border border-slate-700 bg-slate-950 shadow-inner group">
                     <img 
                       src={selectedTxForInspection.receiptUrl || selectedTxForInspection.receiptImage || (selectedTxForInspection as any).screenshotUrl} 

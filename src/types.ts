@@ -631,6 +631,8 @@ export interface TransactionRecord {
   rejectionCode?: string;
   receiptImage?: string;
   receiptUrl?: string;
+  receiptPurged?: boolean;
+  receiptPurgedAt?: string;
   senderPhone?: string;
   countryCode?: string;
   countryName?: string;
