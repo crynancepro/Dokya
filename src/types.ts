@@ -259,6 +259,7 @@ export interface BusinessDocData {
   paidAt?: string;
   paymentDate?: string;
   docId?: string;
+  stockDeducted?: boolean;
 }
 
 export interface UserBusiness {
@@ -293,6 +294,7 @@ export interface Customer {
 export interface Product {
   id: string;
   businessId: string;
+  userId?: string; // UID de l'utilisateur propriétaire
   name: string;
   sku?: string;
   purchasePrice: number; // Prix d'achat (FCFA)
@@ -324,6 +326,7 @@ export interface BusinessInvoice {
   issueDate: string;
   dueDate?: string;
   businessDocData?: BusinessDocData;
+  items?: BusinessDocItem[];
   stockDeducted?: boolean;
   createdAt?: any;
   updatedAt?: any;
@@ -617,8 +620,12 @@ export interface CandidateProfile {
   subscription?: UserSubscription;
   referralCode?: string; // Code unique de parrainage (ex: "PETER25")
   referredBy?: string; // UID du parrain si inscrit via affiliation
+  affiliateCodeUsed?: string; // Code d'affiliation utilisé à l'inscription (ex: "PETER25")
+  referredAt?: string; // Date d'inscription via le parrain
+  referrerName?: string; // Nom ou email du parrain
   affiliateBalance?: number; // Solde d'affiliation disponible pour retrait en FCFA
   totalAffiliateEarnings?: number; // Cumul historique des commissions approuvées en FCFA
+  totalReferred?: number; // Nombre de filleuls apportés
   updatedAt: string;
 }
 
@@ -733,8 +740,28 @@ export interface AdminUserRecord {
   ordersCount: number;
   unlockedDocsCount?: number;
   hasForceUnlockedDocs?: boolean;
+  referredBy?: string; // UID du parrain
+  affiliateCodeUsed?: string; // Code d'affiliation utilisé (ex: "PETER25")
+  referredAt?: string; // Date d'inscription
+  referrerName?: string; // Nom ou email du parrain
+  referralCode?: string; // Code d'affiliation de l'utilisateur
+  affiliateBalance?: number; // Solde d'affiliation disponible
+  totalAffiliateEarnings?: number; // Total des commissions générées
+  totalReferred?: number; // Nombre de filleuls apportés
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UserReferralItem {
+  id: string; // ID du document ou UID du filleul
+  referredUserId: string;
+  referredName: string;
+  referredEmail?: string;
+  affiliateCodeUsed?: string;
+  joinedAt: string;
+  conversionStatus: 'registered' | 'converted';
+  totalSpent: number; // Montant total dépensé en FCFA
+  commissionEarned: number; // Commission générée (20%) en FCFA
 }
 
 export interface ImpersonatedSession {

@@ -2,15 +2,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Copy, Check, Share2, Wallet, ArrowDownToLine, 
   Clock, CheckCircle2, XCircle, AlertCircle, Sparkles, 
-  Send, Smartphone, Coins, RefreshCw, ExternalLink, HelpCircle
+  Send, Smartphone, Coins, RefreshCw, ExternalLink, HelpCircle,
+  ShieldCheck
 } from 'lucide-react';
-import { CandidateProfile, AffiliateCommission, AffiliatePayoutRequest } from '../types';
+import { CandidateProfile, AffiliateCommission, AffiliatePayoutRequest, UserReferralItem } from '../types';
 import { 
   subscribeToAffiliateCommissions, 
   subscribeToAffiliatePayoutRequests, 
   requestAffiliatePayout,
-  getReferredUsersCount
+  getReferredUsersCount,
+  subscribeToReferredUsers
 } from '../lib/firebase';
+import { maskEmail, maskName } from '../lib/referralTracking';
 
 interface DokyaAffiliateViewProps {
   profile: CandidateProfile;
@@ -20,6 +23,8 @@ interface DokyaAffiliateViewProps {
 export const DokyaAffiliateView: React.FC<DokyaAffiliateViewProps> = ({ profile }) => {
   const [commissions, setCommissions] = useState<AffiliateCommission[]>([]);
   const [payoutRequests, setPayoutRequests] = useState<AffiliatePayoutRequest[]>([]);
+  const [referredUsers, setReferredUsers] = useState<UserReferralItem[]>([]);
+  const [activeTableTab, setActiveTableTab] = useState<'referrals' | 'commissions'>('referrals');
   const [referredCount, setReferredCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -62,13 +67,21 @@ export const DokyaAffiliateView: React.FC<DokyaAffiliateViewProps> = ({ profile 
       setPayoutRequests(list);
     });
 
+    const unsubReferred = subscribeToReferredUsers(profile.uid, (list) => {
+      setReferredUsers(list);
+      if (list.length > 0) {
+        setReferredCount(list.length);
+      }
+    });
+
     getReferredUsersCount(profile.uid).then((cnt) => {
-      setReferredCount(cnt);
+      setReferredCount(prev => Math.max(prev, cnt));
     });
 
     return () => {
       unsubCommissions();
       unsubPayouts();
+      unsubReferred();
     };
   }, [profile.uid]);
 
@@ -698,153 +711,325 @@ export const DokyaAffiliateView: React.FC<DokyaAffiliateViewProps> = ({ profile 
       </div>
 
       {/* ========================================================================= */}
-      {/* TABLEAU DE SUIVI DES COMMISSIONS & PARRAINAGES                             */}
+      {/* TABLEAU DE SUIVI DES COMMISSIONS & DES CLIENTS PARRAINÉS                  */}
       {/* ========================================================================= */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 space-y-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Coins className="w-5 h-5 text-purple-400" />
-              <h3 className="text-lg font-black text-white">Historique des Commissions d'Affiliation</h3>
+              <Users className="w-5 h-5 text-purple-400" />
+              <h3 className="text-lg font-black text-white">Réseau de Parrainage & Commissions</h3>
             </div>
             <p className="text-xs text-slate-400">
-              Chaque achat réalisé par un filleul génère une commission de 20% validée par l'administrateur
+              Suivez en direct vos clients inscrits, les conversions d'achat et vos commissions de 20%
             </p>
           </div>
 
-          {/* Status Filter tabs */}
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-            {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setStatusFilter(st)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  statusFilter === st
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {st === 'ALL' ? 'Toutes' : st === 'PENDING' ? 'En attente' : st === 'APPROVED' ? 'Approuvées' : 'Rejetées'}
-              </button>
-            ))}
+          {/* Navigation between Filleuls & Commissions */}
+          <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setActiveTableTab('referrals')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTableTab === 'referrals'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Clients Parrainés ({referredUsers.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTableTab('commissions')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTableTab === 'commissions'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Coins className="w-3.5 h-3.5" />
+              <span>Commissions ({commissions.length})</span>
+            </button>
           </div>
         </div>
 
-        {/* Table Content */}
-        {isLoading ? (
-          <div className="text-center py-12 space-y-2">
-            <RefreshCw className="w-6 h-6 text-purple-400 animate-spin mx-auto" />
-            <p className="text-xs text-slate-400 font-bold">Chargement de vos commissions...</p>
-          </div>
-        ) : filteredCommissions.length === 0 ? (
-          <div className="text-center py-12 px-4 rounded-2xl bg-slate-950/60 border border-dashed border-slate-800 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center mx-auto">
-              <Users className="w-6 h-6" />
+                {/* TAB 1: CLIENTS & FILLEULS PARRAINÉS */}
+        {activeTableTab === 'referrals' && (
+          <div className="space-y-4">
+            <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center gap-2 text-slate-300">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  <strong className="text-white">Confidentialité protégée (Data Privacy) :</strong> Les coordonnées directes de vos filleuls sont automatiquement masquées pour respecter leur vie privée.
+                </span>
+              </div>
+              <div className="text-slate-300 shrink-0 font-medium">
+                Taux de commission : <span className="font-black text-amber-400">20% sur Pass & Documents</span>
+              </div>
             </div>
-            <div className="space-y-1 max-w-md mx-auto">
-              <p className="text-sm font-black text-white">
-                {statusFilter === 'ALL' 
-                  ? 'Aucune commission enregistrée pour le moment' 
-                  : `Aucune commission avec le statut « ${statusFilter} »`}
-              </p>
-              <p className="text-xs text-slate-400">
-                Commencez à partager votre lien de parrainage pour recevoir vos premières commissions de 20% dès aujourd'hui !
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black transition-all cursor-pointer"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              <span>Copier mon lien de parrainage</span>
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-800">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800 text-[10px]">
-                <tr>
-                  <th className="py-3.5 px-4">Client Apporté</th>
-                  <th className="py-3.5 px-4">Service Acheté</th>
-                  <th className="py-3.5 px-4">Date</th>
-                  <th className="py-3.5 px-4">Montant Payé</th>
-                  <th className="py-3.5 px-4">Votre Commission (20%)</th>
-                  <th className="py-3.5 px-4 text-right">Statut</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/80">
-                {filteredCommissions.map((comm) => (
-                  <tr key={comm.id} className="hover:bg-slate-800/40 transition-colors">
-                    
-                    {/* Client name */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 font-black text-xs flex items-center justify-center shrink-0">
-                          {comm.referredUserName.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-bold text-white">
-                            {formatClientName(comm.referredUserName)}
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-mono">
-                            ID: {comm.id.slice(0, 14)}...
-                          </p>
-                        </div>
-                      </div>
-                    </td>
 
-                    {/* Service */}
-                    <td className="py-3.5 px-4 text-slate-300 font-medium">
-                      {comm.serviceTitle || 'Achat Dokya AI'}
-                    </td>
+            {isLoading ? (
+              <div className="text-center py-12 space-y-2">
+                <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin mx-auto" />
+                <p className="text-xs text-slate-400 font-bold">Chargement de vos clients filleuls...</p>
+              </div>
+            ) : referredUsers.length === 0 ? (
+              <div className="text-center py-12 px-4 rounded-2xl bg-slate-950/60 border border-dashed border-slate-800 space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div className="space-y-1 max-w-md mx-auto">
+                  <p className="text-sm font-black text-white">
+                    Aucun client inscrit pour le moment
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Partagez votre lien ou votre code parrain <strong className="text-amber-400">{referralCode}</strong> pour commencer à toucher 20% sur tous leurs achats de Pass et Documents.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all cursor-pointer active:scale-95"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copier mon lien de parrainage</span>
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-slate-800">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800 text-[10px]">
+                    <tr>
+                      <th className="py-3.5 px-4">Client Apporté (Info Masquée)</th>
+                      <th className="py-3.5 px-4">Code Utilisé</th>
+                      <th className="py-3.5 px-4">Date d'Inscription</th>
+                      <th className="py-3.5 px-4">Statut de Conversion</th>
+                      <th className="py-3.5 px-4">Achats Cumulés</th>
+                      <th className="py-3.5 px-4 text-right">Gains Générés (20%)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {referredUsers.map((user) => {
+                      const isConverted = user.conversionStatus === 'converted' || user.totalSpent > 0;
+                      return (
+                        <tr key={user.id} className="hover:bg-slate-800/40 transition-colors">
+                          
+                          {/* Client anonymisé */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 font-black text-xs flex items-center justify-center shrink-0 border border-indigo-500/30">
+                                {user.referredName ? user.referredName.charAt(0).toUpperCase() : 'C'}
+                              </div>
+                              <div>
+                                <p className="font-black text-white">
+                                  {maskName(user.referredName)}
+                                </p>
+                                <p className="text-[11px] text-slate-400 font-mono">
+                                  {maskEmail(user.referredEmail)}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
 
-                    {/* Date */}
-                    <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
-                      {new Date(comm.createdAt).toLocaleDateString('fr-FR', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric'
-                      })}
-                    </td>
+                          {/* Code Parrain */}
+                          <td className="py-3.5 px-4">
+                            <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/30 text-[10px] font-mono font-bold">
+                              {user.affiliateCodeUsed || referralCode}
+                            </span>
+                          </td>
 
-                    {/* Total Amount */}
-                    <td className="py-3.5 px-4 text-slate-300 font-bold">
-                      {comm.totalAmount.toLocaleString('fr-FR')} FCFA
-                    </td>
+                          {/* Date d inscription */}
+                          <td className="py-3.5 px-4 text-slate-300 font-medium">
+                            {user.joinedAt ? new Date(user.joinedAt).toLocaleDateString('fr-FR', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric'
+                            }) : 'Récemment'}
+                          </td>
 
-                    {/* Affiliate Commission (20%) */}
-                    <td className="py-3.5 px-4 font-black text-emerald-400">
-                      +{comm.affiliateCommission.toLocaleString('fr-FR')} FCFA
-                    </td>
+                          {/* Statut de conversion */}
+                          <td className="py-3.5 px-4">
+                            {isConverted ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Converti (Achat effectué)</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-black">
+                                <Clock className="w-3 h-3" />
+                                <span>Inscrit (En attente d'achat)</span>
+                              </span>
+                            )}
+                          </td>
 
-                    {/* Status */}
-                    <td className="py-3.5 px-4 text-right">
-                      {comm.status === 'APPROVED' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>Approuvée</span>
-                        </span>
-                      ) : comm.status === 'REJECTED' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-black">
-                          <XCircle className="w-3 h-3" />
-                          <span>Rejetée</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-black">
-                          <Clock className="w-3 h-3" />
-                          <span>En attente validation</span>
-                        </span>
-                      )}
-                    </td>
+                          {/* Achats Cumulés */}
+                          <td className="py-3.5 px-4 text-slate-300 font-bold">
+                            {user.totalSpent > 0 ? (
+                              <span>{user.totalSpent.toLocaleString('fr-FR')} FCFA</span>
+                            ) : (
+                              <span className="text-slate-500">0 FCFA</span>
+                            )}
+                          </td>
 
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                          {/* Vos Gains */}
+                          <td className="py-3.5 px-4 text-right">
+                            {user.commissionEarned > 0 ? (
+                              <span className="font-black text-emerald-400 text-sm">
+                                +{user.commissionEarned.toLocaleString('fr-FR')} FCFA
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 text-xs italic">
+                                0 FCFA
+                              </span>
+                            )}
+                          </td>
+
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
+
+        {/* TAB 2: HISTORIQUE DES COMMISSIONS */}
+        {activeTableTab === 'commissions' && (
+          <div className="space-y-4">
+            {/* Filter buttons */}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <span className="text-xs text-slate-400">Filtrer par statut de commission :</span>
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                {(['ALL', 'PENDING', 'APPROVED', 'REJECTED']).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setStatusFilter(st as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      statusFilter === st
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {st === 'ALL' ? 'Toutes' : st === 'PENDING' ? 'En attente' : st === 'APPROVED' ? 'Approuvées' : 'Rejetées'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {isLoading ? (
+              <div className="text-center py-12 space-y-2">
+                <RefreshCw className="w-6 h-6 text-purple-400 animate-spin mx-auto" />
+                <p className="text-xs text-slate-400 font-bold">Chargement de vos commissions...</p>
+              </div>
+            ) : filteredCommissions.length === 0 ? (
+              <div className="text-center py-12 px-4 rounded-2xl bg-slate-950/60 border border-dashed border-slate-800 space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center mx-auto">
+                  <Coins className="w-6 h-6" />
+                </div>
+                <div className="space-y-1 max-w-md mx-auto">
+                  <p className="text-sm font-black text-white">
+                    {statusFilter === 'ALL' 
+                      ? 'Aucune commission enregistrée pour le moment' 
+                      : `Aucune commission avec le statut « ${statusFilter} »`}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Dès qu'un de vos filleuls achète un service sur Dokya AI, votre commission de 20% apparaîtra ici.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black transition-all cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copier mon lien de parrainage</span>
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-slate-800">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800 text-[10px]">
+                    <tr>
+                      <th className="py-3.5 px-4">Client Apporté</th>
+                      <th className="py-3.5 px-4">Service Acheté</th>
+                      <th className="py-3.5 px-4">Date</th>
+                      <th className="py-3.5 px-4">Montant Total</th>
+                      <th className="py-3.5 px-4">Votre Commission (20%)</th>
+                      <th className="py-3.5 px-4 text-right">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {filteredCommissions.map((comm) => (
+                      <tr key={comm.id} className="hover:bg-slate-800/40 transition-colors">
+                        
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 font-black text-xs flex items-center justify-center shrink-0">
+                              {comm.referredUserName.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-bold text-white">
+                                {formatClientName(comm.referredUserName)}
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-mono">
+                                ID: {comm.id.slice(0, 14)}...
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-slate-300 font-medium">
+                          {comm.serviceTitle || 'Achat Dokya AI'}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-slate-400">
+                          {new Date(comm.createdAt).toLocaleDateString('fr-FR', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-slate-300 font-bold">
+                          {comm.totalAmount.toLocaleString('fr-FR')} FCFA
+                        </td>
+
+                        <td className="py-3.5 px-4 font-black text-emerald-400">
+                          +{comm.affiliateCommission.toLocaleString('fr-FR')} FCFA
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
+                          {comm.status === 'APPROVED' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Approuvée</span>
+                            </span>
+                          ) : comm.status === 'REJECTED' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-black">
+                              <XCircle className="w-3 h-3" />
+                              <span>Rejetée</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-black">
+                              <Clock className="w-3 h-3" />
+                              <span>En attente validation</span>
+                            </span>
+                          )}
+                        </td>
+
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
     </div>

@@ -1686,11 +1686,12 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* TAB: DOKYA BUSINESS (GESTION CLIENTS & SUIVI FINANCIER)                  */}
+          {/* TAB: DOKYA BUSINESS (GESTION CLIENTS, STOCKS & SUIVI FINANCIER)          */}
           {/* ========================================================================= */}
-          {(activeSidebarTab === 'business' || activeSidebarTab === 'clients') && (
+          {(activeSidebarTab === 'business' || activeSidebarTab === 'clients' || activeSidebarTab === 'inventory') && (
             <div className="space-y-6 animate-in fade-in">
               <DokyaBusinessView
+                initialActiveTab={activeSidebarTab === 'inventory' ? 'inventory' : 'clients'}
                 onOpenInvoiceGenerator={(customer, type, business) => {
                   if (onOpenInvoiceGenerator) {
                     onOpenInvoiceGenerator(customer, type, business);

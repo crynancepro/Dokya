@@ -11,10 +11,12 @@ import {
   CandidateProfile, SavedUserDocument, TransactionRecord, GenerationMode, 
   CVFormData, AIOptimizedData, PlatformPricingConfig, PromoCode,
   UserSubscription, isUserVipActive, getTimestampMillis, formatRemainingSubscriptionTime, AdminUserRecord,
-  Customer, BusinessInvoice, UserBusiness, BusinessDocData,
+  Customer, BusinessInvoice, UserBusiness, BusinessDocData, BusinessDocItem, Product,
   AffiliateCommission, AffiliatePayoutRequest,
-  SupportMessage, SupportConversation, SupportConversationStatus, SupportSenderType
+  SupportMessage, SupportConversation, SupportConversationStatus, SupportSenderType,
+  UserReferralItem
 } from '../types';
+import { getStoredReferralCode, clearStoredReferralCode } from './referralTracking';
 
 const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
@@ -60,8 +62,12 @@ export interface FirebaseUserProfile {
   phoneNumber?: string;
   referralCode?: string;
   referredBy?: string;
+  affiliateCodeUsed?: string;
+  referredAt?: string;
+  referrerName?: string;
   affiliateBalance?: number;
   totalAffiliateEarnings?: number;
+  totalReferred?: number;
 }
 
 export interface OrderRecord {
@@ -194,22 +200,26 @@ export async function initializeUserAccountDoc(
 ): Promise<FirebaseUserProfile> {
   const userRef = doc(db, 'users', user.uid);
   try {
-    // Lookup pending referral code from storage
+    // Lookup pending referral code from storage / cookie
     let pendingRefBy: string | null = null;
-    if (typeof window !== 'undefined') {
-      try {
-        const storedRefCode = localStorage.getItem('dokya_ref_code') || sessionStorage.getItem('dokya_ref_code');
-        if (storedRefCode) {
-          const cleanRef = storedRefCode.trim().toUpperCase();
-          const qRef = query(collection(db, 'users'), where('referralCode', '==', cleanRef));
-          const snapRef = await getDocs(qRef);
-          if (!snapRef.empty && snapRef.docs[0].id !== user.uid) {
-            pendingRefBy = snapRef.docs[0].id;
-          }
+    let pendingRefCode: string | null = null;
+    let pendingReferrerName: string | null = null;
+
+    try {
+      const storedRefCode = getStoredReferralCode();
+      if (storedRefCode) {
+        pendingRefCode = storedRefCode;
+        const qRef = query(collection(db, 'users'), where('referralCode', '==', storedRefCode));
+        const snapRef = await getDocs(qRef);
+        if (!snapRef.empty && snapRef.docs[0].id !== user.uid) {
+          const referrerDoc = snapRef.docs[0];
+          pendingRefBy = referrerDoc.id;
+          const rData = referrerDoc.data();
+          pendingReferrerName = rData.displayName || rData.personalInfo?.firstName || rData.email?.split('@')[0] || 'Parrain Dokya';
         }
-      } catch (e) {
-        console.warn('[Referral code check error]:', e);
       }
+    } catch (e) {
+      console.warn('[Referral code check error]:', e);
     }
 
     const snap = await getDoc(userRef);
@@ -232,13 +242,53 @@ export async function initializeUserAccountDoc(
         },
         referralCode: generatedCode,
         referredBy: pendingRefBy || undefined,
+        affiliateCodeUsed: pendingRefCode || undefined,
+        referredAt: pendingRefBy ? nowIso : undefined,
+        referrerName: pendingReferrerName || undefined,
         affiliateBalance: 0,
         totalAffiliateEarnings: 0,
+        totalReferred: 0,
         createdAt: nowIso,
         updatedAt: nowIso,
         role: user.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate'
       };
       await setDoc(userRef, initialProfile, { merge: true });
+
+      // Si l'utilisateur est parrainé, mettre à jour le parrain et enregistrer dans son sous-ensemble
+      if (pendingRefBy) {
+        // 1. Incrémenter atomiquement totalReferred chez le parrain
+        try {
+          const referrerRef = doc(db, 'users', pendingRefBy);
+          await updateDoc(referrerRef, {
+            totalReferred: increment(1),
+            updatedAt: nowIso
+          });
+        } catch (errRef) {
+          console.warn('[Increment referrer totalReferred warn]:', errRef);
+        }
+
+        // 2. Créer l'entrée dans le sous-ensemble users/{referrerId}/referrals/{newUserId}
+        try {
+          const referralSubDocRef = doc(db, 'users', pendingRefBy, 'referrals', user.uid);
+          await setDoc(referralSubDocRef, cleanFirestorePayload({
+            id: user.uid,
+            referredUserId: user.uid,
+            referredName: extra?.displayName || user.displayName || user.email?.split('@')[0] || 'Candidat Dokya',
+            referredEmail: user.email || '',
+            affiliateCodeUsed: pendingRefCode || '',
+            joinedAt: nowIso,
+            conversionStatus: 'registered',
+            totalSpent: 0,
+            commissionEarned: 0
+          }), { merge: true });
+        } catch (errSub) {
+          console.warn('[Create referral subdoc warn]:', errSub);
+        }
+
+        // 3. Vider le code stocké après attribution réussie
+        clearStoredReferralCode();
+      }
+
       return initialProfile;
     }
     const data = snap.data();
@@ -592,6 +642,8 @@ export async function saveUserDocument(userDoc: SavedUserDocument): Promise<bool
   try {
     const docRef = doc(db, 'user_documents', cleanDoc.id);
     await setDoc(docRef, cleanDoc);
+    const rootDocRef = doc(db, 'documents', cleanDoc.id);
+    await setDoc(rootDocRef, cleanDoc, { merge: true }).catch(() => {});
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -652,6 +704,8 @@ export async function saveGeneratedDocumentMetadata(params: SaveDocumentMetadata
   try {
     const docRef = doc(db, 'user_documents', docId);
     await setDoc(docRef, cleanFirestorePayload(userDoc));
+    const rootDocRef = doc(db, 'documents', docId);
+    await setDoc(rootDocRef, cleanFirestorePayload(userDoc), { merge: true }).catch(() => {});
     return userDoc;
   } catch (error) {
     console.warn('Could not save user document metadata to Firestore:', error);
@@ -667,6 +721,8 @@ export async function deleteUserDocument(docId: string): Promise<boolean> {
   try {
     const docRef = doc(db, 'user_documents', docId);
     await deleteDoc(docRef);
+    const rootDocRef = doc(db, 'documents', docId);
+    await deleteDoc(rootDocRef).catch(() => {});
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
@@ -1805,9 +1861,29 @@ export async function fetchAllAdminUsersWithSubscriptions(): Promise<AdminUserRe
         ordersCount: data.ordersCount || 0,
         unlockedDocsCount: data.unlockedDocsCount || (data.purchasedDocIds?.length || 0),
         hasForceUnlockedDocs: data.hasForceUnlockedDocs || false,
+        referredBy: data.referredBy,
+        affiliateCodeUsed: data.affiliateCodeUsed,
+        referredAt: data.referredAt,
+        referrerName: data.referrerName,
+        referralCode: data.referralCode,
+        affiliateBalance: typeof data.affiliateBalance === 'number' ? data.affiliateBalance : 0,
+        totalAffiliateEarnings: typeof data.totalAffiliateEarnings === 'number' ? data.totalAffiliateEarnings : 0,
+        totalReferred: typeof data.totalReferred === 'number' ? data.totalReferred : 0,
         createdAt: data.createdAt || new Date().toISOString(),
         updatedAt: data.updatedAt || new Date().toISOString()
       });
+    });
+
+    // Résoudre le referrerName si manquant via le tableau des utilisateurs
+    const usersMap = new Map<string, AdminUserRecord>();
+    users.forEach(u => usersMap.set(u.uid, u));
+    users.forEach(u => {
+      if (u.referredBy && !u.referrerName) {
+        const refUser = usersMap.get(u.referredBy);
+        if (refUser) {
+          u.referrerName = `${refUser.firstName} ${refUser.lastName}`.trim() || refUser.email;
+        }
+      }
     });
 
     return users.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -2353,6 +2429,297 @@ export async function setDefaultUserBusiness(userId: string, businessId: string)
   }
 }
 
+// =============================================================================
+// GESTION DE STOCK & CATALOGUE PRODUITS (businesses/{businessId}/products)
+// =============================================================================
+
+export function getLocalProductsKey(businessId: string): string {
+  return `dokya_business_products_${businessId || 'default'}`;
+}
+
+/**
+ * Récupère les produits d'une entreprise depuis Firestore 'businesses/{businessId}/products'
+ */
+export async function fetchBusinessProducts(businessId: string): Promise<Product[]> {
+  const bId = businessId || 'default';
+  let localList: Product[] = [];
+  try {
+    const raw = localStorage.getItem(getLocalProductsKey(bId));
+    if (raw) localList = JSON.parse(raw);
+  } catch (e) {}
+
+  try {
+    const colRef = collection(db, 'businesses', bId, 'products');
+    const snapshot = await getDocs(colRef);
+    if (snapshot.empty && localList.length > 0) {
+      return localList;
+    }
+    const firestoreList: Product[] = [];
+    snapshot.forEach((d) => {
+      const data = d.data();
+      firestoreList.push({
+        id: d.id,
+        businessId: bId,
+        name: data.name || '',
+        sku: data.sku || '',
+        purchasePrice: Number(data.purchasePrice) || 0,
+        sellingPrice: Number(data.sellingPrice) || 0,
+        quantity: Number(data.quantity) || 0,
+        lowStockThreshold: data.lowStockThreshold !== undefined ? Number(data.lowStockThreshold) : 3,
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
+      });
+    });
+
+    if (firestoreList.length > 0) {
+      firestoreList.sort((a, b) => a.name.localeCompare(b.name));
+      localStorage.setItem(getLocalProductsKey(bId), JSON.stringify(firestoreList));
+      return firestoreList;
+    }
+    return localList;
+  } catch (error) {
+    console.warn(`Erreur fetchBusinessProducts (${bId}):`, error);
+    return localList;
+  }
+}
+
+/**
+ * Écoute en temps réel les produits du catalogue
+ */
+export function subscribeToBusinessProducts(
+  businessId: string, 
+  callback: (products: Product[]) => void
+): Unsubscribe {
+  const bId = businessId || 'default';
+  try {
+    const colRef = collection(db, 'businesses', bId, 'products');
+    return onSnapshot(colRef, (snapshot) => {
+      const list: Product[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        list.push({
+          id: d.id,
+          businessId: bId,
+          name: data.name || '',
+          sku: data.sku || '',
+          purchasePrice: Number(data.purchasePrice) || 0,
+          sellingPrice: Number(data.sellingPrice) || 0,
+          quantity: Number(data.quantity) || 0,
+          lowStockThreshold: data.lowStockThreshold !== undefined ? Number(data.lowStockThreshold) : 3,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || ''),
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : (data.updatedAt || ''),
+        });
+      });
+      list.sort((a, b) => a.name.localeCompare(b.name));
+      try {
+        localStorage.setItem(getLocalProductsKey(bId), JSON.stringify(list));
+      } catch (e) {}
+      callback(list);
+    }, (err) => {
+      console.warn(`Erreur onSnapshot subscribeToBusinessProducts (${bId}):`, err);
+      try {
+        const raw = localStorage.getItem(getLocalProductsKey(bId));
+        if (raw) callback(JSON.parse(raw));
+      } catch (e) {}
+    });
+  } catch (error) {
+    console.warn(`Erreur configuration subscribeToBusinessProducts:`, error);
+    return () => {};
+  }
+}
+
+/**
+ * Crée ou met à jour un produit dans le catalogue
+ */
+export async function saveBusinessProduct(
+  businessId: string, 
+  productData: Partial<Product>
+): Promise<Product> {
+  const bId = businessId || 'default';
+  const productId = productData.id || `PROD-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+
+  const currentUid = auth.currentUser?.uid || 'guest';
+  const product: Product = {
+    id: productId,
+    businessId: bId,
+    userId: currentUid,
+    name: (productData.name || '').trim(),
+    sku: (productData.sku || '').trim(),
+    purchasePrice: Number(productData.purchasePrice) || 0,
+    sellingPrice: Number(productData.sellingPrice) || 0,
+    quantity: Number(productData.quantity) || 0,
+    lowStockThreshold: productData.lowStockThreshold !== undefined ? Number(productData.lowStockThreshold) : 3,
+    createdAt: productData.createdAt || now,
+    updatedAt: now,
+  };
+
+  // 1. Mise à jour du cache local
+  try {
+    const raw = localStorage.getItem(getLocalProductsKey(bId));
+    let list: Product[] = raw ? JSON.parse(raw) : [];
+    const index = list.findIndex(p => p.id === productId);
+    if (index >= 0) {
+      list[index] = { ...list[index], ...product };
+    } else {
+      list.unshift(product);
+    }
+    localStorage.setItem(getLocalProductsKey(bId), JSON.stringify(list));
+  } catch (e) {}
+
+  // 2. Enregistrement Firestore 'businesses/{businessId}/products/{productId}' et racine 'products/{productId}'
+  try {
+    const docRef = doc(db, 'businesses', bId, 'products', productId);
+    await setDoc(docRef, cleanFirestorePayload({
+      name: product.name,
+      sku: product.sku || '',
+      purchasePrice: product.purchasePrice,
+      sellingPrice: product.sellingPrice,
+      quantity: product.quantity,
+      lowStockThreshold: product.lowStockThreshold,
+      userId: currentUid,
+      businessId: bId,
+      updatedAt: serverTimestamp(),
+      createdAt: product.createdAt,
+    }), { merge: true });
+
+    // Enregistrement dans la collection racine 'products' avec userId pour isolation stricte
+    const rootRef = doc(db, 'products', productId);
+    await setDoc(rootRef, cleanFirestorePayload({
+      ...product,
+      userId: currentUid,
+      updatedAt: serverTimestamp()
+    }), { merge: true }).catch(() => {});
+  } catch (error) {
+    console.warn(`Erreur saveBusinessProduct (${productId}):`, error);
+  }
+
+  return product;
+}
+
+/**
+ * Supprime un produit du catalogue
+ */
+export async function deleteBusinessProduct(businessId: string, productId: string): Promise<boolean> {
+  const bId = businessId || 'default';
+
+  // 1. Suppression du cache local
+  try {
+    const raw = localStorage.getItem(getLocalProductsKey(bId));
+    if (raw) {
+      const list: Product[] = JSON.parse(raw);
+      const filtered = list.filter(p => p.id !== productId);
+      localStorage.setItem(getLocalProductsKey(bId), JSON.stringify(filtered));
+    }
+  } catch (e) {}
+
+  // 2. Suppression Firestore
+  try {
+    const docRef = doc(db, 'businesses', bId, 'products', productId);
+    await deleteDoc(docRef);
+    const rootRef = doc(db, 'products', productId);
+    await deleteDoc(rootRef).catch(() => {});
+    return true;
+  } catch (error) {
+    console.warn(`Erreur deleteBusinessProduct (${productId}):`, error);
+    return true;
+  }
+}
+
+/**
+ * Met à jour la quantité en stock rapidement (+1 / -1 ou saisie directe)
+ */
+export async function updateProductQuantity(
+  businessId: string, 
+  productId: string, 
+  change: { delta?: number; exact?: number }
+): Promise<number> {
+  const bId = businessId || 'default';
+  let newQty = 0;
+
+  // 1. Local update
+  try {
+    const raw = localStorage.getItem(getLocalProductsKey(bId));
+    if (raw) {
+      const list: Product[] = JSON.parse(raw);
+      const target = list.find(p => p.id === productId);
+      if (target) {
+        if (change.exact !== undefined) {
+          newQty = Math.max(0, change.exact);
+        } else if (change.delta !== undefined) {
+          newQty = Math.max(0, (target.quantity || 0) + change.delta);
+        }
+        target.quantity = newQty;
+        target.updatedAt = new Date().toISOString();
+        localStorage.setItem(getLocalProductsKey(bId), JSON.stringify(list));
+      }
+    }
+  } catch (e) {}
+
+  // 2. Firestore update
+  try {
+    const docRef = doc(db, 'businesses', bId, 'products', productId);
+    await updateDoc(docRef, {
+      quantity: newQty,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.warn(`Erreur updateProductQuantity (${productId}):`, error);
+  }
+
+  return newQty;
+}
+
+/**
+ * Déduit automatiquement la quantité vendue des articles lors de la validation/paiement d'une facture
+ */
+export async function deductStockForInvoice(
+  businessId: string, 
+  items: BusinessDocItem[]
+): Promise<boolean> {
+  if (!items || items.length === 0) return true;
+  const bId = businessId || 'default';
+
+  try {
+    const products = await fetchBusinessProducts(bId);
+    if (!products || products.length === 0) return true;
+
+    const productsMap = new Map<string, Product>();
+    products.forEach(p => {
+      productsMap.set(p.id, p);
+      if (p.sku) productsMap.set(p.sku.toLowerCase().trim(), p);
+      productsMap.set(p.name.toLowerCase().trim(), p);
+    });
+
+    for (const item of items) {
+      const qtyToDeduct = Number(item.quantity) || 1;
+      let targetProduct: Product | undefined;
+
+      if (item.productId && productsMap.has(item.productId)) {
+        targetProduct = productsMap.get(item.productId);
+      } else if (item.sku && productsMap.has(item.sku.toLowerCase().trim())) {
+        targetProduct = productsMap.get(item.sku.toLowerCase().trim());
+      } else {
+        const descClean = (item.description || '').toLowerCase().trim();
+        if (productsMap.has(descClean)) {
+          targetProduct = productsMap.get(descClean);
+        }
+      }
+
+      if (targetProduct) {
+        const currentQty = targetProduct.quantity || 0;
+        const finalQty = Math.max(0, currentQty - qtyToDeduct);
+        targetProduct.quantity = finalQty;
+        await updateProductQuantity(bId, targetProduct.id, { exact: finalQty });
+      }
+    }
+    return true;
+  } catch (error) {
+    console.warn(`Erreur deductStockForInvoice (${bId}):`, error);
+    return false;
+  }
+}
+
 /**
  * Enregistre une facture ou un devis pour suivi financier
  */
@@ -2687,6 +3054,48 @@ export async function updateInvoicePaymentStatus(
     await syncCustomerFinancials(currentUid, customerIdToSync);
   }
 
+  // 7. Déduction automatique du stock lors du paiement de la facture
+  if (status === 'PAID') {
+    try {
+      let targetInv: BusinessInvoice | undefined;
+      const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+      if (raw) {
+        const list: BusinessInvoice[] = JSON.parse(raw);
+        targetInv = list.find(i => i.id === invoiceId || i.docNumber === invoiceId);
+      }
+      if (!targetInv) {
+        const invSnap = await getDoc(doc(db, 'users', currentUid, 'invoices', invoiceId));
+        if (invSnap.exists()) {
+          targetInv = invSnap.data() as BusinessInvoice;
+        }
+      }
+
+      if (targetInv && !targetInv.stockDeducted) {
+        const items = targetInv.businessDocData?.items || targetInv.items || [];
+        const bId = targetInv.businessId || targetInv.businessDocData?.businessId || (targetInv.businessDocData?.issuer as any)?.businessId || 'default';
+        await deductStockForInvoice(bId, items);
+
+        // Marquer le stock comme déduit
+        targetInv.stockDeducted = true;
+        if (raw) {
+          const list: BusinessInvoice[] = JSON.parse(raw);
+          const idx = list.findIndex(i => i.id === invoiceId || i.docNumber === invoiceId);
+          if (idx >= 0) {
+            list[idx].stockDeducted = true;
+            localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(list));
+          }
+        }
+        await updateDoc(doc(db, 'users', currentUid, 'invoices', invoiceId), {
+          stockDeducted: true,
+          'businessDocData.stockDeducted': true,
+          updatedAt: serverTimestamp()
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Erreur déduction automatique stock sur paiement:", err);
+    }
+  }
+
   return true;
 }
 
@@ -2960,6 +3369,20 @@ export async function saveOrUpdateBusinessDocument(
     await syncCustomerFinancials(currentUid, docData.customerId);
   }
 
+  // 5. Déduction automatique du stock si facture immédiatement payée
+  const isInvoicePaid = invoice.status === 'PAID';
+  if (docData.type === 'facture' && isInvoicePaid && !invoice.stockDeducted) {
+    try {
+      const bId = invoice.businessId || docData.businessId || (docData.issuer as any)?.businessId || 'default';
+      const items = docData.items || [];
+      await deductStockForInvoice(bId, items);
+      invoice.stockDeducted = true;
+      savedUserDoc.businessDocData!.stockDeducted = true;
+    } catch (e) {
+      console.warn("Erreur déduction stock initiale:", e);
+    }
+  }
+
   return { invoice, doc: savedUserDoc };
 }
 
@@ -3061,6 +3484,25 @@ export async function createAffiliateCommissionIfReferred(params: {
     };
 
     await setDoc(commissionDocRef, cleanFirestorePayload(commission), { merge: true });
+
+    // 5. Mettre à jour la fiche du filleul dans le sous-ensemble users/{referrerId}/referrals/{referredUserId}
+    try {
+      const refDocRef = doc(db, 'users', referrerId, 'referrals', params.userId);
+      await setDoc(refDocRef, cleanFirestorePayload({
+        id: params.userId,
+        referredUserId: params.userId,
+        referredName: commission.referredUserName,
+        referredEmail: userData.email || '',
+        affiliateCodeUsed: userData.affiliateCodeUsed || referrerCode,
+        joinedAt: userData.referredAt || userData.createdAt || new Date().toISOString(),
+        conversionStatus: 'converted',
+        totalSpent: increment(totalAmount),
+        commissionEarned: increment(affiliateCommission)
+      }), { merge: true });
+    } catch (errRefSync) {
+      console.warn('[Sync referral subdoc conversion warn]:', errRefSync);
+    }
+
     return commission;
   } catch (error) {
     console.warn('[Affiliate commission creation warn]:', error);
@@ -3347,6 +3789,113 @@ export async function getReferredUsersCount(referrerId: string): Promise<number>
     return snap.size;
   } catch (e) {
     return 0;
+  }
+}
+
+/**
+ * Récupère la liste détaillée des clients et filleuls parrainés par un utilisateur.
+ * Combine la sous-collection users/{referrerId}/referrals et la collection users
+ * avec le montant total dépensé et les commissions générées.
+ */
+export async function fetchReferredUsers(referrerId: string): Promise<UserReferralItem[]> {
+  if (!referrerId || referrerId === 'guest') return [];
+
+  const map = new Map<string, UserReferralItem>();
+
+  // 1. Lire la sous-collection users/{referrerId}/referrals
+  try {
+    const subColRef = collection(db, 'users', referrerId, 'referrals');
+    const snap = await getDocs(subColRef);
+    snap.forEach((d) => {
+      const data = d.data() as UserReferralItem;
+      const refUid = data.referredUserId || d.id;
+      map.set(refUid, {
+        id: d.id,
+        referredUserId: refUid,
+        referredName: data.referredName || 'Client Dokya',
+        referredEmail: data.referredEmail || '',
+        affiliateCodeUsed: data.affiliateCodeUsed || '',
+        joinedAt: data.joinedAt || new Date().toISOString(),
+        conversionStatus: data.conversionStatus || 'registered',
+        totalSpent: Number(data.totalSpent) || 0,
+        commissionEarned: Number(data.commissionEarned) || 0,
+      });
+    });
+  } catch (e) {
+    console.warn('[Fetch referral subcollection warn]:', e);
+  }
+
+  // 2. Requête dans la collection racine users où referredBy == referrerId
+  try {
+    const qUsers = query(collection(db, 'users'), where('referredBy', '==', referrerId));
+    const snapUsers = await getDocs(qUsers);
+    snapUsers.forEach((d) => {
+      const uData = d.data();
+      const uid = d.id;
+      if (!map.has(uid)) {
+        map.set(uid, {
+          id: uid,
+          referredUserId: uid,
+          referredName: uData.displayName || uData.email?.split('@')[0] || 'Candidat Dokya',
+          referredEmail: uData.email || '',
+          affiliateCodeUsed: uData.affiliateCodeUsed || '',
+          joinedAt: uData.referredAt || uData.createdAt || new Date().toISOString(),
+          conversionStatus: 'registered',
+          totalSpent: 0,
+          commissionEarned: 0,
+        });
+      }
+    });
+  } catch (e) {
+    console.warn('[Fetch users referredBy warn]:', e);
+  }
+
+  // 3. Vérifier les commissions approuvées ou en attente pour enrichir le statut de conversion
+  try {
+    const qComms = query(collection(db, 'affiliate_commissions'), where('referrerId', '==', referrerId));
+    const snapComms = await getDocs(qComms);
+    snapComms.forEach((d) => {
+      const c = d.data();
+      const referredUid = c.referredUserId;
+      if (referredUid && map.has(referredUid)) {
+        const item = map.get(referredUid)!;
+        item.conversionStatus = 'converted';
+        item.totalSpent += (Number(c.totalAmount) || 0);
+        item.commissionEarned += (Number(c.affiliateCommission) || 0);
+      }
+    });
+  } catch (e) {}
+
+  const result = Array.from(map.values());
+  return result.sort((a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime());
+}
+
+/**
+ * Écoute en temps réel les filleuls parrainés par un utilisateur
+ */
+export function subscribeToReferredUsers(
+  referrerId: string,
+  callback: (list: UserReferralItem[]) => void
+): () => void {
+  if (!referrerId || referrerId === 'guest') {
+    callback([]);
+    return () => {};
+  }
+
+  // Premier chargement
+  fetchReferredUsers(referrerId).then(callback).catch(() => callback([]));
+
+  // Écoute des mises à jour sur la sous-collection referrals
+  try {
+    const subColRef = collection(db, 'users', referrerId, 'referrals');
+    const unsub = onSnapshot(subColRef, () => {
+      fetchReferredUsers(referrerId).then(callback).catch(() => {});
+    }, (err) => {
+      console.warn('[subscribeToReferredUsers error]:', err);
+    });
+    return unsub;
+  } catch (e) {
+    return () => {};
   }
 }
 

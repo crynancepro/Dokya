@@ -35,6 +35,7 @@ import { AuthModal } from './components/AuthModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
 import { auth, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, initializeUserAccountDoc, saveBusinessInvoice } from './lib/firebase';
+import { initAffiliateTracking } from './lib/referralTracking';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { generateCVWithGemini, generateInterviewPrepWithGemini } from './lib/geminiService';
 
@@ -388,17 +389,11 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       let amountParam = Number(searchParams.get('amount') || 0);
 
       // Traitement et détection automatique du code de parrainage (?ref=CODE)
-      const refParam = searchParams.get('ref') || (window.location.hash.includes('ref=') 
-        ? new URLSearchParams(window.location.hash.substring(window.location.hash.indexOf('?') + 1)).get('ref') 
-        : null);
-      if (refParam) {
-        const cleanRefCode = refParam.trim().toUpperCase();
-        try {
-          localStorage.setItem('dokya_ref_code', cleanRefCode);
-          sessionStorage.setItem('dokya_ref_code', cleanRefCode);
-          setSuccessMessage(`🤝 Invitation partenaire Dokya activée (Code : ${cleanRefCode}) !`);
-          setTimeout(() => setSuccessMessage(null), 5000);
-        } catch (_e) {}
+      const detectedAffiliateCode = initAffiliateTracking();
+      if (detectedAffiliateCode && !sessionStorage.getItem('dokya_ref_notified')) {
+        sessionStorage.setItem('dokya_ref_notified', 'true');
+        setSuccessMessage(`🤝 Invitation partenaire Dokya activée (Code : ${detectedAffiliateCode}) !`);
+        setTimeout(() => setSuccessMessage(null), 5000);
       }
 
       if (!status && window.location.hash.includes('?')) {

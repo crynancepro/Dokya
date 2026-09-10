@@ -62,7 +62,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenEditor 
 }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(auth.currentUser);
-  const [activeTab, setActiveTab] = useState<AdminTabType>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTabType>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      const path = window.location.pathname.toLowerCase();
+      if (hash.includes('affiliat') || path.includes('/admin/affiliat')) {
+        return 'affiliations';
+      }
+      if (hash.includes('user') || path.includes('/admin/user')) {
+        return 'users';
+      }
+      if (hash.includes('transaction') || path.includes('/admin/transaction')) {
+        return 'transactions';
+      }
+    }
+    return 'overview';
+  });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {

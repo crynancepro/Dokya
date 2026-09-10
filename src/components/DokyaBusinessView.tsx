@@ -3,7 +3,8 @@ import {
   Building2, Users, Receipt, Plus, Search, Filter, Phone, Mail, 
   MapPin, CheckCircle2, AlertCircle, Clock, ArrowRight, ExternalLink, 
   Trash2, Edit3, X, Save, MessageSquare, FileText, ChevronRight, 
-  TrendingUp, DollarSign, Eye, RefreshCw, Send, Check, Star, Settings
+  TrendingUp, DollarSign, Eye, RefreshCw, Send, Check, Star, Settings,
+  Boxes, Package
 } from 'lucide-react';
 import { Customer, BusinessInvoice, BusinessDocData, UserBusiness } from '../types';
 import { 
@@ -20,15 +21,18 @@ import {
   cleanPhoneNumberForWhatsApp 
 } from '../utils/whatsappUtils';
 import { ManageBusinessesModal } from './ManageBusinessesModal';
+import { DokyaInventoryView } from './DokyaInventoryView';
 
 interface DokyaBusinessViewProps {
   onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture', business?: UserBusiness) => void;
   onLoadInvoiceToEditor?: (data: BusinessDocData) => void;
+  initialActiveTab?: 'clients' | 'invoices' | 'businesses' | 'inventory';
 }
 
 export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
   onOpenInvoiceGenerator,
-  onLoadInvoiceToEditor
+  onLoadInvoiceToEditor,
+  initialActiveTab
 }) => {
   const currentUid = auth.currentUser?.uid || 'guest';
 
@@ -38,7 +42,13 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Active View Tab inside Business
-  const [activeTab, setActiveTab] = useState<'clients' | 'invoices' | 'businesses'>('clients');
+  const [activeTab, setActiveTab] = useState<'clients' | 'invoices' | 'businesses' | 'inventory'>(initialActiveTab || 'clients');
+
+  useEffect(() => {
+    if (initialActiveTab) {
+      setActiveTab(initialActiveTab);
+    }
+  }, [initialActiveTab]);
 
   // Businesses State
   const [businesses, setBusinesses] = useState<UserBusiness[]>([]);
@@ -525,6 +535,18 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
           >
             <Building2 className="w-3.5 h-3.5" />
             <span>Mes Entreprises ({businesses.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('inventory')}
+            className={`px-4 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'inventory'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Boxes className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Stock & Produits</span>
           </button>
         </div>
 
@@ -1174,6 +1196,23 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 4: GESTION DE STOCK & CATALOGUE PRODUITS                              */}
+      {/* ========================================================================= */}
+      {activeTab === 'inventory' && (
+        <DokyaInventoryView
+          currentUid={currentUid}
+          businesses={businesses}
+          activeBusinessId={businesses.find(b => b.isDefault)?.id || businesses[0]?.id}
+          onCreateInvoiceWithProduct={(product) => {
+            if (onOpenInvoiceGenerator) {
+              const defaultBiz = businesses.find(b => b.isDefault) || businesses[0];
+              onOpenInvoiceGenerator(undefined, 'facture', defaultBiz);
+            }
+          }}
+        />
       )}
 
       {/* ========================================================================= */}

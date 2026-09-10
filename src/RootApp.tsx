@@ -14,7 +14,7 @@ export const RootApp: React.FC = () => {
       const pathname = window.location.pathname.toLowerCase();
       const initialUser = auth.currentUser;
       if (initialUser?.email && isAdminEmail(initialUser.email)) return 'admin';
-      if (hash === '#admin' || pathname === '/admin') {
+      if (hash.startsWith('#admin') || pathname.startsWith('/admin')) {
         if (initialUser?.email && isAdminEmail(initialUser.email)) return 'admin';
       }
     }
@@ -39,11 +39,11 @@ export const RootApp: React.FC = () => {
     return () => unsub();
   }, [currentView]);
 
-  // Listen to hash changes (#admin, #editor)
+  // Listen to hash changes (#admin, #admin/affiliates, #editor)
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.toLowerCase();
-      if (hash === '#admin') {
+      if (hash.startsWith('#admin')) {
         setCurrentView('admin');
       } else {
         setCurrentView('editor');

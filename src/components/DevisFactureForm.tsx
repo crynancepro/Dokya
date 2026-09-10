@@ -3,11 +3,11 @@ import {
   Plus, Trash2, Sparkles, FileCheck, Calculator, RefreshCw, 
   Building2, User, Phone, Mail, MapPin, Calendar, Clock, 
   CreditCard, Smartphone, CheckCircle2, ArrowRight, Eye, Download,
-  Percent, AlertCircle, FileText, Copy, Check, Save,
+  Percent, AlertCircle, AlertTriangle, FileText, Copy, Check, Save,
   Layers, Palette, Tag, Shield, ArrowLeftRight, MessageSquare, UserPlus, Users,
-  Upload, Image as ImageIcon, Star, Settings, X
+  Upload, Image as ImageIcon, Star, Settings, X, Package, Boxes, Barcode, Search
 } from 'lucide-react';
-import { BusinessDocData, BusinessDocItem, Customer, UserBusiness } from '../types';
+import { BusinessDocData, BusinessDocItem, Customer, UserBusiness, Product } from '../types';
 import { SECTOR_PRESETS, INDIVIDUAL_SERVICES_CATALOG } from '../data/businessPresets';
 import { numberToFrenchWords } from '../utils/numberToWords';
 import { generateBusinessDocWithGemini } from '../lib/geminiService';
@@ -17,7 +17,7 @@ import {
   auth, fetchCustomers, saveCustomer, 
   fetchUserBusinesses, saveUserBusiness,
   saveOrUpdateBusinessDocument, updateInvoicePaymentStatus,
-  updateQuoteStatus, convertQuoteToInvoice
+  updateQuoteStatus, convertQuoteToInvoice, fetchBusinessProducts
 } from '../lib/firebase';
 import { generateInvoiceWhatsAppLink } from '../utils/whatsappUtils';
 import { ManageBusinessesModal } from './ManageBusinessesModal';
@@ -67,6 +67,40 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
   const [isSavingBusiness, setIsSavingBusiness] = useState(false);
   const [isProcessingIssuerLogo, setIsProcessingIssuerLogo] = useState(false);
   const issuerFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Inventory & Stock Products state
+  const [inventoryProducts, setInventoryProducts] = useState<Product[]>([]);
+  const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [inventorySearchQuery, setInventorySearchQuery] = useState('');
+
+  // Load inventory products whenever business changes or inventory modal opens
+  useEffect(() => {
+    const bId = selectedBusinessId || data.businessId || 'default';
+    fetchBusinessProducts(bId).then((products) => {
+      setInventoryProducts(products);
+    }).catch(err => console.warn('[DevisFactureForm fetchBusinessProducts error]:', err));
+  }, [selectedBusinessId, data.businessId, isInventoryModalOpen]);
+
+  const handleSelectProductFromInventory = (prod: Product) => {
+    const newItem: BusinessDocItem = {
+      id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      description: prod.name,
+      quantity: 1,
+      unitPrice: prod.sellingPrice || 0,
+      purchasePrice: prod.purchasePrice || 0,
+      productId: prod.id,
+      sku: prod.sku || '',
+      total: prod.sellingPrice || 0
+    };
+
+    const currentItems = [...(data.items || [])];
+    if (currentItems.length === 1 && (!currentItems[0].description || currentItems[0].description.trim() === '')) {
+      onChange({ ...data, items: [newItem] });
+    } else {
+      onChange({ ...data, items: [...currentItems, newItem] });
+    }
+    setIsInventoryModalOpen(false);
+  };
 
   // Load saved businesses on demand
   useEffect(() => {
@@ -1198,6 +1232,17 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
           <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
             <span className="font-bold text-slate-700 text-xs">Lignes du document ({data.items?.length || 0})</span>
             <div className="flex items-center gap-1.5">
+              {/* Button to pick from Stock / Inventory */}
+              <button
+                type="button"
+                onClick={() => setIsInventoryModalOpen(true)}
+                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                title="Insérer un produit depuis le catalogue de stock"
+              >
+                <Package className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Stock Produits ({inventoryProducts.length})</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleAiPolish}
@@ -1223,6 +1268,13 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
             {(data.items || []).map((item, index) => {
               const lineTotal = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+              const linkedProduct = inventoryProducts.find(p => 
+                (item.productId && p.id === item.productId) || 
+                (item.sku && p.sku && p.sku.toLowerCase() === item.sku.toLowerCase()) || 
+                (p.name && item.description && p.name.toLowerCase() === item.description.trim().toLowerCase())
+              );
+              const isOverStock = linkedProduct && (Number(item.quantity) || 0) > (linkedProduct.quantity || 0);
+
               return (
                 <div 
                   key={item.id || index}
@@ -1236,7 +1288,7 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
                       type="text"
                       value={item.description}
                       onChange={(e) => handleUpdateItem(index, 'description', e.target.value)}
-                      placeholder="Désignation de la prestation / service..."
+                      placeholder="Désignation de la prestation / produit..."
                       className="flex-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs text-slate-900 font-medium"
                     />
                     <button
@@ -1257,6 +1309,21 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
+
+                  {/* Product Stock Badge if linked to inventory */}
+                  {linkedProduct && (
+                    <div className="flex items-center gap-2 pl-7 text-[10px]">
+                      <span className="inline-flex items-center gap-1 font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        <Package className="w-2.5 h-2.5 text-emerald-600" />
+                        Stock dispo : <strong className={linkedProduct.quantity <= (linkedProduct.lowStockThreshold || 3) ? 'text-rose-600' : 'text-emerald-700'}>{linkedProduct.quantity}</strong>
+                      </span>
+                      {isOverStock && (
+                        <span className="text-rose-600 font-bold flex items-center gap-0.5">
+                          ⚠️ Quantité demandée ({item.quantity}) &gt; Stock actuel ({linkedProduct.quantity})
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-3 gap-2 pl-7 text-[11px]">
                     <div className="flex items-center gap-1">
@@ -1302,6 +1369,132 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
               </button>
             ))}
           </div>
+
+          {/* Inventory Product Picker Modal */}
+          {isInventoryModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+              <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-900 text-white">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                      <Package className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-white">Sélectionner un Produit de l'Inventaire</h4>
+                      <p className="text-[10px] text-slate-400">Remplissage automatique du libellé et du prix de vente</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsInventoryModalOpen(false)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Search Bar */}
+                <div className="p-3 border-b border-slate-100 bg-slate-50">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Filtrer par nom de produit, référence SKU..."
+                      value={inventorySearchQuery}
+                      onChange={(e) => setInventorySearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Products List */}
+                <div className="p-3 max-h-80 overflow-y-auto space-y-2">
+                  {inventoryProducts.length === 0 ? (
+                    <div className="text-center py-8 space-y-2">
+                      <Boxes className="w-8 h-8 text-slate-300 mx-auto" />
+                      <p className="text-xs text-slate-600 font-bold">Aucun produit dans le stock.</p>
+                      <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                        Ajoutez d'abord vos articles dans l'onglet "Gestion de Stock" de Dokya Business.
+                      </p>
+                    </div>
+                  ) : (
+                    inventoryProducts
+                      .filter(p => {
+                        const q = inventorySearchQuery.toLowerCase().trim();
+                        return !q || p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q));
+                      })
+                      .map(prod => {
+                        const isLow = (prod.quantity || 0) <= (prod.lowStockThreshold || 3);
+                        const isOut = (prod.quantity || 0) <= 0;
+
+                        return (
+                          <div
+                            key={prod.id}
+                            onClick={() => handleSelectProductFromInventory(prod)}
+                            className="p-3 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 transition-all cursor-pointer flex items-center justify-between group"
+                          >
+                            <div className="space-y-1">
+                              <div className="font-bold text-xs text-slate-900 group-hover:text-emerald-900 flex items-center gap-2">
+                                <span>{prod.name}</span>
+                                {prod.sku && (
+                                  <span className="text-[9px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                    {prod.sku}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                                <span>Prix Vente : <strong className="text-slate-900 font-mono">{prod.sellingPrice?.toLocaleString('fr-FR')} {currency}</strong></span>
+                                {prod.purchasePrice ? (
+                                  <span className="text-[10px] text-slate-400">Coût : {prod.purchasePrice.toLocaleString('fr-FR')} F</span>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="text-right flex items-center gap-2.5">
+                              {isOut ? (
+                                <span className="text-[10px] font-black text-red-600 bg-red-100 px-2.5 py-1 rounded-full border border-red-200">
+                                  🚨 Rupture (0)
+                                </span>
+                              ) : isLow ? (
+                                <span className="text-[10px] font-black text-rose-700 bg-rose-100 px-2.5 py-1 rounded-full border border-rose-200 flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                  Stock : {prod.quantity}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
+                                  Stock : {prod.quantity}
+                                </span>
+                              )}
+
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 bg-emerald-600 group-hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-2xs"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Insérer</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+
+                <div className="p-3 border-t border-slate-100 bg-slate-50 flex justify-between items-center text-xs">
+                  <span className="text-slate-400 text-[11px]">
+                    {inventoryProducts.length} référence(s) en catalogue
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsInventoryModalOpen(false)}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-between pt-1">
             <button

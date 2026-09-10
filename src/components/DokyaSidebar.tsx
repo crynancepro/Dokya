@@ -24,7 +24,8 @@ import {
   X,
   Building2,
   Users,
-  MessageSquare
+  MessageSquare,
+  Boxes
 } from 'lucide-react';
 import { CandidateProfile, SavedUserDocument, isUserVipActive } from '../types';
 import { auth } from '../lib/firebase';
@@ -37,6 +38,7 @@ export type SidebarTab =
   | 'documents'
   | 'entretiens'
   | 'business'
+  | 'inventory'
   | 'affiliation'
   | 'help'
   | 'support'
@@ -341,6 +343,26 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </div>
               <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                 Business
+              </span>
+            </button>
+
+            {/* 2.3b Dokya Business : Stock & Inventaire */}
+            <button
+              id="nav-dokya-inventory"
+              type="button"
+              onClick={() => handleNavClick('inventory')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'inventory'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Boxes className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>Stock & Inventaire</span>
+              </div>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Catalogue
               </span>
             </button>
 
