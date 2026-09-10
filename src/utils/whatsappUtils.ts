@@ -114,3 +114,120 @@ export function generateCustomerStatementWhatsAppLink({
   const encodedText = encodeURIComponent(message);
   return cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodedText}` : `https://wa.me/?text=${encodedText}`;
 }
+
+export interface DocumentShareWhatsAppParams {
+  title: string;
+  type: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'interview_prep' | string;
+  docId?: string;
+  recipientPhone?: string;
+  recipientName?: string;
+  targetJobOrCompany?: string;
+  docNumber?: string;
+  totalAmount?: number;
+  currency?: string;
+  paymentStatus?: 'PAID' | 'UNPAID' | string;
+  quoteStatus?: string;
+  dueDate?: string;
+  customShareUrl?: string;
+}
+
+/**
+ * Génère un lien Web WhatsApp officiel (https://wa.me/?text=...)
+ * formaté avec le titre du document, les métadonnées clés et le lien sécurisé.
+ */
+export function generateDocumentWhatsAppShareLink({
+  title,
+  type,
+  docId,
+  recipientPhone,
+  recipientName,
+  targetJobOrCompany,
+  docNumber,
+  totalAmount,
+  currency = 'FCFA',
+  paymentStatus,
+  quoteStatus,
+  dueDate,
+  customShareUrl
+}: DocumentShareWhatsAppParams): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://dokya.sn';
+  const cleanPhone = recipientPhone ? cleanPhoneNumberForWhatsApp(recipientPhone) : '';
+  
+  // Formatage du lien sécurisé vers le document
+  const shareUrl = customShareUrl || (docId 
+    ? `${origin}/?docId=${encodeURIComponent(docId)}&type=${encodeURIComponent(type || 'cv')}`
+    : origin);
+
+  const docTypeLabels: Record<string, string> = {
+    cv: 'CV Professionnel ATS',
+    letter: 'Lettre de Motivation',
+    devis: 'Devis Commercial Pro',
+    facture: 'Facture Client',
+    pack_business: 'Pack Business (Devis & Facture)',
+    ebook: 'Livre Numérique (Ebook Pro)',
+    interview_prep: 'Fiche Coaching Entretien RH'
+  };
+
+  const typeIcons: Record<string, string> = {
+    cv: '📄',
+    letter: '✉️',
+    devis: '📑',
+    facture: '🧾',
+    pack_business: '💼',
+    ebook: '📚',
+    interview_prep: '🎯'
+  };
+
+  const label = docTypeLabels[type] || 'Document Professionnel';
+  const icon = typeIcons[type] || '📄';
+
+  let message = `${icon} *${label.toUpperCase()}*\n`;
+  message += `📌 *Titre :* ${title.trim()}\n`;
+
+  if (recipientName) {
+    if (type === 'facture' || type === 'devis') {
+      message += `👤 *Client :* ${recipientName}\n`;
+    } else {
+      message += `👤 *Titulaire / Auteur :* ${recipientName}\n`;
+    }
+  }
+
+  if (docNumber) {
+    message += `🔢 *Réf. N° :* ${docNumber}\n`;
+  }
+
+  if (targetJobOrCompany) {
+    message += `🏢 *Poste / Entreprise :* ${targetJobOrCompany}\n`;
+  }
+
+  if (typeof totalAmount === 'number' && totalAmount > 0) {
+    message += `💰 *Montant Total :* ${Number(totalAmount).toLocaleString('fr-FR')} ${currency}\n`;
+  }
+
+  if (type === 'facture' && paymentStatus) {
+    const isPaid = paymentStatus === 'PAID';
+    message += `💳 *Statut de Règlement :* ${isPaid ? '✅ PAYÉE' : '⏳ EN ATTENTE DE RÈGLEMENT'}\n`;
+    if (dueDate && !isPaid) {
+      message += `📅 *Échéance :* ${dueDate}\n`;
+    }
+  } else if (type === 'devis' && quoteStatus) {
+    message += `📋 *Statut Devis :* ${quoteStatus}\n`;
+  }
+
+  message += `\n🔗 *Lien sécurisé pour consulter le document :*\n${shareUrl}\n\n`;
+  message += `_Généré et certifié sur la plateforme Dokya AI Studio._`;
+
+  const encodedText = encodeURIComponent(message);
+  return cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodedText}` : `https://wa.me/?text=${encodedText}`;
+}
+
+/**
+ * Ouvre directement l'application WhatsApp dans un nouvel onglet avec le message formaté
+ */
+export function openDocumentWhatsAppShare(params: DocumentShareWhatsAppParams): void {
+  const url = generateDocumentWhatsAppShareLink(params);
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+

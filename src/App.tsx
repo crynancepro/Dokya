@@ -21,6 +21,7 @@ import { StepForm } from './components/StepForm';
 import { LetterEditorForm } from './components/LetterEditorForm';
 import { CandidateDashboard } from './components/CandidateDashboard';
 import { PaymentModal } from './components/PaymentModal';
+import { PaywallModal } from './components/PaywallModal';
 import { RechargeWalletModal } from './components/RechargeWalletModal';
 import { DevisFactureForm } from './components/DevisFactureForm';
 import { EbookWizardForm } from './components/EbookWizardForm';
@@ -1653,26 +1654,38 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         isLoading={isGeneratingInterviewPrep}
       />
 
-      {/* 3. DIRECT PAYMENT MODAL (WALLET vs MOBILE MONEY & CARTE) */}
-      <PaymentModal
+      {/* 3. MODERN PAYWALL & PRICING MODAL ("PASS VIP & BUSINESS" + PAIEMENT À L'ACTE) */}
+      <PaywallModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         documentTitle={paymentDocTitle}
         documentTypeLabel={paymentDocTypeLabel}
         targetDocId={currentDocId}
-        price={paymentPrice}
         userBalance={userBalance}
-        isAlreadyPaid={isCurrentDocPaid}
         userId={currentUser?.uid}
         userEmail={currentUser?.email || undefined}
         userName={currentUser?.displayName || undefined}
-        onPaymentSuccess={handlePaymentSuccess}
-        onOpenInterviewPrep={() => navigateToView('interview_prep')}
-        onOpenRechargeModal={() => {
-          setIsPaymentModalOpen(false);
-          setIsRechargeModalOpen(true);
+        onUnlocked={() => {
+          setIsCurrentDocPaid(true);
+          setSuccessMessage('🎉 Document débloqué avec succès ! Vous pouvez maintenant le télécharger.');
+          setTimeout(() => setSuccessMessage(null), 4500);
+        }}
+        onDownloadAction={(format) => {
+          setIsCurrentDocPaid(true);
+          if (format === 'pdf') {
+            if (activeTab === 'cv_preview') downloadCVPDF();
+            else if (activeTab === 'letter_preview') downloadLetterPDF();
+            else if (activeTab === 'ebook_preview') downloadEbookPDF();
+            else downloadBusinessDocPDF();
+          } else {
+            handleExportDOCX();
+          }
+        }}
+        onBalanceUpdated={(newBal) => {
+          setUserBalance(newBal);
         }}
       />
+
 
       {/* 4. RECHARGE WALLET MODAL */}
       <RechargeWalletModal

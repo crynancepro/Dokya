@@ -8,6 +8,7 @@ import { DevisFactureTemplate } from './DevisFactureTemplate';
 import { EbookTemplate } from './EbookTemplate';
 import { A4PreviewContainer } from './A4PreviewContainer';
 import { usePricing } from '../contexts/PricingContext';
+import { openDocumentWhatsAppShare } from '../utils/whatsappUtils';
 import { 
   ArrowLeft, Download, FileText, Printer, 
   Sparkles, CheckCircle2, Eye, Palette, ZoomIn, ZoomOut, 
@@ -181,6 +182,52 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
     if (onDownloadPDF) onDownloadPDF();
   };
 
+  const handleShareWhatsApp = () => {
+    let title = meta.title;
+    let recipientName = '';
+    let targetJobOrCompany = '';
+    let docNumber = '';
+    let totalAmount: number | undefined;
+    let paymentStatus: 'PAID' | 'UNPAID' | undefined;
+
+    if (activePreviewKind === 'cv') {
+      title = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - CV Pro ATS`.trim() || 'Mon CV Pro ATS';
+      recipientName = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''}`.trim();
+      targetJobOrCompany = formData?.personalInfo?.targetJob || '';
+    } else if (activePreviewKind === 'letter') {
+      title = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - Lettre de Motivation`.trim() || 'Ma Lettre de Motivation';
+      recipientName = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''}`.trim();
+      targetJobOrCompany = formData?.personalInfo?.targetJob || '';
+    } else if (activePreviewKind === 'devis') {
+      title = `Devis Commercial N° ${businessDocData.docNumber || 'DEV-001'}`;
+      recipientName = businessDocData.client?.name || businessDocData.client?.companyName || '';
+      targetJobOrCompany = businessDocData.issuer?.companyName || '';
+      docNumber = businessDocData.docNumber || '';
+      totalAmount = (businessDocData as any).totalTTC || (businessDocData as any).total || undefined;
+    } else if (activePreviewKind === 'facture') {
+      title = `Facture Client N° ${businessDocData.docNumber || 'FAC-001'}`;
+      recipientName = businessDocData.client?.name || businessDocData.client?.companyName || '';
+      targetJobOrCompany = businessDocData.issuer?.companyName || '';
+      docNumber = businessDocData.docNumber || '';
+      totalAmount = (businessDocData as any).totalTTC || (businessDocData as any).total || undefined;
+      paymentStatus = isPaid ? 'PAID' : 'UNPAID';
+    } else if (activePreviewKind === 'ebook') {
+      title = ebookData?.title || 'Mon Livre Numérique';
+      recipientName = ebookData?.author || '';
+    }
+
+    openDocumentWhatsAppShare({
+      title,
+      type: activePreviewKind,
+      recipientName,
+      targetJobOrCompany,
+      docNumber,
+      totalAmount,
+      paymentStatus,
+      recipientPhone: businessDocData?.client?.phone
+    });
+  };
+
   return (
     <div className="w-full space-y-5 animate-in fade-in duration-200 pb-24">
       
@@ -350,6 +397,19 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
                 </button>
               </>
             )}
+
+            {/* 📲 WHATSAPP DIRECT SHARE BUTTON (REQUIS) */}
+            <button
+              type="button"
+              onClick={handleShareWhatsApp}
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition-all cursor-pointer active:scale-95 shrink-0"
+              title="Partager ou envoyer directement ce document sur WhatsApp"
+            >
+              <span className="text-sm">📲</span>
+              <span className="hidden sm:inline">Partager / Envoyer sur WhatsApp</span>
+              <span className="sm:hidden">WhatsApp</span>
+            </button>
+
 
           </div>
 

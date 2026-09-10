@@ -28,6 +28,8 @@ import { OrdersTrackingView } from './OrdersTrackingView';
 import { SubscriptionModal } from './SubscriptionModal';
 import { RechargeWalletModal } from './RechargeWalletModal';
 import { PaymentModal } from './PaymentModal';
+import { PaywallModal } from './PaywallModal';
+import { openDocumentWhatsAppShare } from '../utils/whatsappUtils';
 import { downloadElementAsPDF } from '../lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from '../lib/exportUtils';
 import { CVTemplate } from './CVTemplate';
@@ -170,6 +172,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const [previewTab, setPreviewTab] = useState<'cv' | 'letter'>('cv');
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingDocx, setIsExportingDocx] = useState(false);
+
+  // Paywall & Export Protection State (Pass VIP / Business)
+  const [paywallTargetDoc, setPaywallTargetDoc] = useState<SavedUserDocument | null>(null);
+  const [paywallTargetFormat, setPaywallTargetFormat] = useState<'pdf' | 'docx'>('pdf');
+  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
 
   // Listen to auth & Real-Time Firestore User Profile and Transactions Subscription
   useEffect(() => {
@@ -582,6 +589,92 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     } catch (e) {
       console.error('Error generating card docx:', e);
     }
+  };
+
+  // Paywall Authorization Check (Solde suffisant, Pass VIP/Business actif ou document débloqué)
+  const isAuthorizedForExport = (docItem?: SavedUserDocument | null): boolean => {
+    if (!docItem) return false;
+    if (isSubscriptionActive) return true;
+    if (docItem.isPaid === true || (docItem as any).unlocked === true) return true;
+    if (profile?.purchasedDocIds && profile.purchasedDocIds.includes(docItem.id)) return true;
+    if (user?.email && isAdminEmail(user.email)) return true;
+    return false;
+  };
+
+  // Déclenchement sécurisé du téléchargement PDF / Word avec contrôle Paywall
+  const handleExportWithPaywallProtection = (docItem: SavedUserDocument, format: 'pdf' | 'docx', fromModal = false) => {
+    if (isAuthorizedForExport(docItem)) {
+      if (fromModal) {
+        if (format === 'pdf') handleModalDownloadPDF();
+        else handleModalDownloadDocx();
+      } else {
+        if (format === 'pdf') {
+          setPreviewDoc(docItem);
+          setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
+          setTimeout(handleModalDownloadPDF, 150);
+        } else {
+          handleDirectCardDocx(docItem);
+        }
+      }
+    } else {
+      setPaywallTargetDoc(docItem);
+      setPaywallTargetFormat(format);
+      setIsPaywallOpen(true);
+    }
+  };
+
+  // Partage WhatsApp 1-Clic formaté pour chaque document
+  const handleShareWhatsApp = (docItem: SavedUserDocument) => {
+    let docType = 'cv';
+    let recipientName = '';
+    let targetJobOrCompany = '';
+    let docNumber = '';
+    let totalAmount: number | undefined;
+    let paymentStatus: 'PAID' | 'UNPAID' | undefined;
+
+    if (docItem.generationMode === 'letter_only') {
+      docType = 'letter';
+      recipientName = `${docItem.formData?.personalInfo?.firstName || ''} ${docItem.formData?.personalInfo?.lastName || ''}`.trim();
+      targetJobOrCompany = docItem.formData?.personalInfo?.targetJob || '';
+    } else if (docItem.generationMode === 'devis') {
+      docType = 'devis';
+      recipientName = docItem.businessDocData?.client?.name || docItem.businessDocData?.client?.companyName || '';
+      targetJobOrCompany = docItem.businessDocData?.issuer?.companyName || '';
+      docNumber = docItem.businessDocData?.docNumber || '';
+      totalAmount = (docItem.businessDocData?.items || []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+    } else if (docItem.generationMode === 'facture') {
+      docType = 'facture';
+      recipientName = docItem.businessDocData?.client?.name || docItem.businessDocData?.client?.companyName || '';
+      targetJobOrCompany = docItem.businessDocData?.issuer?.companyName || '';
+      docNumber = docItem.businessDocData?.docNumber || '';
+      totalAmount = (docItem.businessDocData?.items || []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+      paymentStatus = docItem.businessDocData?.paymentStatus || 'UNPAID';
+    } else if (docItem.generationMode === 'pack_business') {
+      docType = 'pack_business';
+      recipientName = docItem.businessDocData?.client?.name || docItem.businessDocData?.client?.companyName || '';
+      targetJobOrCompany = docItem.businessDocData?.issuer?.companyName || '';
+      docNumber = docItem.businessDocData?.docNumber || '';
+      totalAmount = (docItem.businessDocData?.items || []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+    } else if (docItem.generationMode === 'ebook') {
+      docType = 'ebook';
+      recipientName = docItem.ebookData?.author || '';
+    } else {
+      docType = 'cv';
+      recipientName = `${docItem.formData?.personalInfo?.firstName || ''} ${docItem.formData?.personalInfo?.lastName || ''}`.trim();
+      targetJobOrCompany = docItem.formData?.personalInfo?.targetJob || '';
+    }
+
+    openDocumentWhatsAppShare({
+      title: docItem.title || 'Document Dokya',
+      type: docType,
+      docId: docItem.id,
+      recipientName,
+      targetJobOrCompany,
+      docNumber,
+      totalAmount,
+      paymentStatus,
+      recipientPhone: docItem.businessDocData?.client?.phone
+    });
   };
 
   // Bascule rapide du statut PAYÉE / IMPAYÉE directement depuis la carte
@@ -1496,15 +1589,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                             <span>Réviser l'Entretien 🎯</span>
                           </button>
                         ) : (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             {/* PDF */}
                             <button
                               type="button"
-                              onClick={() => {
-                                setPreviewDoc(docItem);
-                                setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
-                                setTimeout(handleModalDownloadPDF, 150);
-                              }}
+                              onClick={() => handleExportWithPaywallProtection(docItem, 'pdf')}
                               className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
                               title="Télécharger PDF"
                             >
@@ -1515,12 +1604,23 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                             {/* Word */}
                             <button
                               type="button"
-                              onClick={() => handleDirectCardDocx(docItem)}
+                              onClick={() => handleExportWithPaywallProtection(docItem, 'docx')}
                               className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
                               title="Télécharger Word (.docx)"
                             >
                               <Download className="w-3.5 h-3.5" />
                               <span>Word</span>
+                            </button>
+
+                            {/* WhatsApp Direct Share */}
+                            <button
+                              type="button"
+                              onClick={() => handleShareWhatsApp(docItem)}
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                              title="Partager directement ce document sur WhatsApp"
+                            >
+                              <span className="text-xs">📲</span>
+                              <span className="hidden sm:inline">WhatsApp</span>
                             </button>
 
                             {/* Preview */}
@@ -2174,18 +2274,30 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   </button>
                 )}
 
+                {/* 📲 WHATSAPP DIRECT SHARE BUTTON */}
                 <button
-                  onClick={handleModalDownloadPDF}
+                  type="button"
+                  onClick={() => handleShareWhatsApp(previewDoc)}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+                  title="Partager / Envoyer sur WhatsApp"
+                >
+                  <span className="text-sm">📲</span>
+                  <span className="hidden sm:inline">Partager / Envoyer sur WhatsApp</span>
+                  <span className="sm:hidden">WhatsApp</span>
+                </button>
+
+                <button
+                  onClick={() => handleExportWithPaywallProtection(previewDoc, 'pdf', true)}
                   disabled={isExportingPDF}
                   type="button"
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>PDF</span>
                 </button>
 
                 <button
-                  onClick={handleModalDownloadDocx}
+                  onClick={() => handleExportWithPaywallProtection(previewDoc, 'docx', true)}
                   disabled={isExportingDocx}
                   type="button"
                   className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
@@ -2262,6 +2374,49 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           setIsRechargeModalOpen(true);
         }}
       />
+
+      {/* 4. MODERN 3-TIER PAYWALL MODAL (Pass VIP / Business) */}
+      <PaywallModal
+        isOpen={isPaywallOpen}
+        onClose={() => setIsPaywallOpen(false)}
+        documentTitle={paywallTargetDoc?.title || 'Document Professionnel'}
+        documentTypeLabel={
+          paywallTargetDoc?.generationMode === 'letter_only' ? 'Lettre de Motivation' :
+          paywallTargetDoc?.generationMode === 'facture' ? 'Facture' :
+          paywallTargetDoc?.generationMode === 'devis' ? 'Devis' :
+          paywallTargetDoc?.generationMode === 'ebook' ? 'Livre Numérique' : 'CV Pro ATS'
+        }
+        targetDocId={paywallTargetDoc?.id}
+        targetFormat={paywallTargetFormat}
+        userBalance={profile.balance ?? 0}
+        userId={user?.uid || profile.uid}
+        userEmail={user?.email || profile.email}
+        userName={`${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim()}
+        onUnlocked={() => {
+          if (paywallTargetDoc) {
+            const targetId = paywallTargetDoc.id;
+            setDocuments(prev => prev.map(d => d.id === targetId ? { ...d, isPaid: true, unlocked: true } : d));
+            if (previewDoc && previewDoc.id === targetId) {
+              setPreviewDoc(prev => prev ? { ...prev, isPaid: true, unlocked: true } : null);
+            }
+          }
+        }}
+        onDownloadAction={(format) => {
+          if (paywallTargetDoc) {
+            if (format === 'pdf') {
+              setPreviewDoc(paywallTargetDoc);
+              setPreviewTab(paywallTargetDoc.generationMode === 'letter_only' ? 'letter' : 'cv');
+              setTimeout(handleModalDownloadPDF, 150);
+            } else {
+              handleDirectCardDocx(paywallTargetDoc);
+            }
+          }
+        }}
+        onBalanceUpdated={(newBal) => {
+          setProfile(prev => ({ ...prev, balance: newBal }));
+        }}
+      />
+
 
     </div>
   );

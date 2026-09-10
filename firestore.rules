@@ -48,6 +48,18 @@ service cloud.firestore {
       }
     }
 
+    match /businesses/{businessId} {
+      allow read, write, delete: if true;
+
+      match /products/{productId} {
+        allow read, write, delete: if true;
+      }
+
+      match /{allSubcollections=**} {
+        allow read, write, delete: if true;
+      }
+    }
+
     match /user_profiles/{userId} {
       allow read, write: if true;
     }

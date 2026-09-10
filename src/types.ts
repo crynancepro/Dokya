@@ -170,6 +170,9 @@ export interface BusinessDocItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  productId?: string;
+  sku?: string;
+  purchasePrice?: number;
 }
 
 export interface IssuerInfo {
@@ -287,9 +290,23 @@ export interface Customer {
   updatedAt?: any;
 }
 
+export interface Product {
+  id: string;
+  businessId: string;
+  name: string;
+  sku?: string;
+  purchasePrice: number; // Prix d'achat (FCFA)
+  sellingPrice: number;  // Prix de vente (FCFA)
+  quantity: number;      // Quantité en stock
+  lowStockThreshold: number; // default: 3
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export interface BusinessInvoice {
   id: string;
   userId?: string;
+  businessId?: string;
   customerId?: string;
   customerName: string;
   customerPhone?: string;
@@ -307,6 +324,7 @@ export interface BusinessInvoice {
   issueDate: string;
   dueDate?: string;
   businessDocData?: BusinessDocData;
+  stockDeducted?: boolean;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -635,6 +653,7 @@ export interface TransactionRecord {
   status: 'success' | 'COMPLETED' | 'pending' | 'PENDING' | 'PENDING_APPROVAL' | 'cancel' | 'failed' | 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'REJECTED' | 'APPROVED' | string;
   aiStatus?: 'VALIDATED_BY_AI' | 'REJECTED_BY_AI' | 'MANUALLY_VALIDATED' | 'REJECTED_BY_ADMIN' | 'PENDING' | 'PENDING_APPROVAL' | 'COMPLETED' | string;
   createdAt: string;
+  updatedAt?: string;
   paymentMethod?: 'wallet' | 'wave' | 'orange_money' | 'free_money' | 'card' | 'receipt_ai' | 'admin_manual' | 'free' | 'WAVE' | 'ORANGE_MONEY' | string;
   transactionId?: string;
   transactionReference?: string;
