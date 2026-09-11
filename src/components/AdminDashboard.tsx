@@ -9,7 +9,7 @@ import {
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
   Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity,
   MessageSquare, Volume2, VolumeX, BellRing, Menu, Building2, Briefcase,
-  PanelLeftClose, PanelLeftOpen, Zap
+  PanelLeftClose, PanelLeftOpen, Zap, Copy
 } from 'lucide-react';
 import { AdminSidebar, AdminTabType } from './admin/AdminSidebar';
 import { 
@@ -22,6 +22,7 @@ import {
   fetchAllFirestoreUserProfiles,
   saveTransactionRecord,
   subscribeToPendingTransactions,
+  subscribeToAllTransactions,
   approveTransactionWithAtomicFirestore,
   rejectTransactionWithFirestore,
   purgeDemoDataInFirestore,
@@ -334,20 +335,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (isAuthorized) {
       loadAdminData();
 
-      // Real-time Firestore PENDING transactions listener with strict limit(20)
-      // Minimise l'overhead Firestore tout en détectant immédiatement les nouveaux reçus et paiements soumis
-      const unsubTx = subscribeToPendingTransactions((livePendingTxs) => {
-        if (Array.isArray(livePendingTxs)) {
-          setTransactionsList((prev) => {
-            const pendingMap = new Map(livePendingTxs.map(t => [t.id, t]));
-            const updated = prev.map(t => pendingMap.get(t.id) || t);
-            livePendingTxs.forEach(pt => {
-              if (!updated.some(t => t.id === pt.id)) {
-                updated.unshift(pt);
-              }
-            });
-            return updated;
-          });
+      // Synchronisation temps réel directe avec la collection 'transactions' de Firestore
+      const unsubTx = subscribeToAllTransactions((liveTxs) => {
+        if (Array.isArray(liveTxs) && liveTxs.length > 0) {
+          setTransactionsList(liveTxs);
         }
       });
 
@@ -391,7 +382,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return transactionsList.filter((t) => t.status === 'PENDING' || t.status === 'WAITING_FOR_ADMIN' || t.status === 'WAITING_VALIDATION').length;
   }, [transactionsList]);
 
-  const totalEmergencyCount = urgentSupportCount + pendingReceiptsCount;
+  // Les paiements étant 100% automatisés via GeniusPay, seules les demandes humaines urgentes déclenchent une alerte
+  const totalEmergencyCount = urgentSupportCount;
 
   // Sirène manuelle ou sur test uniquement - Désactivation des alarmes automatiques intrusives
   useEffect(() => {

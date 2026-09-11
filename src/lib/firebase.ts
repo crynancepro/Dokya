@@ -881,7 +881,18 @@ export async function fetchAllFirestoreTransactions(): Promise<TransactionRecord
     querySnapshot.forEach((d) => {
       transactions.push({ id: d.id, ...(d.data() as any) } as TransactionRecord);
     });
-    return transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Compléter avec la collection 'payments' si présente
+    try {
+      const qPay = query(collection(db, 'payments'));
+      const snapPay = await getDocs(qPay);
+      snapPay.forEach((d) => {
+        if (!transactions.some(t => t.id === d.id)) {
+          transactions.push({ id: d.id, ...(d.data() as any) } as TransactionRecord);
+        }
+      });
+    } catch (_e) {}
+
+    return transactions.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   } catch (error) {
     console.warn('Could not fetch all transactions from Firestore:', error);
     return [];
@@ -973,7 +984,7 @@ export function subscribeToAllTransactions(
   onError?: (err: any) => void
 ): Unsubscribe {
   const colRef = collection(db, 'transactions');
-  const q = query(colRef, limit(20));
+  const q = query(colRef, limit(100));
   return onSnapshot(
     q,
     (snapshot) => {

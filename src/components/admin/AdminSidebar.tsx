@@ -215,11 +215,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           )}
         </button>
 
-        {/* Item 3: Validation des Paiements */}
+        {/* Item 3: Suivi des Transactions GeniusPay */}
         <button
           type="button"
           onClick={() => handleNavClick('transactions')}
-          title={`Validation des Paiements — ${pendingTransactionsCount} en attente`}
+          title="Suivi des Transactions GeniusPay en Temps Réel"
           className={`w-full flex items-center ${isCollapsed ? 'justify-center p-2.5 relative' : 'justify-between px-2.5 py-2'} rounded-xl text-xs font-bold transition-all cursor-pointer group ${
             activeTab === 'transactions'
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25'
@@ -232,21 +232,14 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 ? 'bg-white/20 text-white'
                 : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm shadow-emerald-500/10 group-hover:bg-emerald-500/20'
             }`}>
-              <CreditCard className="w-4 h-4" />
-              {isCollapsed && pendingTransactionsCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-black text-[8px] flex items-center justify-center border border-[#090D16] animate-pulse">
-                  {pendingTransactionsCount > 99 ? '!' : pendingTransactionsCount}
-                </span>
-              )}
+              <Zap className="w-4 h-4 text-emerald-400" />
             </div>
             {!isCollapsed && (
               <div className="flex flex-col text-left min-w-0">
-                <span className="truncate text-xs">Paiements</span>
-                {pendingTransactionsCount > 0 && (
-                  <span className="text-[9px] text-amber-300 font-semibold truncate animate-pulse">
-                    {pendingTransactionsCount} en attente
-                  </span>
-                )}
+                <span className="truncate text-xs">Transactions</span>
+                <span className="text-[9px] text-emerald-400 font-semibold truncate">
+                  GeniusPay Direct
+                </span>
               </div>
             )}
           </div>
@@ -257,7 +250,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 ? 'bg-white/20 text-white'
                 : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
             }`}>
-              REÇUS IA
+              AUTO
             </span>
           )}
         </button>
