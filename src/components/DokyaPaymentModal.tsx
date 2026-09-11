@@ -219,7 +219,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
   // Stepper state: 1 = Choix du mode & Récapitulatif, 2 = Transfert & Saisie, 3 = Scanner IA & Validation
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
-  const [selectedMethod, setSelectedMethod] = useState<'wave' | 'orange_money' | 'wallet'>('wave');
+  const [selectedMethod, setSelectedMethod] = useState<'geniuspay' | 'wave' | 'orange_money' | 'wallet'>('geniuspay');
+  const [isGeniusPayLoading, setIsGeniusPayLoading] = useState<boolean>(false);
   
   // Country and Phone
   const [selectedCountry, setSelectedCountry] = useState<CountryOption>(AFRICAN_COUNTRIES[0]);
@@ -588,6 +589,54 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       setIsAiScanning(false);
       setValidationOutcome('failed');
       setErrorMessage(e.message || "Erreur lors du débit de votre solde.");
+    }
+  };
+
+  // Paiement Automatique via GeniusPay Checkout (Multi-opérateurs Wave, OM, MTN, Moov, Carte)
+  const handlePayWithGeniusPay = async () => {
+    setIsGeniusPayLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch('/api/geniuspay/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: payablePrice,
+          currency: 'XOF',
+          description: activeMode === 'subscription' ? `Abonnement Pass VIP - ${planTitle}` : `Achat document - ${documentTitle || 'Dokya'}`,
+          customer: {
+            name: userName || 'Client Dokya',
+            email: userEmail || 'client@dokya.com',
+            phone: senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : '+221770000000'
+          },
+          success_url: `${window.location.origin}/dashboard?payment=success&provider=geniuspay`,
+          error_url: `${window.location.origin}/dashboard?payment=error&provider=geniuspay`,
+          metadata: {
+            userId: userId || 'anonymous',
+            planType: planId || 'PASS_VIP',
+            documentId: targetDocId || '',
+            source: 'dokya_payment_modal'
+          }
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erreur lors de la création de la session de paiement GeniusPay.');
+      }
+
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        throw new Error("L'URL de paiement retournée par GeniusPay est indisponible.");
+      }
+    } catch (err: any) {
+      console.error('[GeniusPay Checkout Modal Error]:', err);
+      setErrorMessage(err.message || 'Impossible de se connecter au service de paiement GeniusPay.');
+    } finally {
+      setIsGeniusPayLoading(false);
     }
   };
 
@@ -1277,7 +1326,34 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                   </label>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* 1. Wave Mobile Money */}
+                    {/* 0. GeniusPay Checkout (Automatique Recommandé) */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMethod('geniuspay')}
+                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer sm:col-span-2 ${
+                        selectedMethod === 'geniuspay'
+                          ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <Zap className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-black text-white flex items-center gap-1.5">
+                            <span>GeniusPay Checkout</span>
+                            <span className="text-[9px] bg-emerald-500 text-slate-950 font-bold px-1.5 py-0.2 rounded-full">
+                              Recommandé • Instantané
+                            </span>
+                          </p>
+                          <span className="text-[10px] text-emerald-400 font-semibold">Wave, OM, MTN, Moov, Carte</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Paiement automatique sécurisé en ligne avec activation immédiate de votre compte.
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* 1. Wave Mobile Money Direct */}
                     <button
                       type="button"
                       onClick={() => setSelectedMethod('wave')}
@@ -1290,16 +1366,16 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       <Smartphone className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs font-black text-white">Wave Mobile</p>
-                          <span className="text-[9px] bg-blue-500 text-slate-950 font-bold px-1.5 py-0.2 rounded-full">
-                            Recommandé
+                          <p className="text-xs font-black text-white">Wave Manuel</p>
+                          <span className="text-[9px] bg-slate-800 text-slate-300 font-medium px-1.5 py-0.2 rounded-full">
+                            Dépôt direct
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5">0% de frais • Validation IA instantanée</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Transfert direct + Envoi de reçu</p>
                       </div>
                     </button>
 
-                    {/* 2. Orange Money */}
+                    {/* 2. Orange Money Direct */}
                     <button
                       type="button"
                       onClick={() => setSelectedMethod('orange_money')}
@@ -1311,8 +1387,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                     >
                       <Smartphone className="w-5 h-5 text-orange-400 mt-0.5 shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-black text-white">Orange Money</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">Transfert #144# ou App Max It</p>
+                        <p className="text-xs font-black text-white">Orange Money Manuel</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Transfert direct + Envoi de reçu</p>
                       </div>
                     </button>
 
@@ -1343,9 +1419,29 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                     )}
                   </div>
 
-                  {/* Action Button: Next or Wallet Direct Pay */}
+                  {/* Action Button: GeniusPay Direct Pay, Wallet Direct Pay, or Next to Manual Transfer */}
                   <div className="pt-2">
-                    {selectedMethod === 'wallet' && activeMode !== 'recharge' ? (
+                    {selectedMethod === 'geniuspay' ? (
+                      <button
+                        type="button"
+                        disabled={isGeniusPayLoading}
+                        onClick={handlePayWithGeniusPay}
+                        className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {isGeniusPayLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Connexion sécurisée GeniusPay...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4" />
+                            <span>Payer via GeniusPay ({payablePrice.toLocaleString('fr-FR')} FCFA)</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    ) : selectedMethod === 'wallet' && activeMode !== 'recharge' ? (
                       <button
                         type="button"
                         disabled={!hasEnoughBalance}

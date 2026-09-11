@@ -147,6 +147,13 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /manual_payments/{paymentId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
     // 5. Affiliation & Parrainage
     match /affiliate_commissions/{commissionId} {
       allow read, list: if isSignedIn() && (

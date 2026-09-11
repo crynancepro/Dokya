@@ -2360,6 +2360,422 @@ app.post('/api/payment/verify', async (req, res) => {
   }
 });
 
+// =========================================================================
+// GENIUSPAY & MANUAL PAYMENTS SYSTEM (METHOD 1 & METHOD 2)
+// =========================================================================
+
+// Store persistant en mémoire pour les paiements manuels
+const manualPaymentsStore: any[] = [];
+
+/**
+ * 1. Initialisation du Checkout GeniusPay (Paiement Automatique)
+ * POST /api/geniuspay/checkout
+ */
+app.post('/api/geniuspay/checkout', async (req, res) => {
+  try {
+    const {
+      amount = 5000,
+      currency = 'XOF',
+      description = 'Abonnement Pass VIP - DOKYA',
+      customer = {},
+      success_url,
+      error_url,
+      metadata = {}
+    } = req.body || {};
+
+    const publicKey = process.env.GENIUSPAY_PUBLIC_KEY;
+    const secretKey = process.env.GENIUSPAY_SECRET_KEY;
+
+    if (!publicKey || !secretKey) {
+      console.warn('[GeniusPay Checkout] Clés API non configurées (GENIUSPAY_PUBLIC_KEY / GENIUSPAY_SECRET_KEY).');
+      return res.status(500).json({
+        error: "Configuration GeniusPay manquante. Veuillez renseigner GENIUSPAY_PUBLIC_KEY et GENIUSPAY_SECRET_KEY dans vos variables d'environnement.",
+        missingConfig: true
+      });
+    }
+
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app';
+    const finalSuccessUrl = success_url || `${appBaseUrl}/dashboard?payment=success&provider=geniuspay`;
+    const finalErrorUrl = error_url || `${appBaseUrl}/checkout?payment=error&provider=geniuspay`;
+
+    // Important : sans spécifier de payment_method, GeniusPay héberge sa page multi-opérateurs
+    const payload = {
+      amount: Math.round(Number(amount)),
+      currency: currency || 'XOF',
+      description: description || 'Abonnement Pass VIP - DOKYA',
+      customer: {
+        name: customer.name || 'Client Dokya',
+        email: customer.email || 'client@dokya.com',
+        phone: customer.phone || '+221770000000'
+      },
+      success_url: finalSuccessUrl,
+      error_url: finalErrorUrl,
+      metadata: {
+        userId: metadata.userId || '',
+        planType: metadata.planType || 'PASS_VIP',
+        referredBy: metadata.referredBy || '',
+        source: 'dokya_checkout'
+      }
+    };
+
+    console.log('[GeniusPay Checkout] Création de session vers https://geniuspay.ci/api/v1/merchant/payments...', {
+      amount: payload.amount,
+      customerEmail: payload.customer.email,
+      metadata: payload.metadata
+    });
+
+    const gpResponse = await fetch('https://geniuspay.ci/api/v1/merchant/payments', {
+      method: 'POST',
+      headers: {
+        'X-API-Key': publicKey,
+        'X-API-Secret': secretKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const gpData: any = await gpResponse.json().catch(() => ({}));
+
+    if (!gpResponse.ok) {
+      console.error('[GeniusPay Checkout API Error]:', gpData);
+      return res.status(gpResponse.status).json({
+        error: gpData.message || gpData.error || 'Erreur lors de la création de la session GeniusPay',
+        details: gpData
+      });
+    }
+
+    const checkoutUrl = gpData?.data?.checkout_url || gpData?.checkout_url || gpData?.data?.url || gpData?.url;
+
+    if (!checkoutUrl) {
+      return res.status(502).json({
+        error: 'URL de redirection manquante dans la réponse de GeniusPay',
+        response: gpData
+      });
+    }
+
+    console.log('[GeniusPay Checkout Success] Session générée:', checkoutUrl);
+
+    return res.json({
+      success: true,
+      checkoutUrl,
+      paymentId: gpData?.data?.id || gpData?.id || null
+    });
+  } catch (error: any) {
+    console.error('[GeniusPay Checkout Exception]:', error);
+    return res.status(500).json({
+      error: error.message || 'Erreur interne du serveur lors du checkout GeniusPay'
+    });
+  }
+});
+
+/**
+ * 2. Webhook GeniusPay (Notification instantanée)
+ * POST /api/webhooks/geniuspay
+ */
+app.post('/api/webhooks/geniuspay', async (req, res) => {
+  try {
+    const signature = req.headers['x-webhook-signature'] as string;
+    const timestamp = req.headers['x-webhook-timestamp'] as string;
+    const webhookSecret = process.env.GENIUSPAY_WEBHOOK_SECRET;
+    const payload = req.body || {};
+
+    if (webhookSecret && signature) {
+      const rawString = JSON.stringify(payload);
+      const payloadToSign = timestamp ? `${timestamp}.${rawString}` : rawString;
+      const expected = crypto.createHmac('sha256', webhookSecret).update(payloadToSign).digest('hex');
+      const altExpected = timestamp ? crypto.createHmac('sha256', webhookSecret).update(`${timestamp}${rawString}`).digest('hex') : expected;
+
+      if (signature !== expected && signature !== altExpected) {
+        console.error('[GeniusPay Webhook] Signature HMAC invalide');
+        return res.status(403).json({ error: 'Signature invalide' });
+      }
+    }
+
+    console.log('[GeniusPay Webhook] Événement reçu:', payload.event, payload.data?.status || payload.status);
+
+    const event = payload.event;
+    const paymentData = payload.data || payload;
+    const paymentStatus = paymentData.status;
+    const isSuccess = (event === 'payment.success') || (paymentStatus === 'completed') || (paymentStatus === 'success');
+
+    if (!isSuccess) {
+      return res.json({ received: true, ignored: true });
+    }
+
+    const metadata = paymentData.metadata || {};
+    const userId = metadata.userId;
+    const planType = metadata.planType || 'PASS_VIP';
+    const referredBy = metadata.referredBy;
+    const amount = Number(paymentData.amount || 5000);
+    const txId = paymentData.id || `GP-${Date.now()}`;
+    const now = new Date();
+
+    let durationDays = 30;
+    if (planType === 'annual') durationDays = 365;
+    else if (planType === 'weekly') durationDays = 7;
+    const expiresDate = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+    // Mise à jour de l'utilisateur dans le store admin
+    if (userId) {
+      const userIndex = adminStore.users.findIndex(u => u.uid === userId || u.email.toLowerCase() === (paymentData.customer?.email || '').toLowerCase());
+      if (userIndex !== -1) {
+        adminStore.users[userIndex].subscriptionStatus = 'unlimited';
+        (adminStore.users[userIndex] as any).subscription = {
+          planId: planType,
+          status: 'ACTIVE',
+          activatedAt: now.toISOString(),
+          expiresAt: expiresDate.toISOString(),
+          pricePaid: amount,
+          paymentMethod: 'geniuspay'
+        };
+      }
+    }
+
+    // Gestion de la commission d'affiliation de 20%
+    if (referredBy) {
+      const commission = Math.round(amount * 0.20);
+      const refIndex = adminStore.users.findIndex(u => u.uid === referredBy || (u as any).referralCode === referredBy);
+      if (refIndex !== -1) {
+        adminStore.users[refIndex].balance = (adminStore.users[refIndex].balance || 0) + commission;
+        (adminStore.users[refIndex] as any).affiliateBalance = ((adminStore.users[refIndex] as any).affiliateBalance || 0) + commission;
+        console.log(`[GeniusPay Webhook] Commission de 20% (${commission} XOF) créditée au parrain ${adminStore.users[refIndex].email}`);
+      }
+    }
+
+    // Enregistrement de la transaction complétée
+    const completedTx = {
+      id: txId,
+      transactionId: txId,
+      userId: userId || 'anonymous',
+      userName: paymentData.customer?.name || 'Client Dokya',
+      userEmail: paymentData.customer?.email || '',
+      type: 'SUBSCRIPTION_PURCHASE',
+      planId: planType,
+      amount,
+      currency: paymentData.currency || 'XOF',
+      paymentMethod: 'geniuspay',
+      operator: paymentData.payment_method || 'geniuspay_multi',
+      status: 'COMPLETED',
+      completedAt: now.toISOString(),
+      createdAt: now.toISOString()
+    };
+    adminStore.transactions.unshift(completedTx);
+
+    return res.json({ received: true, status: 'PROCESSED', userId, activatedPlan: planType });
+  } catch (error: any) {
+    console.error('[GeniusPay Webhook Error]:', error);
+    return res.status(500).json({ error: error.message || 'Erreur serveur du webhook' });
+  }
+});
+
+/**
+ * 3. Paiement Manuel (Méthode 2 : Soumission par le client et validation admin)
+ * POST /api/payments/manual
+ */
+app.post('/api/payments/manual', async (req, res) => {
+  try {
+    const { action } = req.body || {};
+
+    // 3.A. ACTION ADMIN : APPROVE ou REJECT
+    if (action === 'APPROVE' || action === 'REJECT') {
+      const { paymentId, adminEmail = 'peter25ngouala@gmail.com', rejectionReason } = req.body;
+      const idx = manualPaymentsStore.findIndex(p => p.id === paymentId || p.paymentId === paymentId);
+
+      if (idx === -1) {
+        return res.status(404).json({ success: false, error: 'Demande de paiement manuel introuvable.' });
+      }
+
+      const payment = manualPaymentsStore[idx];
+      const now = new Date();
+
+      if (action === 'APPROVE') {
+        payment.status = 'APPROVED';
+        payment.approvedBy = adminEmail;
+        payment.approvedAt = now.toISOString();
+
+        const planType = payment.planType || 'PASS_VIP';
+        const amount = Number(payment.amount || 5000);
+        let durationDays = planType === 'annual' ? 365 : planType === 'weekly' ? 7 : 30;
+        const expiresDate = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+        // Activer le compte de l'utilisateur
+        const userIdx = adminStore.users.findIndex(u => u.uid === payment.userId || (payment.userEmail && u.email.toLowerCase() === payment.userEmail.toLowerCase()));
+        if (userIdx !== -1) {
+          adminStore.users[userIdx].subscriptionStatus = 'unlimited';
+          (adminStore.users[userIdx] as any).subscription = {
+            planId: planType,
+            status: 'ACTIVE',
+            activatedAt: now.toISOString(),
+            expiresAt: expiresDate.toISOString(),
+            pricePaid: amount,
+            paymentMethod: 'manual_transfer'
+          };
+        }
+
+        // Commission de 20% au parrain
+        if (payment.referredBy) {
+          const commission = Math.round(amount * 0.20);
+          const refIdx = adminStore.users.findIndex(u => u.uid === payment.referredBy || (u as any).referralCode === payment.referredBy);
+          if (refIdx !== -1) {
+            (adminStore.users[refIdx] as any).affiliateBalance = ((adminStore.users[refIdx] as any).affiliateBalance || 0) + commission;
+          }
+        }
+
+        // Synchroniser dans adminStore.transactions
+        const txIdx = adminStore.transactions.findIndex(t => t.id === paymentId);
+        if (txIdx !== -1) {
+          adminStore.transactions[txIdx].status = 'APPROVED';
+          adminStore.transactions[txIdx].aiStatus = 'MANUALLY_VALIDATED';
+          adminStore.transactions[txIdx].approvedAt = now.toISOString();
+        }
+
+        return res.json({
+          success: true,
+          status: 'APPROVED',
+          message: 'Paiement manuel validé et compte VIP activé avec succès.'
+        });
+      }
+
+      if (action === 'REJECT') {
+        payment.status = 'REJECTED';
+        payment.rejectedBy = adminEmail;
+        payment.rejectedAt = now.toISOString();
+        payment.rejectionReason = rejectionReason || 'Reçu non conforme';
+
+        const txIdx = adminStore.transactions.findIndex(t => t.id === paymentId);
+        if (txIdx !== -1) {
+          adminStore.transactions[txIdx].status = 'REJECTED';
+          adminStore.transactions[txIdx].rejectionReason = rejectionReason;
+        }
+
+        return res.json({
+          success: true,
+          status: 'REJECTED',
+          message: 'Demande de paiement manuel refusée.'
+        });
+      }
+    }
+
+    // 3.B. SOUMISSION PAR LE CLIENT
+    const {
+      userId,
+      userName = '',
+      userEmail = '',
+      userPhone = '',
+      planType = 'PASS_VIP',
+      amount = 5000,
+      currency = 'XOF',
+      operator = 'WAVE',
+      reference = '',
+      senderPhone = '',
+      proofBase64 = null,
+      referredBy = null,
+      note = ''
+    } = req.body || {};
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Identifiant utilisateur requis.' });
+    }
+
+    const now = new Date();
+    const paymentId = `MP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const newPayment = {
+      id: paymentId,
+      paymentId,
+      userId,
+      userName,
+      userEmail,
+      userPhone,
+      planType,
+      amount: Number(amount) || 5000,
+      currency: currency || 'XOF',
+      operator: operator || 'WAVE',
+      reference: reference.trim(),
+      senderPhone: senderPhone.trim(),
+      proofBase64: proofBase64 || null,
+      referredBy: referredBy || null,
+      note: note.trim() || null,
+      status: 'PENDING',
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString()
+    };
+
+    manualPaymentsStore.unshift(newPayment);
+
+    // Également ajouté à adminStore.transactions pour que l'admin le voie en temps réel
+    adminStore.transactions.unshift({
+      id: paymentId,
+      transactionId: reference.trim() || paymentId,
+      userId,
+      userName,
+      userEmail,
+      userPhone,
+      type: 'SUBSCRIPTION_PURCHASE',
+      planId: planType,
+      amount: Number(amount) || 5000,
+      currency: currency || 'XOF',
+      operator,
+      paymentMethod: 'manual_transfer',
+      status: 'PENDING_APPROVAL',
+      aiStatus: 'WAITING_FOR_ADMIN',
+      receiptImage: proofBase64,
+      createdAt: now.toISOString(),
+      metadata: {
+        senderPhone,
+        referredBy,
+        source: 'manual_payment'
+      }
+    });
+
+    console.log(`[Manual Payment] Nouvelle demande reçue : ${paymentId} de ${userEmail || userId} (${amount} XOF)`);
+
+    return res.json({
+      success: true,
+      paymentId,
+      status: 'PENDING',
+      message: 'Votre preuve de transfert a été envoyée avec succès. Notre équipe va vérifier votre paiement sous 15 à 30 minutes.'
+    });
+  } catch (error: any) {
+    console.error('[Manual Payment Route Error]:', error);
+    return res.status(500).json({ error: error.message || 'Erreur lors de l\'enregistrement du paiement' });
+  }
+});
+
+/**
+ * 4. GET /api/payments/manual - Consultation des paiements manuels
+ */
+app.get('/api/payments/manual', (req, res) => {
+  const { userId, status } = req.query as { userId?: string; status?: string };
+  let results = [...manualPaymentsStore];
+
+  if (userId) {
+    results = results.filter(p => p.userId === userId);
+  }
+  if (status) {
+    results = results.filter(p => p.status === status);
+  }
+
+  return res.json({
+    success: true,
+    count: results.length,
+    payments: results
+  });
+});
+
+/**
+ * 5. POST /api/payments/manual/validate - Alias direct pour validation admin
+ */
+app.post('/api/payments/manual/validate', (req, res) => {
+  req.body.action = 'APPROVE';
+  const handler = (app as any)._router.stack.find((layer: any) => layer.route?.path === '/api/payments/manual' && layer.route?.methods?.post);
+  if (handler) {
+    return handler.route.stack[0].handle(req, res);
+  }
+  return res.status(500).json({ error: 'Route handler introuvable' });
+});
+
 // ==========================================
 // ADMIN DASHBOARD & MANAGEMENT API ENDPOINTS
 // Security: Restricts access to authorized administrator (peter25ngouala@gmail.com)
