@@ -15,6 +15,11 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
     const {
       amount = 5000,
+      email,
+      userEmail,
+      userId,
+      affiliateId,
+      referredBy,
       currency = 'XOF',
       description = 'Abonnement Pass VIP - DOKYA',
       customer = {},
@@ -37,6 +42,13 @@ export async function POST(req) {
       );
     }
 
+    const targetAmount = Math.max(100, Math.round(Number(amount) || 5000));
+    const targetEmail = (email || userEmail || customer.email || 'client@dokya.com').trim();
+    const targetName = (customer.name || 'Client Dokya').trim();
+    const targetPhone = (customer.phone || '+221770000000').trim();
+    const targetUserId = (userId || metadata.userId || 'anonymous').trim();
+    const targetAffiliateId = (affiliateId || referredBy || metadata.affiliateId || metadata.referredBy || '').trim();
+
     // Détermination des URLs de redirection avec fallback
     const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app';
     const finalSuccessUrl = success_url || `${appBaseUrl}/dashboard?payment=success&provider=geniuspay`;
@@ -45,20 +57,21 @@ export async function POST(req) {
     // Construction du payload conforme aux spécifications GeniusPay
     // IMPORTANT : On ne spécifie PAS payment_method pour utiliser la page de Checkout multi-opérateurs hébergée
     const payload = {
-      amount: Math.round(Number(amount)),
+      amount: targetAmount,
       currency: currency || 'XOF',
       description: description || 'Abonnement Pass VIP - DOKYA',
       customer: {
-        name: customer.name || 'Client Dokya',
-        email: customer.email || 'client@dokya.com',
-        phone: customer.phone || '+221770000000'
+        name: targetName,
+        email: targetEmail,
+        phone: targetPhone
       },
       success_url: finalSuccessUrl,
       error_url: finalErrorUrl,
       metadata: {
-        userId: metadata.userId || '',
+        userId: targetUserId,
+        affiliateId: targetAffiliateId,
+        referredBy: targetAffiliateId,
         planType: metadata.planType || 'PASS_VIP',
-        referredBy: metadata.referredBy || '',
         source: 'dokya_checkout'
       }
     };
@@ -112,6 +125,7 @@ export async function POST(req) {
 
     return NextResponse.json({
       success: true,
+      checkout_url: checkoutUrl,
       checkoutUrl,
       paymentId: data?.data?.id || data?.id || null
     });
