@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { PlatformPricingConfig, PromoCode } from '../types';
 import { 
   DEFAULT_PLATFORM_PRICING, 
+  DEFAULT_PROMO_CODES 
+} from '../constants/pricingDefaults';
+import { 
   subscribeToPricing, 
   savePricingToFirestore, 
   subscribeToPromoCodes,
@@ -62,60 +65,23 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         return JSON.parse(saved);
       }
     } catch (_e) {}
-    return [
-      {
-        id: 'PRM-001',
-        code: 'TERANGA20',
-        discountType: 'percentage',
-        discountValue: 20,
-        minOrderAmount: 1000,
-        maxUsageLimit: 500,
-        currentUsageCount: 18,
-        active: true,
-        description: '20% de remise sur tous les documents',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'PRM-002',
-        code: 'DAKAR2026',
-        discountType: 'percentage',
-        discountValue: 30,
-        minOrderAmount: 1399,
-        maxUsageLimit: 200,
-        currentUsageCount: 37,
-        active: true,
-        description: '30% de remise spéciale Pack Duo & Business',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'PRM-003',
-        code: 'VIP100',
-        discountType: 'percentage',
-        discountValue: 100,
-        minOrderAmount: 0,
-        maxUsageLimit: 100,
-        currentUsageCount: 8,
-        active: true,
-        description: 'Accès 100% gratuit VIP et testeurs',
-        createdAt: new Date().toISOString()
-      }
-    ];
+    return DEFAULT_PROMO_CODES;
   });
 
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // 2. Real-time Listeners (Firestore + Window Custom Events + LocalStorage)
   useEffect(() => {
     let unsubscribePricing: (() => void) | null = null;
     let unsubscribePromos: (() => void) | null = null;
 
-    // A. Initial fetch from API backend
-    const fetchInitialData = async () => {
+    // A. Optionnel: Synchronisation silencieuse avec l'API si disponible
+    const syncWithApiSilently = async () => {
       try {
         const pRes = await fetch('/api/pricing');
         if (pRes.ok) {
           const data = await safeParseJsonResponse(pRes);
-          if (data.success && data.pricing) {
+          if (data?.success && data.pricing) {
             setPricing((prev) => {
               const updated = { ...prev, ...data.pricing };
               try { localStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(updated)); } catch (_e) {}
@@ -123,23 +89,26 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
             });
           }
         }
-      } catch (_e) {}
+      } catch (_e) {
+        // En cas d'erreur de chargement (404, hors-ligne), l'application ne plante pas
+      }
 
       try {
         const promoRes = await fetch('/api/admin/promo-codes');
         if (promoRes.ok) {
           const pData = await safeParseJsonResponse(promoRes);
-          if (pData.success && Array.isArray(pData.promoCodes) && pData.promoCodes.length > 0) {
+          if (pData?.success && Array.isArray(pData.promoCodes) && pData.promoCodes.length > 0) {
             setPromoCodes(pData.promoCodes);
             try { localStorage.setItem(PROMOS_STORAGE_KEY, JSON.stringify(pData.promoCodes)); } catch (_e) {}
           }
         }
-      } catch (_e) {} finally {
-        setIsLoading(false);
+      } catch (_e) {
+        // Fallback transparent sans impact utilisateur
       }
     };
 
-    fetchInitialData();
+    // Synchronisation en arrière-plan sans bloquer l'affichage
+    syncWithApiSilently();
 
     // B. Firestore onSnapshot real-time listener for pricing
     try {

@@ -33,6 +33,7 @@ import {
   RealtimeAdminMetrics,
   RealtimeSalesCategory
 } from '../lib/firebase';
+import { DEFAULT_PROMO_CODES } from '../constants/pricingDefaults';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail, PRIMARY_ADMIN_EMAIL, getAdminHeaders } from '../lib/adminAuth';
 import { startImpersonationSession, stopImpersonationSession, getImpersonatedSession } from '../lib/impersonation';
@@ -241,98 +242,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setLoading(true);
     setErrorMsg(null);
     try {
-      const headers = getAdminHeaders(adminEmail);
-      
-      // Parallel fetch across essential administrative endpoints
-      const [
-        statsData,
-        usersData,
-        txData,
-        pricingData,
-        promoData
-      ] = await Promise.all([
-        safeFetchJson<{ success: boolean; stats: AdminKPIs }>('/api/admin/stats', headers),
-        safeFetchJson<{ success: boolean; users: AdminUserRecord[] }>('/api/admin/users?limit=100', headers),
-        safeFetchJson<{ success: boolean; transactions: TransactionRecord[] }>('/api/admin/transactions', headers),
-        safeFetchJson<{ success: boolean; pricing: PlatformPricingConfig }>('/api/admin/pricing', headers),
-        safeFetchJson<{ success: boolean; promoCodes: PromoCode[] }>('/api/admin/promo-codes', headers)
-      ]);
+      // 1. Initialisation immédiate depuis Firestore et constantes locales (Zéro latence / Zéro blocage réseau)
+      setPricingConfig((prev) => (prev && prev.cvOnlyPrice ? prev : DEFAULT_PLATFORM_PRICING));
+      setEditingPricing((prev) => (prev && prev.cvOnlyPrice ? prev : DEFAULT_PLATFORM_PRICING));
+      setPromoCodesList((prev) => (prev && prev.length > 0 ? prev : DEFAULT_PROMO_CODES));
 
-      // 1. Stats
-      if (statsData?.success && statsData.stats) {
-        setKpis(statsData.stats);
-      }
-
-      // 2. Users & Realtime VIP Subscriptions from Firestore
+      // 2. Chargement direct des Utilisateurs depuis Firestore
       try {
         const adminUsers = await fetchAllAdminUsersWithSubscriptions();
         if (adminUsers.length > 0) {
           setUsersList(adminUsers);
-        } else if (usersData?.success && Array.isArray(usersData.users) && usersData.users.length > 0) {
-          setUsersList(usersData.users);
-        }
-      } catch (subErr) {
-        console.warn('fetchAllAdminUsersWithSubscriptions error, falling back:', subErr);
-        if (usersData?.success && Array.isArray(usersData.users) && usersData.users.length > 0) {
-          setUsersList(usersData.users);
         } else {
-          // Fallback to Firestore user profiles
-          try {
-            const firestoreUsers = await fetchAllFirestoreUserProfiles();
-            if (firestoreUsers.length > 0) {
-              const mapped: AdminUserRecord[] = firestoreUsers.map(p => ({
-                uid: p.uid,
-                email: p.email || 'candidat@dokya.sn',
-                firstName: p.personalInfo?.firstName || '',
-                lastName: p.personalInfo?.lastName || '',
-                phone: p.personalInfo?.phone,
-                city: p.personalInfo?.city,
-                targetJob: p.personalInfo?.targetJob,
-                balance: p.balance || 0,
-                credits: p.credits || 0,
-                subscriptionStatus: p.subscriptionStatus || 'free',
-                ordersCount: 0,
-                documentsCount: 0,
-                createdAt: (p as any).createdAt || p.updatedAt || new Date().toISOString(),
-                updatedAt: p.updatedAt || new Date().toISOString(),
-                status: 'active',
-                role: (p as any).role === 'admin' ? 'admin' : 'candidate'
-              }));
-              setUsersList(mapped);
-            }
-          } catch (e) {
-            console.warn('Firestore users fallback notice:', e);
+          const firestoreUsers = await fetchAllFirestoreUserProfiles();
+          if (firestoreUsers.length > 0) {
+            const mapped: AdminUserRecord[] = firestoreUsers.map(p => ({
+              uid: p.uid,
+              email: p.email || 'candidat@dokya.sn',
+              firstName: p.personalInfo?.firstName || '',
+              lastName: p.personalInfo?.lastName || '',
+              phone: p.personalInfo?.phone,
+              city: p.personalInfo?.city,
+              targetJob: p.personalInfo?.targetJob,
+              balance: p.balance || 0,
+              credits: p.credits || 0,
+              subscriptionStatus: p.subscriptionStatus || 'free',
+              ordersCount: 0,
+              documentsCount: 0,
+              createdAt: (p as any).createdAt || p.updatedAt || new Date().toISOString(),
+              updatedAt: p.updatedAt || new Date().toISOString(),
+              status: 'active',
+              role: (p as any).role === 'admin' ? 'admin' : 'candidate'
+            }));
+            setUsersList(mapped);
           }
         }
+      } catch (userErr) {
+        console.warn('[AdminDashboard] Erreur chargement utilisateurs Firestore:', userErr);
       }
 
-      // 3. Transactions
-      if (txData?.success && Array.isArray(txData.transactions) && txData.transactions.length > 0) {
-        setTransactionsList(txData.transactions);
-      } else {
-        // Fallback to Firestore transactions
-        try {
-          const firestoreTx = await fetchAllFirestoreTransactions();
-          if (firestoreTx.length > 0) {
-            setTransactionsList(firestoreTx);
-          }
-        } catch (e) {
-          console.warn('Firestore transactions fallback notice:', e);
+      // 3. Chargement direct des Transactions depuis Firestore
+      try {
+        const firestoreTx = await fetchAllFirestoreTransactions();
+        if (firestoreTx.length > 0) {
+          setTransactionsList(firestoreTx);
         }
+      } catch (txErr) {
+        console.warn('[AdminDashboard] Erreur chargement transactions Firestore:', txErr);
       }
 
-      // 4. Pricing
-      if (pricingData?.success && pricingData.pricing) {
-        setPricingConfig(pricingData.pricing);
-        setEditingPricing(pricingData.pricing);
-      } else {
-        setPricingConfig(DEFAULT_PLATFORM_PRICING);
-        setEditingPricing(DEFAULT_PLATFORM_PRICING);
-      }
+      // 4. Synchronisation facultative en arrière-plan avec l'API Serverless (Tolérance 100% aux pannes)
+      try {
+        const headers = getAdminHeaders(adminEmail);
+        const [statsData, pricingData, promoData] = await Promise.all([
+          safeFetchJson<{ success: boolean; stats: AdminKPIs }>('/api/admin/stats', headers),
+          safeFetchJson<{ success: boolean; pricing: PlatformPricingConfig }>('/api/admin/pricing', headers),
+          safeFetchJson<{ success: boolean; promoCodes: PromoCode[] }>('/api/admin/promo-codes', headers)
+        ]);
 
-      // 5. Promo Codes
-      if (promoData?.success && Array.isArray(promoData.promoCodes)) {
-        setPromoCodesList(promoData.promoCodes);
+        if (statsData?.success && statsData.stats) {
+          setKpis(statsData.stats);
+        }
+        if (pricingData?.success && pricingData.pricing) {
+          setPricingConfig(pricingData.pricing);
+          setEditingPricing(pricingData.pricing);
+        }
+        if (promoData?.success && Array.isArray(promoData.promoCodes) && promoData.promoCodes.length > 0) {
+          setPromoCodesList(promoData.promoCodes);
+        }
+      } catch (apiErr) {
+        console.warn('[AdminDashboard] Synchronisation API silencieuse:', apiErr);
       }
 
       // 6. Nettoyage et purge automatique des reçus expirés (>24h) en arrière-plan

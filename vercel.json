@@ -4,6 +4,34 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/pricing",
+      "destination": "/api/pricing"
+    },
+    {
+      "source": "/api/admin/pricing",
+      "destination": "/api/admin/pricing"
+    },
+    {
+      "source": "/api/admin/promo-codes",
+      "destination": "/api/admin/promo-codes"
+    },
+    {
+      "source": "/api/admin/codes-promo",
+      "destination": "/api/admin/codes-promo"
+    },
+    {
+      "source": "/api/admin/stats",
+      "destination": "/api/admin/stats"
+    },
+    {
+      "source": "/api/admin/transactions",
+      "destination": "/api/admin/transactions"
+    },
+    {
+      "source": "/api/admin/users",
+      "destination": "/api/admin/users"
+    },
+    {
       "source": "/api/geniuspay/checkout",
       "destination": "/api/geniuspay/checkout"
     },

@@ -3900,14 +3900,14 @@ app.post('/api/admin/pricing', requireAdmin, (req, res) => {
 });
 
 // 10. Promo Codes Endpoints
-app.get('/api/admin/promo-codes', requireAdmin, (req, res) => {
+app.get(['/api/admin/promo-codes', '/api/admin/codes-promo', '/api/promo-codes', '/api/codes-promo'], (req, res) => {
   return res.json({
     success: true,
-    promoCodes: adminStore.promoCodes
+    promoCodes: adminStore.promoCodes || []
   });
 });
 
-app.post('/api/admin/promo-codes', requireAdmin, (req, res) => {
+app.post(['/api/admin/promo-codes', '/api/admin/codes-promo'], requireAdmin, (req, res) => {
   try {
     const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { id, code, discountType, discountValue, minOrderAmount, maxUsageLimit, description, active } = req.body || {};
