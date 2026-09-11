@@ -36,6 +36,10 @@
       "destination": "/api/geniuspay/checkout"
     },
     {
+      "source": "/api/webhooks/geniuspay",
+      "destination": "/api/webhooks/geniuspay"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },

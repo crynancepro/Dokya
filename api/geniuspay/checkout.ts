@@ -20,6 +20,10 @@ interface CheckoutRequestBody {
   };
   success_url?: string;
   error_url?: string;
+  redirect_url?: string;
+  cancel_url?: string;
+  return_url?: string;
+  [key: string]: any;
   metadata?: {
     userId?: string;
     affiliateId?: string;
@@ -54,6 +58,8 @@ async function processCheckout(body: CheckoutRequestBody) {
     currency = 'XOF',
     description = 'Abonnement Pass VIP - DOKYA',
     customer = {},
+    redirect_url,
+    cancel_url,
     success_url,
     error_url,
     metadata = {}
@@ -67,12 +73,13 @@ async function processCheckout(body: CheckoutRequestBody) {
   const targetAffiliateId = (affiliateId || referredBy || metadata.affiliateId || metadata.referredBy || '').trim();
   const targetPlanType = metadata.planType || 'PASS_VIP';
 
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app';
-  const finalSuccessUrl = success_url || `${appBaseUrl}/dashboard?payment=success&provider=geniuspay`;
-  const finalErrorUrl = error_url || `${appBaseUrl}/checkout?payment=error&provider=geniuspay`;
+  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
+  const finalRedirectUrl = redirect_url || success_url || `${appBaseUrl}/dashboard?payment=success`;
+  const finalCancelUrl = cancel_url || error_url || `${appBaseUrl}/dashboard?payment=cancelled`;
 
   // Construction du payload conforme à l'API GeniusPay
   // IMPORTANT: en omettant payment_method, GeniusPay active sa page multi-opérateurs
+  // Nous incluons redirect_url, cancel_url, success_url, error_url et return_url pour compatibilité maximale
   const payload = {
     amount: targetAmount,
     currency: currency || 'XOF',
@@ -82,10 +89,15 @@ async function processCheckout(body: CheckoutRequestBody) {
       email: targetEmail,
       phone: targetPhone
     },
-    success_url: finalSuccessUrl,
-    error_url: finalErrorUrl,
+    redirect_url: finalRedirectUrl,
+    cancel_url: finalCancelUrl,
+    success_url: finalRedirectUrl,
+    error_url: finalCancelUrl,
+    return_url: finalRedirectUrl,
+    callback_url: `${appBaseUrl}/api/webhooks/geniuspay`,
     metadata: {
       userId: targetUserId,
+      userEmail: targetEmail,
       affiliateId: targetAffiliateId,
       referredBy: targetAffiliateId,
       planType: targetPlanType,

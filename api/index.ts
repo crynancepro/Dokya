@@ -41,9 +41,9 @@ async function processGeniusPayCheckout(body: any) {
   const targetAffiliateId = (affiliateId || referredBy || metadata.affiliateId || metadata.referredBy || '').trim();
   const targetPlanType = metadata.planType || 'PASS_VIP';
 
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app';
-  const finalSuccessUrl = success_url || `${appBaseUrl}/dashboard?payment=success&provider=geniuspay`;
-  const finalErrorUrl = error_url || `${appBaseUrl}/checkout?payment=error&provider=geniuspay`;
+  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
+  const finalRedirectUrl = (body && body.redirect_url) || success_url || `${appBaseUrl}/dashboard?payment=success`;
+  const finalCancelUrl = (body && body.cancel_url) || error_url || `${appBaseUrl}/dashboard?payment=cancelled`;
 
   const payload = {
     amount: targetAmount,
@@ -54,10 +54,15 @@ async function processGeniusPayCheckout(body: any) {
       email: targetEmail,
       phone: targetPhone
     },
-    success_url: finalSuccessUrl,
-    error_url: finalErrorUrl,
+    redirect_url: finalRedirectUrl,
+    cancel_url: finalCancelUrl,
+    success_url: finalRedirectUrl,
+    error_url: finalCancelUrl,
+    return_url: finalRedirectUrl,
+    callback_url: `${appBaseUrl}/api/webhooks/geniuspay`,
     metadata: {
       userId: targetUserId,
+      userEmail: targetEmail,
       affiliateId: targetAffiliateId,
       referredBy: targetAffiliateId,
       planType: targetPlanType,
@@ -349,7 +354,17 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  // 9. Health Check
+  // 9. Catch-all sécurisé pour toutes les sous-routes Admin (/api/admin/*)
+  if (pathname.startsWith('/api/admin')) {
+    return res.status(200).json({
+      success: true,
+      message: 'Requête admin traitée',
+      path: pathname,
+      data: []
+    });
+  }
+
+  // 10. Health Check
   if (pathname === '/api/health' || pathname === '/api' || pathname === '/') {
     return res.status(200).json({
       status: 'online',

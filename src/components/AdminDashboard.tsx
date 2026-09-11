@@ -9,7 +9,7 @@ import {
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
   Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity,
   MessageSquare, Volume2, VolumeX, BellRing, Menu, Building2, Briefcase,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Zap
 } from 'lucide-react';
 import { AdminSidebar, AdminTabType } from './admin/AdminSidebar';
 import { 
@@ -470,7 +470,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (txMethodFilter !== 'all') {
         const currentMethod = (t.paymentMethod || '').toLowerCase();
         const targetMethod = txMethodFilter.toLowerCase();
-        if (currentMethod !== targetMethod) return false;
+        if (targetMethod === 'geniuspay') {
+          if (!currentMethod.includes('genius')) return false;
+        } else if (currentMethod !== targetMethod) {
+          return false;
+        }
       }
       return true;
     });
@@ -3026,6 +3030,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
                 >
                   <option value="all" className="bg-slate-900 text-white">Toutes Méthodes</option>
+                  <option value="geniuspay" className="bg-slate-900 text-white">⚡ GeniusPay (Wave, OM, Carte)</option>
                   <option value="wave" className="bg-slate-900 text-white">Wave</option>
                   <option value="orange_money" className="bg-slate-900 text-white">Orange Money</option>
                   <option value="wallet" className="bg-slate-900 text-white">Portefeuille</option>
@@ -3183,7 +3188,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                             {/* 6. Méthode */}
                             <td className="py-3.5 px-3">
-                              {tx.paymentMethod === 'wave' ? (
+                              {tx.paymentMethod === 'geniuspay' || (tx.paymentMethod && tx.paymentMethod.toLowerCase().includes('genius')) ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs">
+                                  <Zap className="w-3 h-3 text-emerald-400" />
+                                  <span>GeniusPay</span>
+                                </span>
+                              ) : tx.paymentMethod === 'wave' ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-sky-500/15 text-sky-300 border border-sky-500/30">
                                   <span>Wave</span>
                                 </span>

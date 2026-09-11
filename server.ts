@@ -2406,9 +2406,9 @@ app.post('/api/geniuspay/checkout', async (req, res) => {
     const targetUserId = (userId || metadata.userId || 'anonymous').trim();
     const targetAffiliateId = (affiliateId || referredBy || metadata.affiliateId || metadata.referredBy || '').trim();
 
-    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app';
-    const finalSuccessUrl = success_url || `${appBaseUrl}/dashboard?payment=success&provider=geniuspay`;
-    const finalErrorUrl = error_url || `${appBaseUrl}/checkout?payment=error&provider=geniuspay`;
+    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
+    const finalRedirectUrl = req.body.redirect_url || success_url || `${appBaseUrl}/dashboard?payment=success`;
+    const finalCancelUrl = req.body.cancel_url || error_url || `${appBaseUrl}/dashboard?payment=cancelled`;
 
     // Important : sans spécifier de payment_method, GeniusPay héberge sa page multi-opérateurs
     const payload = {
@@ -2420,10 +2420,15 @@ app.post('/api/geniuspay/checkout', async (req, res) => {
         email: targetEmail,
         phone: targetPhone
       },
-      success_url: finalSuccessUrl,
-      error_url: finalErrorUrl,
+      redirect_url: finalRedirectUrl,
+      cancel_url: finalCancelUrl,
+      success_url: finalRedirectUrl,
+      error_url: finalCancelUrl,
+      return_url: finalRedirectUrl,
+      callback_url: `${appBaseUrl}/api/webhooks/geniuspay`,
       metadata: {
         userId: targetUserId,
+        userEmail: targetEmail,
         affiliateId: targetAffiliateId,
         referredBy: targetAffiliateId,
         planType: metadata.planType || 'PASS_VIP',
@@ -2508,13 +2513,13 @@ app.post('/api/webhooks/geniuspay', async (req, res) => {
 
     console.log('[GeniusPay Webhook] Événement reçu:', payload.event, payload.data?.status || payload.status);
 
-    const event = payload.event;
+    const event = payload.event || payload.type;
     const paymentData = payload.data || payload;
-    const paymentStatus = paymentData.status;
-    const isSuccess = (event === 'payment.success') || (paymentStatus === 'completed') || (paymentStatus === 'success');
+    const paymentStatus = (paymentData.status || '').toLowerCase();
+    const isSuccess = (event === 'payment.success') || (event === 'transaction.successful') || (paymentStatus === 'completed') || (paymentStatus === 'success') || (paymentStatus === 'paid');
 
     if (!isSuccess) {
-      return res.json({ received: true, ignored: true });
+      return res.status(200).json({ received: true, ignored: true, status: paymentStatus });
     }
 
     const metadata = paymentData.metadata || {};
@@ -2567,9 +2572,11 @@ app.post('/api/webhooks/geniuspay', async (req, res) => {
       type: 'SUBSCRIPTION_PURCHASE',
       planId: planType,
       amount,
+      expectedAmount: amount,
       currency: paymentData.currency || 'XOF',
       paymentMethod: 'geniuspay',
       operator: paymentData.payment_method || 'geniuspay_multi',
+      description: paymentData.description || `Abonnement ${planType} - GeniusPay`,
       status: 'COMPLETED',
       completedAt: now.toISOString(),
       createdAt: now.toISOString()

@@ -610,8 +610,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
             email: userEmail || 'client@dokya.com',
             phone: senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : '+221770000000'
           },
-          success_url: `${window.location.origin}/dashboard?payment=success&provider=geniuspay`,
-          error_url: `${window.location.origin}/dashboard?payment=error&provider=geniuspay`,
+          redirect_url: `${window.location.origin}/dashboard?payment=success`,
+          cancel_url: `${window.location.origin}/dashboard?payment=cancelled`,
+          success_url: `${window.location.origin}/dashboard?payment=success`,
+          error_url: `${window.location.origin}/dashboard?payment=cancelled`,
+          return_url: `${window.location.origin}/dashboard?payment=success`,
           metadata: {
             userId: userId || 'anonymous',
             planType: planId || 'PASS_VIP',
@@ -627,8 +630,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         throw new Error(data.error || 'Erreur lors de la création de la session de paiement GeniusPay.');
       }
 
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+      const checkoutUrl = data.checkoutUrl || data.checkout_url;
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl;
       } else {
         throw new Error("L'URL de paiement retournée par GeniusPay est indisponible.");
       }
@@ -1041,63 +1045,19 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           </div>
         ) : (
           <>
-            {/* 3-Step Progress Header */}
-            <div className="px-5 py-3 bg-slate-950/40 border-b border-slate-800/60 shrink-0">
-          <div className="flex items-center justify-between text-xs font-semibold">
-            {/* Step 1 Indicator */}
-            <div className={`flex items-center gap-1.5 transition-colors ${
-              currentStep === 1 ? 'text-emerald-400 font-bold' : currentStep > 1 ? 'text-emerald-500' : 'text-slate-500'
-            }`}>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                currentStep === 1 
-                  ? 'bg-emerald-500 text-slate-950' 
-                  : currentStep > 1 
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
-                    : 'bg-slate-800 text-slate-400'
-              }`}>
-                {currentStep > 1 ? '✓' : '1'}
+            {/* Reassurance Header */}
+            <div className="px-5 py-2.5 bg-emerald-950/40 border-b border-emerald-500/20 shrink-0">
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <div className="flex items-center gap-2 text-emerald-400">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Paiement Direct Sécurisé SSL</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 bg-slate-900/90 px-2.5 py-0.5 rounded-full border border-slate-800">
+                  <Zap className="w-3 h-3 text-emerald-400" />
+                  <span>Wave • Orange Money • Carte</span>
+                </div>
               </div>
-              <span className="hidden sm:inline">1. Mode & Montant</span>
-              <span className="sm:hidden">1. Mode</span>
             </div>
-
-            <div className={`h-[2px] flex-1 mx-2 rounded-full transition-colors ${currentStep >= 2 ? 'bg-emerald-500/50' : 'bg-slate-800'}`} />
-
-            {/* Step 2 Indicator */}
-            <div className={`flex items-center gap-1.5 transition-colors ${
-              currentStep === 2 ? 'text-emerald-400 font-bold' : currentStep > 2 ? 'text-emerald-500' : 'text-slate-500'
-            }`}>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                currentStep === 2 
-                  ? 'bg-emerald-500 text-slate-950' 
-                  : currentStep > 2 
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
-                    : 'bg-slate-800 text-slate-400'
-              }`}>
-                {currentStep > 2 ? '✓' : '2'}
-              </div>
-              <span className="hidden sm:inline">2. Transfert & Reçu</span>
-              <span className="sm:hidden">2. Reçu</span>
-            </div>
-
-            <div className={`h-[2px] flex-1 mx-2 rounded-full transition-colors ${currentStep >= 3 ? 'bg-emerald-500/50' : 'bg-slate-800'}`} />
-
-            {/* Step 3 Indicator */}
-            <div className={`flex items-center gap-1.5 transition-colors ${
-              currentStep === 3 ? 'text-emerald-400 font-bold' : 'text-slate-500'
-            }`}>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                currentStep === 3 
-                  ? 'bg-emerald-500 text-slate-950' 
-                  : 'bg-slate-800 text-slate-400'
-              }`}>
-                3
-              </div>
-              <span className="hidden sm:inline">3. Scanner IA</span>
-              <span className="sm:hidden">3. IA</span>
-            </div>
-          </div>
-        </div>
 
         {/* Scrollable Content Body */}
         <div className="p-5 overflow-y-auto space-y-5 flex-1">
@@ -1320,113 +1280,83 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                 </div>
               ) : (
                 /* Payment Methods Grid */
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-                    Choisissez votre méthode de paiement :
+                    Mode de paiement :
                   </label>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     {/* 0. GeniusPay Checkout (Automatique Recommandé) */}
                     <button
                       type="button"
                       onClick={() => setSelectedMethod('geniuspay')}
-                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer sm:col-span-2 ${
+                      className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${
                         selectedMethod === 'geniuspay'
-                          ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-md ring-1 ring-emerald-500'
+                          ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-lg ring-1 ring-emerald-500'
                           : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                       }`}
                     >
-                      <Zap className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <Zap className="w-5 h-5 text-emerald-400" />
+                      </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-black text-white flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <p className="text-sm font-black text-white flex items-center gap-2">
                             <span>GeniusPay Checkout</span>
-                            <span className="text-[9px] bg-emerald-500 text-slate-950 font-bold px-1.5 py-0.2 rounded-full">
-                              Recommandé • Instantané
+                            <span className="text-[10px] bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
+                              Automatisé • Immédiat
                             </span>
                           </p>
-                          <span className="text-[10px] text-emerald-400 font-semibold">Wave, OM, MTN, Moov, Carte</span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Paiement automatique sécurisé en ligne avec activation immédiate de votre compte.
+                        <p className="text-xs text-slate-400 mt-1">
+                          Paiement en ligne instantané et 100% sécurisé via <strong className="text-slate-200">Wave, Orange Money, Moov, MTN</strong> ou <strong className="text-slate-200">Carte Bancaire (Visa / Mastercard)</strong>.
                         </p>
-                      </div>
-                    </button>
-
-                    {/* 1. Wave Mobile Money Direct */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMethod('wave')}
-                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                        selectedMethod === 'wave'
-                          ? 'bg-blue-600/20 border-blue-500 text-white shadow-md ring-1 ring-blue-500'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <Smartphone className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-black text-white">Wave Manuel</p>
-                          <span className="text-[9px] bg-slate-800 text-slate-300 font-medium px-1.5 py-0.2 rounded-full">
-                            Dépôt direct
-                          </span>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">🌊 Wave</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">💳 Carte Bancaire</span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5">Transfert direct + Envoi de reçu</p>
                       </div>
                     </button>
 
-                    {/* 2. Orange Money Direct */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMethod('orange_money')}
-                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                        selectedMethod === 'orange_money'
-                          ? 'bg-orange-600/20 border-orange-500 text-white shadow-md ring-1 ring-orange-500'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <Smartphone className="w-5 h-5 text-orange-400 mt-0.5 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-black text-white">Orange Money Manuel</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">Transfert direct + Envoi de reçu</p>
-                      </div>
-                    </button>
-
-                    {/* 3. Solde Dokya Wallet (if not recharging) */}
+                    {/* 1. Solde Dokya Wallet (if not recharging) */}
                     {activeMode !== 'recharge' && (
                       <button
                         type="button"
                         onClick={() => setSelectedMethod('wallet')}
-                        className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer sm:col-span-2 ${
+                        className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${
                           selectedMethod === 'wallet'
-                            ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md ring-1 ring-indigo-500'
+                            ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-lg ring-1 ring-indigo-500'
                             : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                         }`}
                       >
-                        <Wallet className={`w-5 h-5 mt-0.5 shrink-0 ${hasEnoughBalance ? 'text-emerald-400' : 'text-slate-500'}`} />
+                        <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                          <Wallet className={`w-5 h-5 ${hasEnoughBalance ? 'text-emerald-400' : 'text-slate-500'}`} />
+                        </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-black text-white">Payer avec le Solde Wallet</p>
+                            <p className="text-sm font-black text-white">Solde Portefeuille Dokya</p>
                             <span className={`text-xs font-mono font-bold ${hasEnoughBalance ? 'text-emerald-400' : 'text-rose-400'}`}>
                               {safeBalance.toLocaleString('fr-FR')} FCFA
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            {hasEnoughBalance ? 'Déblocage en 1 clic sans frais' : 'Solde insuffisant pour ce montant'}
+                          <p className="text-xs text-slate-400 mt-1">
+                            {hasEnoughBalance ? 'Déblocage instantané en 1 clic sans frais' : 'Solde insuffisant pour ce montant'}
                           </p>
                         </div>
                       </button>
                     )}
                   </div>
 
-                  {/* Action Button: GeniusPay Direct Pay, Wallet Direct Pay, or Next to Manual Transfer */}
+                  {/* Action Button: GeniusPay Direct Pay or Wallet Direct Pay */}
                   <div className="pt-2">
                     {selectedMethod === 'geniuspay' ? (
                       <button
                         type="button"
                         disabled={isGeniusPayLoading}
                         onClick={handlePayWithGeniusPay}
-                        className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                        className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
                       >
                         {isGeniusPayLoading ? (
                           <>
@@ -1441,287 +1371,20 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                           </>
                         )}
                       </button>
-                    ) : selectedMethod === 'wallet' && activeMode !== 'recharge' ? (
+                    ) : (
                       <button
                         type="button"
                         disabled={!hasEnoughBalance}
                         onClick={handlePayWithWallet}
-                        className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                        className="w-full py-4 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Check className="w-4 h-4" />
-                        <span>Confirmer le paiement ({payablePrice.toLocaleString('fr-FR')} FCFA)</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setCurrentStep(2)}
-                        className="w-full py-3.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span>Continuer vers le transfert ({payablePrice.toLocaleString('fr-FR')} FCFA)</span>
-                        <ArrowRight className="w-4 h-4" />
+                        <span>Confirmer avec mon solde ({payablePrice.toLocaleString('fr-FR')} FCFA)</span>
                       </button>
                     )}
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* ÉTAPE 2 : TRANSFERT & SAISIE COORDONNÉES + UPLOAD DU REÇU                 */}
-          {/* ========================================================================= */}
-          {currentStep === 2 && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              
-              {/* Back to step 1 */}
-              <button
-                type="button"
-                onClick={() => setCurrentStep(1)}
-                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Modifier le mode de paiement</span>
-              </button>
-
-              {/* Instructions Box depending on selected method */}
-              {selectedMethod === 'wave' ? (
-                <div className="p-4 rounded-2xl bg-blue-950/40 border border-blue-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-blue-300 flex items-center gap-1.5">
-                      <Smartphone className="w-4 h-4 text-blue-400" />
-                      Paiement Wave Direct 1-Clic
-                    </span>
-                    <span className="font-mono text-xs font-black text-white bg-blue-500/20 px-2 py-0.5 rounded-lg border border-blue-500/30">
-                      {payablePrice.toLocaleString('fr-FR')} FCFA
-                    </span>
-                  </div>
-
-                  {/* 1-Click Official Merchant Wave Link */}
-                  <a
-                    href={WAVE_OFFICIAL_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-3 px-4 rounded-xl bg-blue-500 hover:bg-blue-400 text-slate-950 font-black text-xs transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer"
-                  >
-                    <ExternalLink className="w-4 h-4 text-slate-950" />
-                    <span>Ouvrir l'App Wave pour Payer en 1-Clic</span>
-                  </a>
-
-                  {/* Secondary Details */}
-                  <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Numéro Marchand :</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-white">{BENEFICIARY_PHONE}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(BENEFICIARY_PHONE, 'phone')}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                        >
-                          {copiedField === 'phone' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                          <span>{copiedField === 'phone' ? 'Copié' : 'Copier'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-slate-800/80 pt-1.5">
-                      <span className="text-slate-400">Bénéficiaire :</span>
-                      <span className="font-semibold text-slate-200 text-[11px]">{BENEFICIARY_NAME}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Orange Money Instructions */
-                <div className="p-4 rounded-2xl bg-orange-950/40 border border-orange-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-orange-300 flex items-center gap-1.5">
-                      <Smartphone className="w-4 h-4 text-orange-400" />
-                      Orange Money (#144# / Max It)
-                    </span>
-                    <span className="font-mono text-xs font-black text-white bg-orange-500/20 px-2 py-0.5 rounded-lg border border-orange-500/30">
-                      {payablePrice.toLocaleString('fr-FR')} FCFA
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-300">
-                    Effectuez un transfert classique de <strong>{payablePrice.toLocaleString('fr-FR')} FCFA</strong> vers notre compte certifié :
-                  </p>
-
-                  <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Numéro Destinataire :</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-orange-400 text-sm">{BENEFICIARY_PHONE}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(BENEFICIARY_PHONE, 'phone')}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                        >
-                          {copiedField === 'phone' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                          <span>{copiedField === 'phone' ? 'Copié' : 'Copier'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-slate-800/80 pt-1.5">
-                      <span className="text-slate-400">Nom du Compte :</span>
-                      <span className="font-semibold text-slate-200 text-[11px]">{BENEFICIARY_NAME}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Country & Sender Phone Input */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                    Numéro de téléphone expéditeur :
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-normal">Pour certification IA</span>
-                </label>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {/* Country Dial Select */}
-                  <div className="relative">
-                    <select
-                      value={selectedCountry.code}
-                      onChange={(e) => {
-                        const c = AFRICAN_COUNTRIES.find(item => item.code === e.target.value);
-                        if (c) setSelectedCountry(c);
-                      }}
-                      className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 !text-white text-xs font-bold focus:outline-hidden focus:border-emerald-500 appearance-none cursor-pointer"
-                    >
-                      {AFRICAN_COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code} className="bg-slate-900 text-white">
-                          {c.flag} {c.name} ({c.dialCode})
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-300 text-xs">
-                      ▼
-                    </div>
-                  </div>
-
-                  {/* Phone Input */}
-                  <div className="sm:col-span-2">
-                    <input
-                      type="tel"
-                      value={senderPhoneNumber}
-                      onChange={(e) => setSenderPhoneNumber(e.target.value)}
-                      placeholder={`Ex: ${selectedCountry.example}`}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 !text-white text-xs font-mono font-bold focus:outline-hidden focus:border-emerald-500 !placeholder:text-slate-400 caret-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Optional Reference ID */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-slate-300 flex items-center justify-between">
-                  <span>ID de Transaction / Réf (optionnel) :</span>
-                  <span className="text-[10px] text-slate-400">Ex: WW2408..., CI24...</span>
-                </label>
-                <input
-                  type="text"
-                  value={transactionRef}
-                  onChange={(e) => setTransactionRef(e.target.value)}
-                  placeholder="Si vous souhaitez renseigner la référence du SMS..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 !text-white text-xs font-mono focus:outline-hidden focus:border-emerald-500 !placeholder:text-slate-400 caret-blue-500"
-                />
-              </div>
-
-              {/* Receipt Upload Dropzone */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-                  Capture d'écran du reçu de transfert :
-                </label>
-
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*"
-                  onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
-                  className="hidden"
-                />
-
-                {previewUrl ? (
-                  <div className="relative p-3 rounded-2xl bg-slate-950 border border-emerald-500/40 flex items-center gap-3">
-                    <div className="w-14 h-14 rounded-xl overflow-hidden bg-black border border-slate-800 shrink-0">
-                      <img src={previewUrl} alt="Reçu" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-emerald-400 flex items-center gap-1 truncate">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Reçu chargé prêt pour le Scan IA</span>
-                      </p>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                        {selectedFile?.name} ({(selectedFile?.size ? selectedFile.size / 1024 : 0).toFixed(0)} Ko)
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFile(null);
-                        if (previewUrl) URL.revokeObjectURL(previewUrl);
-                        setPreviewUrl(null);
-                      }}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
-                      title="Supprimer"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                      if (e.dataTransfer.files?.[0]) handleFileSelect(e.dataTransfer.files[0]);
-                    }}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`p-6 rounded-2xl border-2 border-dashed transition-all text-center cursor-pointer ${
-                      isDragging
-                        ? 'border-emerald-400 bg-emerald-500/10'
-                        : 'border-slate-800 hover:border-emerald-500/50 bg-slate-950/60 hover:bg-slate-950'
-                    }`}
-                  >
-                    <Upload className="w-7 h-7 mx-auto text-emerald-400 mb-2" />
-                    <p className="text-xs font-bold text-slate-200">
-                      Cliquez ici ou glissez votre capture d'écran de reçu
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Format JPG, PNG ou capture mobile Wave / OM
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {errorMessage && (
-                <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                  <span>{errorMessage}</span>
-                </div>
-              )}
-
-              {/* Trigger AI Scan Button */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  disabled={!selectedFile || isAiScanning}
-                  onClick={handleStartAiScan}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 disabled:opacity-50 disabled:pointer-events-none text-slate-950 font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Sparkles className="w-5 h-5 text-slate-950" />
-                  <span>Lancer l'Analyse Laser & Validation IA</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
             </div>
           )}
 
