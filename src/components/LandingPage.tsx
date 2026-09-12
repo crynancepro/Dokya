@@ -1,31 +1,45 @@
 import React, { useState } from 'react';
 import { 
   Sparkles, 
-  FileText, 
-  Mail, 
   Receipt, 
-  BookOpen, 
   ShieldCheck, 
   ArrowRight, 
   CheckCircle2, 
   Zap, 
   Crown, 
-  Download, 
-  User, 
   LogIn, 
   ChevronRight, 
-  Layers, 
   Star, 
-  HelpCircle, 
   Check, 
-  FileCheck, 
-  Wallet, 
   Lock,
-  Phone,
-  LayoutDashboard
+  LayoutDashboard,
+  Globe,
+  Briefcase,
+  Building2,
+  CreditCard,
+  AlertCircle,
+  Loader2,
+  FileText,
+  Boxes,
+  Cpu,
+  Download,
+  Menu,
+  X,
+  Award,
+  Coins
 } from 'lucide-react';
 import { DokyaLogo } from './DokyaLogo';
 import { auth } from '../lib/firebase';
+import { Landing3DCard } from './landing/Landing3DCard';
+import { LandingHero3DShowcase } from './landing/LandingHero3DShowcase';
+import { LandingCvCarousel } from './landing/LandingCvCarousel';
+import { LandingInvoicesCarousel } from './landing/LandingInvoicesCarousel';
+import { LandingPaymentMarquee } from './landing/LandingPaymentMarquee';
+import { LandingSteps } from './landing/LandingSteps';
+import { LandingAtsSimulator } from './landing/LandingAtsSimulator';
+import { LandingComparison } from './landing/LandingComparison';
+import { LandingTestimonials } from './landing/LandingTestimonials';
+import { LandingFloatingCta } from './landing/LandingFloatingCta';
 
 interface LandingPageProps {
   onGoToAuth: (mode?: 'login' | 'signup') => void;
@@ -35,6 +49,77 @@ interface LandingPageProps {
   onOpenTemplates: (service?: string) => void;
 }
 
+// -------------------------------------------------------------
+// PRICING OFFERS (LES 3 FORMULES OFFICIELLES DOKYA)
+// -------------------------------------------------------------
+interface PricingPlan {
+  id: 'single' | 'vip_career' | 'business';
+  title: string;
+  priceFormatted: string;
+  amount: number;
+  subtitle: string;
+  popular?: boolean;
+  tag: string;
+  features: string[];
+  ctaLabel: string;
+  colorScheme: 'slate' | 'indigo' | 'emerald';
+}
+
+const PRICING_PLANS: PricingPlan[] = [
+  {
+    id: 'single',
+    title: 'Paiement à l\'acte',
+    priceFormatted: '1 000 FCFA',
+    amount: 1000,
+    subtitle: '~1.50€ • Idéal pour un besoin ponctuel et immédiat',
+    tag: 'Accès Instantané',
+    colorScheme: 'slate',
+    features: [
+      '1 Document complet au choix (CV ATS ou Facture Pro)',
+      'Exports illimités en PDF Haute Définition & Word (.docx)',
+      'Remplissage guidé & reformulation assistée par l\'IA',
+      'Archivage permanent dans votre espace client sécurisé',
+      'Sans abonnement ni prélèvement récurrent'
+    ],
+    ctaLabel: 'Payer à l\'acte (1 000 FCFA)'
+  },
+  {
+    id: 'vip_career',
+    title: 'Pass VIP Carrière',
+    priceFormatted: '2 500 FCFA',
+    amount: 2500,
+    subtitle: '~3.80€ pour 30 jours • Boost emploi & candidatures',
+    popular: true,
+    tag: '⭐ Le Plus Choisi (Candidats)',
+    colorScheme: 'indigo',
+    features: [
+      'Accès illimité aux 50+ modèles de CV ATS internationaux',
+      'Générateur de Lettres de motivation IA illimitées',
+      'Simulateur d\'entretien d\'embauche avec questions de recruteurs',
+      'Téléchargements illimités PDF HD & Word pendant 30 jours',
+      'Badge Candidat VIP & Support prioritaire WhatsApp'
+    ],
+    ctaLabel: 'Activer le Pass VIP (2 500 FCFA)'
+  },
+  {
+    id: 'business',
+    title: 'Pass Business',
+    priceFormatted: '5 000 FCFA',
+    amount: 5000,
+    subtitle: '~7.60€ pour 30 jours • Entreprises, PME & Indépendants',
+    tag: 'Solution Entreprises & PME',
+    colorScheme: 'emerald',
+    features: [
+      'Factures & Devis conformes OHADA en illimité',
+      'Gestion du carnet clients & suivi des règlements',
+      'Calculs automatiques TVA (18%) & conversion 1-clic devis en facture',
+      'Multi-entreprises & mentions légales obligatoires (NINEA, RC)',
+      'Inclus l\'intégralité du Pass VIP Carrière (CVs + Lettres illimités)'
+    ],
+    ctaLabel: 'Activer le Pass Business (5 000 FCFA)'
+  }
+];
+
 export const LandingPage: React.FC<LandingPageProps> = ({
   onGoToAuth,
   onGoToDashboard,
@@ -43,7 +128,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenTemplates,
 }) => {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  const [selectedCurrency, setSelectedCurrency] = useState<'XOF' | 'EUR' | 'USD'>('XOF');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // États checkout GeniusPay direct
+  const [processingPlanId, setProcessingPlanId] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
   const currentUser = auth.currentUser;
+
+  // Calcul du prix et du sous-titre selon la devise choisie
+  const getPlanPriceDisplay = (plan: PricingPlan) => {
+    if (selectedCurrency === 'EUR') {
+      if (plan.id === 'single') return { price: '1,50 €', sub: '1 000 FCFA • Paiement unique sans abonnement' };
+      if (plan.id === 'vip_career') return { price: '3,80 €', sub: '2 500 FCFA pour 30 jours d\'accès illimité' };
+      return { price: '7,60 €', sub: '5 000 FCFA pour 30 jours • Factures & CVs illimités' };
+    }
+    if (selectedCurrency === 'USD') {
+      if (plan.id === 'single') return { price: '$1.65', sub: '1 000 FCFA • Instant one-time download' };
+      if (plan.id === 'vip_career') return { price: '$4.15', sub: '2 500 FCFA • 30 days full career access' };
+      return { price: '$8.30', sub: '5 000 FCFA • 30 days full business suite' };
+    }
+    // Par défaut XOF / FCFA
+    return { price: plan.priceFormatted, sub: plan.subtitle };
+  };
 
   const handleActionClick = (service?: 'cv' | 'letter' | 'devis' | 'facture' | 'ebook') => {
     if (currentUser) {
@@ -57,26 +165,84 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
+  // Déclenchement automatisé du paiement GeniusPay direct
+  const handleGeniusPayPlanCheckout = async (plan: PricingPlan) => {
+    setProcessingPlanId(plan.id);
+    setCheckoutError(null);
+
+    try {
+      const currentUid = currentUser?.uid || `guest_${Date.now()}`;
+      const currentUserEmail = (currentUser?.email || 'client@dokya.com').trim();
+      const currentUserName = (currentUser?.displayName || 'Client Dokya').trim();
+
+      const response = await fetch('/api/geniuspay/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: plan.amount,
+          currency: 'XOF',
+          description: `Souscription ${plan.title} - Dokya Platform`,
+          customer: {
+            name: currentUserName,
+            email: currentUserEmail,
+            phone: '+221770000000'
+          },
+          redirect_url: `${window.location.origin}/dashboard?payment=success&plan=${plan.id}`,
+          success_url: `${window.location.origin}/dashboard?payment=success&plan=${plan.id}`,
+          cancel_url: `${window.location.origin}/#tarifs`,
+          error_url: `${window.location.origin}/#tarifs?payment=error`,
+          metadata: {
+            userId: currentUid,
+            planType: plan.id,
+            source: 'landing_pricing_card'
+          }
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erreur lors de l\'initialisation de la session GeniusPay.');
+      }
+
+      const checkoutUrl = data.checkout_url || data.checkoutUrl;
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl;
+      } else {
+        throw new Error('Lien de paiement GeniusPay indisponible.');
+      }
+    } catch (err: any) {
+      console.error('[Landing GeniusPay Error]:', err);
+      setCheckoutError(err.message || 'Impossible d\'ouvrir la passerelle de paiement sécurisée. Veuillez réessayer.');
+    } finally {
+      setProcessingPlanId(null);
+    }
+  };
+
   const faqs = [
     {
-      q: "Comment fonctionne le tunnel de création sur Dokya AI ?",
-      a: "Le processus est simple et guidé en 4 étapes : 1. Choisissez votre type de document depuis votre tableau de bord. 2. Sélectionnez votre modèle visuel parmi plus de 50 designs professionnels. 3. Remplissez le formulaire assisté par l'IA Gemini. 4. Téléchargez instantanément votre document en PDF haute définition et Word (.docx) prêt à l'emploi."
+      q: "Comment fonctionne la double solution CV ATS & Factures OHADA sur Dokya ?",
+      a: "Dokya regroupe sur une seule interface intelligente les deux outils documentaires indispensables : 1. Pour votre carrière, un générateur de CV certifiés ATS conformes aux exigences des recruteurs internationaux et locaux. 2. Pour votre activité, un module de facturation et devis strictement conforme au droit comptable OHADA (UEMOA/CEMAC) avec calculs automatisés et mentions légales obligatoires."
     },
     {
-      q: "Les CV créés sont-ils compatibles avec les filtres ATS ?",
-      a: "Oui, 100% de nos modèles de CV respectent les standards internationaux de parsing ATS (Applicant Tracking Systems) utilisés par les recruteurs au Sénégal, en Côte d'Ivoire et dans toute l'Afrique de l'Ouest. Votre profil est scanné sans perte d'information."
+      q: "Pourquoi les CV Dokya garantissent-ils un score ATS supérieur à 98% ?",
+      a: "Nos modèles utilisent une structure de balisage sémantique vectorielle sans tableaux imbriqués opaques ni éléments graphiques non parsables. Ils sont testés et validés auprès des principaux moteurs de filtrage (Workday, Taleo, Greenhouse, BambooHR) pour assurer une extraction exacte de vos compétences et expériences."
     },
     {
-      q: "Quels sont les moyens de paiement acceptés ?",
-      a: "Nous acceptons tous les paiements Mobile Money locaux instantanés : Wave Sénégal, Orange Money, Free Money, ainsi que les cartes bancaires via notre passerelle sécurisée. Les tarifs sont clairs : 1 000 FCFA à l'acte ou 4 900 FCFA/mois pour le Pass VIP Illimité."
+      q: "Comment s'effectue le paiement instantané via GeniusPay ?",
+      a: "Le paiement est 100% automatisé et sans délai : dès que vous cliquez sur le bouton de paiement, vous êtes redirigé vers la passerelle sécurisée GeniusPay. Vous pouvez régler directement via Wave Sénégal, Orange Money, MTN Moov ou Carte Bancaire (Visa/Mastercard). Dès validation, votre document ou abonnement est activé immédiatement sans envoi de capture d'écran."
     },
     {
-      q: "Les factures et devis sont-ils conformes aux règles OHADA / UEMOA ?",
-      a: "Absolument. Nos modèles intègrent toutes les mentions légales obligatoires au Sénégal et dans la zone UEMOA : NINEA, Registre de Commerce (RC), TVA (18%), calculs automatiques des montants HT/TTC et arrêté de la somme en toutes lettres."
+      q: "Les factures et devis sont-ils conformes aux normes fiscales OHADA / UEMOA ?",
+      a: "Oui, à 100%. Nos factures intègrent automatiquement le Numéro d'Identification Nationale des Entreprises et Associations (NINEA), le Registre de Commerce (RC), la TVA (18%), l'arrêté de la somme en toutes lettres ainsi que les coordonnées de règlement Mobile Money et bancaires."
     },
     {
-      q: "Mes documents restent-ils accessibles après création ?",
-      a: "Oui, tous vos documents générés sont automatiquement archivés dans votre espace client privé, dans la section 'Mes Documents'. Vous pouvez les consulter, les rééditer ou les retélécharger à tout moment."
+      q: "Quelles sont les 3 offres tarifaires proposées ?",
+      a: "Nous proposons 3 formules limpides : 1. Paiement à l'acte à 1 000 FCFA (~1.50€) pour un document unique avec téléchargements illimités. 2. Pass VIP Carrière à 2 500 FCFA (~3.80€) pour 30 jours d'accès illimité aux 50+ CVs ATS, lettres IA et simulateur d'entretien. 3. Pass Business à 5 000 FCFA (~7.60€) pour 30 jours de facturation et devis OHADA illimités avec gestion client et Pass VIP inclus."
+    },
+    {
+      q: "Puis-je exporter mes documents au format Word (.docx) et PDF ?",
+      a: "Oui. Chaque document généré peut être téléchargé instantanément en PDF vectoriel A4 prêt pour l'impression ou l'envoi email, ainsi qu'au format Word (.docx) entièrement éditable sur Microsoft Word, Google Docs ou LibreOffice."
     }
   ];
 
@@ -96,31 +262,52 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           />
 
-          {/* Nav items (Section anchors) */}
-          <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-slate-300">
+          {/* Nav items */}
+          <nav className="hidden lg:flex items-center gap-5 text-xs font-bold text-slate-300">
             <a 
-              href="#services" 
+              href="#hero-section" 
               className="hover:text-white transition-colors cursor-pointer"
             >
-              Services (5)
+              Accueil
             </a>
             <a 
-              href="#fonctionnalites" 
-              className="hover:text-white transition-colors cursor-pointer"
+              href="#carrousels-section" 
+              className="hover:text-cyan-400 transition-colors cursor-pointer flex items-center gap-1"
             >
-              Fonctionnalités
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Modèles Réels 3D</span>
             </a>
             <a 
-              href="#modeles" 
+              href="#comment-ca-marche" 
               className="hover:text-white transition-colors cursor-pointer"
             >
-              Modèles (50+)
+              Comment ça marche
+            </a>
+            <a 
+              href="#simulateur-ats" 
+              className="hover:text-indigo-400 transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Simulateur IA</span>
+            </a>
+            <a 
+              href="#comparatif" 
+              className="hover:text-white transition-colors cursor-pointer"
+            >
+              Comparatif
             </a>
             <a 
               href="#tarifs" 
-              className="hover:text-emerald-400 transition-colors cursor-pointer"
+              className="hover:text-emerald-400 transition-colors cursor-pointer flex items-center gap-1"
             >
-              Tarifs FCFA
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Tarifs (Dès 1 000 F)</span>
+            </a>
+            <a 
+              href="#avis" 
+              className="hover:text-amber-300 transition-colors cursor-pointer"
+            >
+              Avis Clients
             </a>
             <a 
               href="#faq" 
@@ -131,15 +318,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </nav>
 
           {/* Action CTAs */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {currentUser ? (
               <button
                 type="button"
                 onClick={onGoToDashboard}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer hover:scale-102"
+                className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer hover:scale-102"
               >
                 <LayoutDashboard className="w-4 h-4 text-indigo-200" />
-                <span>Mon Espace Client</span>
+                <span className="hidden xs:inline">Mon Espace</span>
               </button>
             ) : (
               <>
@@ -154,83 +341,221 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <button
                   type="button"
                   onClick={() => onGoToAuth('signup')}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer hover:scale-102"
+                  className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer hover:scale-102"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                   <span>Créer un compte</span>
                 </button>
               </>
             )}
+
+            {/* Mobile Hamburger Button */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="lg:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ml-1"
+              aria-label="Ouvrir le menu de navigation"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5 text-rose-400" /> : <Menu className="w-5 h-5 text-indigo-400" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        {mobileMenuOpen && (
+          <div className="lg:hidden bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-5 py-4 space-y-3 animate-in slide-in-from-top-3 duration-200 shadow-2xl">
+            <nav className="flex flex-col space-y-2 text-xs font-bold text-slate-300">
+              <a
+                href="#hero-section"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
+              >
+                Accueil
+              </a>
+              <a
+                href="#carrousels-section"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-cyan-400 transition-colors flex items-center gap-2"
+              >
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span>Modèles Réels 3D (CV &amp; Factures)</span>
+              </a>
+              <a
+                href="#comment-ca-marche"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
+              >
+                Comment ça marche (3 étapes)
+              </a>
+              <a
+                href="#simulateur-ats"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-indigo-400 transition-colors flex items-center gap-2"
+              >
+                <Cpu className="w-4 h-4 text-indigo-400" />
+                <span>Simulateur ATS &amp; Reformulation IA</span>
+              </a>
+              <a
+                href="#comparatif"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Award className="w-4 h-4 text-amber-400" />
+                <span>Tableau Comparatif Dokya</span>
+              </a>
+              <a
+                href="#tech-3d"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
+              >
+                Piliers Technologiques
+              </a>
+              <a
+                href="#services"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
+              >
+                Double Solution (Carrière &amp; PME)
+              </a>
+              <a
+                href="#tarifs"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-emerald-400 transition-colors flex items-center gap-2"
+              >
+                <Zap className="w-4 h-4 text-emerald-400" />
+                <span>Tarifs &amp; Mobile Money (Dès 1 000 F)</span>
+              </a>
+              <a
+                href="#avis"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-amber-300 transition-colors"
+              >
+                Avis Clients &amp; Réussites
+              </a>
+              <a
+                href="#faq"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
+              >
+                FAQ
+              </a>
+            </nav>
+
+            {!currentUser && (
+              <div className="pt-2 border-t border-slate-800 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onGoToAuth('login');
+                  }}
+                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 text-center"
+                >
+                  Se connecter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onGoToAuth('signup');
+                  }}
+                  className="w-1/2 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold text-center shadow-lg shadow-indigo-600/30"
+                >
+                  Créer un compte
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       {/* ========================================================================= */}
-      {/* 2. HERO SECTION                                                           */}
+      {/* 2. HERO SECTION AVEC VITRINE 3D SPATIALE                                  */}
       {/* ========================================================================= */}
-      <section className="relative overflow-hidden pt-12 pb-20 sm:pt-16 sm:pb-24 border-b border-slate-800/70">
-        {/* Ambient Glows */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-indigo-600/20 via-purple-600/15 to-emerald-500/10 blur-3xl pointer-events-none rounded-full" />
+      <section id="hero-section" className="relative overflow-hidden pt-12 pb-16 sm:pt-16 sm:pb-20 border-b border-slate-800/70">
+        
+        {/* Glows d'ambiance volumétriques */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-gradient-to-tr from-indigo-600/20 via-cyan-600/15 to-emerald-500/10 blur-3xl pointer-events-none rounded-full" />
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center space-y-8">
           
-          {/* Badge */}
+          {/* Badge International */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-bold text-slate-300 shadow-md">
             <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-            <span className="text-emerald-400">N°1 au Sénégal & UEMOA</span>
+            <Globe className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-cyan-300">Portée Internationale &amp; Afrique UEMOA</span>
             <span className="text-slate-600">•</span>
-            <span>Générateur IA Certifié ATS & OHADA</span>
+            <span className="text-slate-300">Standard Mondial ATS &amp; OHADA</span>
           </div>
 
-          {/* Main Headline */}
-          <div className="space-y-4 max-w-4xl mx-auto">
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.15]">
-              Créez des <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-300 to-amber-300">CV ATS, Lettres & Factures</span> Professionnels en 2 Minutes
+          {/* Headline Principal avec Double Proposition de Valeur */}
+          <div className="space-y-4 max-w-5xl mx-auto">
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.16]">
+              CV ATS Internationaux &amp; Factures Pro <br className="hidden sm:inline" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-cyan-300 to-emerald-400">
+                propulsés par l'Intelligence Artificielle
+              </span>
             </h1>
-            <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
-              La suite documentaire propulsée par l’Intelligence Artificielle. Choisissez un modèle visuel haute fidélité, laissez l’IA rédiger vos contenus et téléchargez vos fichiers en PDF & Word.
+            <p className="text-base sm:text-lg text-slate-300 max-w-3xl mx-auto font-normal leading-relaxed">
+              Propulsez votre carrière à l’international et professionnalisez votre facturation d’entreprise. 
+              Dokya combine la rédaction intelligente par l’IA, le respect strict des filtres ATS et la conformité légale OHADA.
             </p>
           </div>
 
-          {/* Primary Action Buttons */}
+          {/* DEUX BOUTONS D'ACTION DISTINCTS */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+            
+            {/* Bouton 1: Créer mon CV Pro */}
             <button
               type="button"
               onClick={() => handleActionClick('cv')}
-              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-black text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 transition-all hover:scale-102 cursor-pointer active:scale-95"
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-black text-sm sm:text-base shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 transition-all hover:scale-102 cursor-pointer active:scale-95 group"
             >
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Créer mon CV ATS (50+ Modèles)</span>
-              <ArrowRight className="w-4 h-4" />
+              <Briefcase className="w-5 h-5 text-amber-300" />
+              <span>Créer mon CV Pro (ATS)</span>
+              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
             </button>
 
+            {/* Bouton 2: Créer une Facture */}
             <button
               type="button"
-              onClick={() => onOpenTemplates('cv')}
-              className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 text-slate-200 border border-slate-700/80 font-bold text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer hover:border-slate-600"
+              onClick={() => handleActionClick('facture')}
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-black text-sm sm:text-base shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-3 transition-all hover:scale-102 cursor-pointer active:scale-95 group"
             >
-              <Layers className="w-4 h-4 text-indigo-400" />
-              <span>Explorer la Galerie Visuelle</span>
+              <Receipt className="w-5 h-5 text-emerald-200" />
+              <span>Créer une Facture (OHADA)</span>
+              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
             </button>
+
           </div>
 
-          {/* Social Proof & Badges */}
-          <div className="pt-8 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs font-semibold text-slate-400">
+          {/* VITRINE 3D INTERACTIVE HERO (CV ATS & FACTURE EN RELIEF) */}
+          <div className="pt-4">
+            <LandingHero3DShowcase onSelectService={handleActionClick} />
+          </div>
+
+          {/* RUBAN DÉFILANT DES VRAIS LOGOS DE PAIEMENT (WAVE, OM, MTN, MOOV, VISA, MASTERCARD, APPLE PAY, STRIPE) */}
+          <div className="pt-4 max-w-5xl mx-auto">
+            <LandingPaymentMarquee />
+          </div>
+
+          {/* Social Proof & Indicateurs d'Excellence */}
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs font-semibold text-slate-400">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>100% Parsing ATS Garanti</span>
+              <span>Score ATS Garanti 98%+</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span>Conforme Droit OHADA (UEMOA / CEMAC)</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span>Paiement Wave & Orange Money</span>
+              <span>Exports PDF Haute Définition &amp; Word</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Conforme Normes OHADA / UEMOA</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
-              <span>Téléchargement PDF + Word (.docx)</span>
+              <span>Tarifs dès 1 000 FCFA</span>
             </div>
           </div>
 
@@ -238,84 +563,183 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 3. STRICT 4-STEP CONVERSION TUNNEL INFOGRAPHIC                            */}
+      {/* 3. SECTION CARROUSELS SANS ENCADREMENT (FULL-WIDTH SCROLL INFINI)         */}
       {/* ========================================================================= */}
-      <section id="fonctionnalites" className="py-16 sm:py-20 bg-slate-900/40 border-b border-slate-800/70">
+      <section id="carrousels-section" className="py-16 sm:py-24 relative overflow-hidden space-y-12 border-b border-slate-800/70">
+        
+        {/* Glows d'ambiance volumétriques néon/violet/bleu */}
+        <div className="absolute top-1/3 left-1/4 -translate-y-1/2 w-[520px] h-[520px] bg-indigo-600/15 blur-[140px] pointer-events-none rounded-full" />
+        <div className="absolute top-2/3 right-1/4 -translate-y-1/2 w-[520px] h-[520px] bg-emerald-600/15 blur-[140px] pointer-events-none rounded-full" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] bg-cyan-500/10 blur-[130px] pointer-events-none rounded-full" />
+
+        {/* Header Global de la Galerie des Modèles */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-3 relative z-10">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/25 text-xs font-black uppercase tracking-wider shadow-sm">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Vrais Modèles Réels Dokya • Aperçus A4 Haute Définition &amp; Zoom Plein Écran</span>
+          </div>
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight">
+            Explorez les Vrais Modèles de Votre Compte Dokya
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-400 max-w-3xl mx-auto">
+            Défilement continu automatique des 50 vrais modèles de CV ATS et des 10 vrais modèles de factures et devis OHADA. Survolez pour figer le mouvement et explorer, zoomez en plein écran HD ou basculez en grille d'un simple clic.
+          </p>
+        </div>
+
+        {/* LIGNE SUPÉRIEURE : LES 50 VRAIS MODÈLES DE CV ATS HAUTE DÉFINITION */}
+        <div className="space-y-3 relative z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs sm:text-sm font-black text-indigo-300">
+              <Briefcase className="w-4 h-4 text-amber-300 shrink-0" />
+              <span>Ligne Supérieure • Les 50 Vrais Modèles de CV ATS Internationaux (Gabarits N°1 à N°50 • Score 98%+)</span>
+            </div>
+            <span className="text-[11px] font-bold text-slate-400 inline-flex items-center gap-1.5 self-start sm:self-auto">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> 
+              <span>30 Sans Photo (ATS Pur) + 20 Avec Photo • Filtres Workday &amp; Taleo</span>
+            </span>
+          </div>
+          {/* Bande défilante continue avec les 50 vrais modèles de CV */}
+          <LandingCvCarousel 
+            onSelectCvTemplate={() => handleActionClick('cv')}
+          />
+        </div>
+
+        {/* LIGNE INFÉRIEURE : LES 10 VRAIS MODÈLES DE FACTURES ET DEVIS COMMERCIAUX */}
+        <div className="space-y-3 pt-6 relative z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs sm:text-sm font-black text-emerald-300">
+              <Receipt className="w-4 h-4 text-emerald-300 shrink-0" />
+              <span>Ligne Inférieure • Les 10 Vrais Modèles de Factures &amp; Devis Conformes OHADA (Gabarits N°1 à N°10)</span>
+            </div>
+            <span className="text-[11px] font-bold text-slate-400 inline-flex items-center gap-1.5 self-start sm:self-auto">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> 
+              <span>SYSCOHADA &amp; Droit UEMOA • NINEA, RC &amp; TVA 18%</span>
+            </span>
+          </div>
+          {/* Bande défilante continue avec les 10 vrais modèles de factures/devis */}
+          <LandingInvoicesCarousel 
+            onSelectBusinessDoc={(service) => handleActionClick(service)}
+          />
+        </div>
+
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 3.1 COMMENT ÇA MARCHE EN 3 ÉTAPES (CARRIÈRE & ENTREPRISE)                 */}
+      {/* ========================================================================= */}
+      <LandingSteps onSelectService={handleActionClick} />
+
+      {/* ========================================================================= */}
+      {/* 3.2 SIMULATEUR INTERACTIF ATS & REFORMULATION IA AVANT / APRÈS            */}
+      {/* ========================================================================= */}
+      <LandingAtsSimulator onStartDoc={handleActionClick} />
+
+      {/* ========================================================================= */}
+      {/* 3.3 TABLEAU COMPARATIF : DOKYA VS WORD / EXCEL VS CANVA                  */}
+      {/* ========================================================================= */}
+      <LandingComparison onSelectService={handleActionClick} />
+
+      {/* ========================================================================= */}
+      {/* 4. BLOC TECHNIQUE & PERFORMANCE 3D : L'ARCHITETURE DOKYA                  */}
+      {/* ========================================================================= */}
+      <section id="tech-3d" className="py-16 sm:py-24 border-b border-slate-800/70 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           
           <div className="text-center space-y-3 max-w-2xl mx-auto">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-xs font-bold uppercase tracking-wider">
-              <span>Tunnel de Conversion Simplifié</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 text-xs font-black uppercase tracking-wider">
+              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Technologie &amp; Rigueur Documentaire</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
-              Comment ça marche ?
+              Conçu pour Performer devant les Algorithmes et les Experts
             </h2>
-            <p className="text-sm text-slate-400">
-              Un parcours fluide, rigoureux et transparent pour obtenir des documents impeccables.
+            <p className="text-xs sm:text-sm text-slate-400">
+              Découvrez les 4 piliers technologiques qui font la différence sur vos documents Dokya.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative">
+          {/* Grille 3D Tilt des 4 Piliers */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             
-            {/* Step 1 */}
-            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 relative group hover:border-indigo-500/50 transition-all">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-black text-lg">
-                1
+            {/* Pilier 1 : Moteur ATS */}
+            <Landing3DCard depth={14} className="h-full">
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 hover:border-indigo-500/60 transition-all h-full flex flex-col justify-between space-y-4 shadow-lg group">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                  <Cpu className="w-6 h-6" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-black text-white group-hover:text-indigo-300 transition-colors">
+                    Moteur ATS Vectoriel
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Extraction garantie de chaque compétence sans blocage graphique. Conforme à Workday, Greenhouse et Taleo.
+                  </p>
+                </div>
+                <div className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Score parsing 99%+
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-black text-white group-hover:text-indigo-400 transition-colors">
-                  Connexion & Service
-                </h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Connectez-vous à votre espace et sélectionnez l'outil souhaité (CV ATS, Lettre, Facture, Devis, Ebook).
-                </p>
-              </div>
-            </div>
+            </Landing3DCard>
 
-            {/* Step 2 */}
-            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 relative group hover:border-indigo-500/50 transition-all">
-              <div className="w-12 h-12 rounded-2xl bg-purple-600/20 border border-purple-500/30 text-purple-400 flex items-center justify-center font-black text-lg">
-                2
+            {/* Pilier 2 : Moteur OHADA */}
+            <Landing3DCard depth={14} className="h-full">
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 hover:border-emerald-500/60 transition-all h-full flex flex-col justify-between space-y-4 shadow-lg group">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-black text-white group-hover:text-emerald-300 transition-colors">
+                    Conformité OHADA &amp; UEMOA
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Intégration automatique NINEA, RC, calculs TVA 18% et arrêté de la somme en toutes lettres.
+                  </p>
+                </div>
+                <div className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> 100% Légal &amp; Fiscal
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-black text-white group-hover:text-purple-400 transition-colors">
-                  Galerie de Modèles
-                </h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Explorez le catalogue de designs professionnels style Canva et cliquez sur <strong>[ Utiliser ce modèle ]</strong>.
-                </p>
-              </div>
-            </div>
+            </Landing3DCard>
 
-            {/* Step 3 */}
-            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 relative group hover:border-indigo-500/50 transition-all">
-              <div className="w-12 h-12 rounded-2xl bg-amber-600/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-black text-lg">
-                3
+            {/* Pilier 3 : IA Gemini Multimodale */}
+            <Landing3DCard depth={14} className="h-full">
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 hover:border-cyan-500/60 transition-all h-full flex flex-col justify-between space-y-4 shadow-lg group">
+                <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-black text-white group-hover:text-cyan-300 transition-colors">
+                    IA Gemini Rédactionnelle
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Reformulation percutante de vos expériences avec verbes d'action chiffrés et lettres de motivation ultra ciblées.
+                  </p>
+                </div>
+                <div className="text-[10px] font-bold text-cyan-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> IA de Dernière Génération
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-black text-white group-hover:text-amber-400 transition-colors">
-                  Saisie & Optimisation IA
-                </h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Remplissez votre formulaire guidé pas-à-pas avec réécriture instantanée et prévisualisation directe en temps réel.
-                </p>
-              </div>
-            </div>
+            </Landing3DCard>
 
-            {/* Step 4 */}
-            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 relative group hover:border-indigo-500/50 transition-all">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-black text-lg">
-                4
+            {/* Pilier 4 : Double Export Pro */}
+            <Landing3DCard depth={14} className="h-full">
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 hover:border-amber-500/60 transition-all h-full flex flex-col justify-between space-y-4 shadow-lg group">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <Download className="w-6 h-6" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-black text-white group-hover:text-amber-300 transition-colors">
+                    Double Export PDF &amp; Word
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Téléchargez vos documents en PDF A4 vectoriel haute fidélité pour impression et en fichier Word (.docx) 100% éditable.
+                  </p>
+                </div>
+                <div className="text-[10px] font-bold text-amber-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Téléchargement Illimité
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-black text-white group-hover:text-emerald-400 transition-colors">
-                  Paiement & Téléchargement
-                </h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Règlement sécurisé (Wave / OM / Solde) et téléchargement immédiat en PDF et Word avec archivage automatique.
-                </p>
-              </div>
-            </div>
+            </Landing3DCard>
 
           </div>
 
@@ -323,201 +747,129 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 4. THE 5 OFFICIAL SERVICES CATALOG                                        */}
+      {/* 5. PRÉSENTATION DÉTAILLÉE DE LA DOUBLE SOLUTION                           */}
       {/* ========================================================================= */}
       <section id="services" className="py-16 sm:py-24 border-b border-slate-800/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
             <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
-              5 Outils IA d'Élite dans une Seule Plateforme
+              Deux Pôles d'Excellence Réunis dans une Seule Plateforme
             </h2>
             <p className="text-sm text-slate-400">
-              Des générateurs complets, sur-mesure et adaptés au contexte du travail en Afrique francophone.
+              Des technologies conçues pour éliminer les blocages d'embauche et sécuriser vos relations commerciales.
             </p>
           </div>
 
-          <div id="modeles" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
-            {/* Service 1: CV ATS */}
-            <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-indigo-500/60 transition-all duration-300 flex flex-col justify-between space-y-6 group shadow-lg">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                    <FileText className="w-6 h-6" />
+            {/* Pôle 1 : CV ATS & Carrière */}
+            <Landing3DCard depth={10} className="h-full">
+              <div className="p-8 rounded-3xl bg-gradient-to-br from-indigo-950/50 via-slate-900 to-slate-900 border border-indigo-500/40 space-y-6 shadow-xl relative overflow-hidden h-full flex flex-col justify-between">
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                      <Briefcase className="w-6 h-6" />
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      Standard International
+                    </span>
                   </div>
-                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    1 000 FCFA
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-white group-hover:text-indigo-400 transition-colors">
-                    CV ATS Professionnel
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    50+ modèles certifiés optimisés pour passer les filtres de recrutement. Format avec ou sans photo, exports PDF et Word.
-                  </p>
-                </div>
-                <ul className="space-y-2 text-xs text-slate-300 font-medium pt-2">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>50+ modèles stylisés</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Réécriture IA des expériences</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Score ATS en temps réel</span>
-                  </li>
-                </ul>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => handleActionClick('cv')}
-                className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-indigo-600/20"
-              >
-                <span>Créer mon CV ATS</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Service 2: Lettre de Motivation */}
-            <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-blue-500/60 transition-all duration-300 flex flex-col justify-between space-y-6 group shadow-lg">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                    <Mail className="w-6 h-6" />
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-black text-white">
+                      CV ATS &amp; Candidatures d'Élite
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                      Passez les filtres des logiciels de recrutement automatisés sans être rejeté. 
+                      Nos gabarits sont construits pour mettre en valeur vos compétences clés et votre parcours avec une clarté irréprochable.
+                    </p>
                   </div>
-                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    1 000 FCFA
-                  </span>
+
+                  <ul className="space-y-2.5 text-xs text-slate-300">
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>50+ Modèles certifiés compatibles avec les filtres ATS internationaux</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Rédaction et reformulation optimisée par l'IA Gemini</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Générateur de lettres de motivation ultra ciblées</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Simulateur d'entretien d'embauche avec questions de recruteurs réels</span>
+                    </li>
+                  </ul>
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-white group-hover:text-blue-400 transition-colors">
-                    Lettre de Motivation IA
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    Rédaction persuasive en 4 paragraphes (VOUS/MOI/NOUS/CONCLUSION) occupant parfaitement la page A4 avec formules de politesse adaptées.
-                  </p>
-                </div>
-                <ul className="space-y-2 text-xs text-slate-300 font-medium pt-2">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Architecture 300+ mots A4</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>6 styles de mise en page</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Conseils d'entretien inclus</span>
-                  </li>
-                </ul>
+
+                <button
+                  type="button"
+                  onClick={() => handleActionClick('cv')}
+                  className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-indigo-600/25 mt-4"
+                >
+                  <span>Accéder au Générateur de CV ATS</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
+            </Landing3DCard>
 
-              <button
-                type="button"
-                onClick={() => handleActionClick('letter')}
-                className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-blue-600/20"
-              >
-                <span>Rédiger ma Lettre IA</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Service 3: Facture & Devis */}
-            <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/60 transition-all duration-300 flex flex-col justify-between space-y-6 group shadow-lg">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                    <Receipt className="w-6 h-6" />
+            {/* Pôle 2 : Facturation & Devis OHADA */}
+            <Landing3DCard depth={10} className="h-full">
+              <div className="p-8 rounded-3xl bg-gradient-to-br from-emerald-950/50 via-slate-900 to-slate-900 border border-emerald-500/40 space-y-6 shadow-xl relative overflow-hidden h-full flex flex-col justify-between">
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                      <Building2 className="w-6 h-6" />
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Conforme OHADA / UEMOA
+                    </span>
                   </div>
-                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    1 000 FCFA
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-white group-hover:text-emerald-400 transition-colors">
-                    Factures & Devis OHADA
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    Documents commerciaux légaux avec NINEA, RC, TVA, arrêté en toutes lettres et conditions de règlement UEMOA.
-                  </p>
-                </div>
-                <ul className="space-y-2 text-xs text-slate-300 font-medium pt-2">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Mentions légales Sénégal</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Arrêté en lettres automatique</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Pack Business Duo à 1 499 F</span>
-                  </li>
-                </ul>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => handleActionClick('devis')}
-                className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-600/20"
-              >
-                <span>Créer Devis / Facture</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Service 4: Ebook & Rapports */}
-            <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-purple-500/60 transition-all duration-300 flex flex-col justify-between space-y-6 group shadow-lg">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
-                    <BookOpen className="w-6 h-6" />
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-black text-white">
+                      Factures Pro &amp; Devis Commerciaux
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                      Émettez des documents comptables juridiquement irréprochables pour vos clients. 
+                      Calcul automatique de la TVA (18%), arrêté de la somme en toutes lettres et conversion devis en facture en un clic.
+                    </p>
                   </div>
-                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    3 000 FCFA
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-white group-hover:text-purple-400 transition-colors">
-                    Ebooks & Rapports Amazon KDP
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                    Générez des ouvrages complets de 30 à 150 pages structurés en chapitres avec introduction, conclusion et 4e de couverture.
-                  </p>
-                </div>
-                <ul className="space-y-2 text-xs text-slate-300 font-medium pt-2">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Recherche de niches rentables</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Rédaction chapitre par chapitre</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Prêt pour Amazon KDP</span>
-                  </li>
-                </ul>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => handleActionClick('ebook')}
-                className="w-full py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-purple-600/20"
-              >
-                <span>Générer un Ebook IA</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
+                  <ul className="space-y-2.5 text-xs text-slate-300">
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Mentions obligatoires intégrées : NINEA, Registre de Commerce (RC), adresse fiscale</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Calcul automatique des totaux HT, TVA 18%, acomptes et Net à payer</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Conversion immédiate d'un devis accepté en facture d'acompte ou de solde</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Gestion du répertoire clients et suivi des règlements Mobile Money &amp; Virement</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleActionClick('facture')}
+                  className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-600/25 mt-4"
+                >
+                  <span>Accéder au Module Facturation Pro</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </Landing3DCard>
 
           </div>
 
@@ -525,142 +877,170 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 5. PRICING OFFERS SECTION                                                 */}
+      {/* 5.1 AVIS CLIENTS CERTIFIÉS & STATS D'ADOPTION                             */}
+      {/* ========================================================================= */}
+      <LandingTestimonials />
+
+      {/* ========================================================================= */}
+      {/* 6. SECTION TARIFICATION 3D DIRECTE (3 OFFRES + GENIUSPAY 1-CLIC)           */}
       {/* ========================================================================= */}
       <section id="tarifs" className="py-16 sm:py-24 bg-slate-900/30 border-b border-slate-800/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           
           <div className="text-center space-y-3 max-w-2xl mx-auto">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-xs font-bold uppercase tracking-wider">
-              <span>Tarification Transparente</span>
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Tarification Claire &amp; Sans Surprise</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
-              Payez à l'acte ou profitez du Pass VIP Illimité
+              Choisissez votre Formule &amp; Payez en 1-Clic
             </h2>
             <p className="text-sm text-slate-400">
-              Aucun frais caché. Règlement simple par Wave, Orange Money ou Carte Bancaire.
+              Règlement instantané sécurisé par Wave, Orange Money, MTN ou Carte Bancaire via GeniusPay.
             </p>
+
+            {/* Sélecteur de Devise Interactif */}
+            <div className="pt-2 flex items-center justify-center gap-1.5">
+              <span className="text-xs text-slate-400 font-bold mr-1 flex items-center gap-1">
+                <Coins className="w-3.5 h-3.5 text-amber-400" />
+                <span>Affichage :</span>
+              </span>
+              <div className="inline-flex p-1 rounded-2xl bg-slate-900 border border-slate-800 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCurrency('XOF')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    selectedCurrency === 'XOF'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  FCFA (XOF)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCurrency('EUR')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    selectedCurrency === 'EUR'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  EUR (€)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCurrency('USD')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    selectedCurrency === 'USD'
+                      ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  USD ($)
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          {/* Erreur de paiement le cas échéant */}
+          {checkoutError && (
+            <div className="p-4 rounded-2xl bg-rose-950/50 border border-rose-500/50 text-xs text-rose-300 flex items-center gap-2.5 max-w-2xl mx-auto">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>{checkoutError}</span>
+            </div>
+          )}
+
+          {/* LES 3 OFFRES CLAIRES EN CARTES 3D TILT */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             
-            {/* Card 1: À l'acte */}
-            <div className="p-6 sm:p-8 rounded-3xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <span className="text-xs font-extrabold uppercase px-2.5 py-1 rounded bg-slate-800 text-slate-300">
-                  À la carte
-                </span>
-                <div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-black text-white">1 000</span>
-                    <span className="text-xs font-bold text-slate-400">FCFA / doc</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">Idéal pour un besoin ponctuel et immédiat.</p>
-                </div>
-                <ul className="space-y-3 text-xs text-slate-300 pt-3 border-t border-slate-800">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>1 CV ATS ou 1 Lettre ou 1 Facture</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Exports PDF Haute Définition + Word</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Archivage dans 'Mes Documents'</span>
-                  </li>
-                </ul>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleActionClick('cv')}
-                className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-black transition-all cursor-pointer"
-              >
-                Choisir à l'acte
-              </button>
-            </div>
+            {PRICING_PLANS.map((plan) => {
+              const isProcessing = processingPlanId === plan.id;
+              const priceInfo = getPlanPriceDisplay(plan);
 
-            {/* Card 2: Pass VIP (Featured) */}
-            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-b from-indigo-950/80 to-slate-900 border-2 border-indigo-500 flex flex-col justify-between space-y-6 shadow-2xl shadow-indigo-600/20 relative">
-              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow-md">
-                ⭐ Le Plus Populaire
-              </div>
-              <div className="space-y-4">
-                <span className="text-xs font-extrabold uppercase px-2.5 py-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  Pass VIP Illimité
-                </span>
-                <div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-black text-white">4 900</span>
-                    <span className="text-xs font-bold text-slate-400">FCFA / mois</span>
-                  </div>
-                  <p className="text-xs text-indigo-300/80 mt-1">Accès total à tous les générateurs sans limite.</p>
-                </div>
-                <ul className="space-y-3 text-xs text-slate-200 pt-3 border-t border-indigo-900/60">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>CV ATS illimités (50+ modèles)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Lettres de motivation IA illimitées</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Factures & Devis OHADA illimités</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>Badge Candidat VIP & Support Prioritaire</span>
-                  </li>
-                </ul>
-              </div>
-              <button
-                type="button"
-                onClick={onOpenTarifs}
-                className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-              >
-                Souscrire au Pass VIP
-              </button>
-            </div>
+              return (
+                <Landing3DCard key={plan.id} depth={10} className="h-full">
+                  <div 
+                    className={`p-6 sm:p-8 rounded-3xl flex flex-col justify-between space-y-6 transition-all relative h-full ${
+                      plan.popular
+                        ? 'bg-gradient-to-b from-indigo-950/90 via-slate-900 to-slate-900 border-2 border-indigo-500 shadow-2xl shadow-indigo-600/25 md:-translate-y-2'
+                        : 'bg-slate-900 border border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    {/* Badge Populaire */}
+                    {plan.popular && (
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow-md flex items-center gap-1">
+                        <Star className="w-3 h-3 fill-slate-950" />
+                        <span>{plan.tag}</span>
+                      </div>
+                    )}
 
-            {/* Card 3: Pack Business Duo */}
-            <div className="p-6 sm:p-8 rounded-3xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <span className="text-xs font-extrabold uppercase px-2.5 py-1 rounded bg-slate-800 text-slate-300">
-                  Pack Business
-                </span>
-                <div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-black text-white">1 499</span>
-                    <span className="text-xs font-bold text-slate-400">FCFA</span>
+                    <div className="space-y-4">
+                      {!plan.popular && (
+                        <span className="text-xs font-black uppercase px-2.5 py-1 rounded bg-slate-800 text-slate-300">
+                          {plan.tag}
+                        </span>
+                      )}
+
+                      <div>
+                        <h3 className="text-lg font-black text-white">
+                          {plan.title}
+                        </h3>
+                        <div className="flex items-baseline gap-1.5 mt-2">
+                          <span className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono">
+                            {priceInfo.price}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {priceInfo.sub}
+                        </p>
+                      </div>
+
+                      <ul className="space-y-3 text-xs text-slate-300 pt-4 border-t border-slate-800/80">
+                        {plan.features.map((feature, idx) => (
+                          <li key={idx} className="flex items-start gap-2.5">
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <span className="leading-tight">{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Bouton de déclenchement direct GeniusPay */}
+                    <div className="space-y-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleGeniusPayPlanCheckout(plan)}
+                        disabled={isProcessing}
+                        className={`w-full py-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          plan.popular
+                            ? 'bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:opacity-95 text-white shadow-indigo-600/30'
+                            : 'bg-slate-800 hover:bg-slate-700 text-white'
+                        }`}
+                      >
+                        {isProcessing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                            <span>Connexion GeniusPay...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="w-4 h-4 text-amber-300" />
+                            <span>{plan.ctaLabel}</span>
+                          </>
+                        )}
+                      </button>
+
+                      <p className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1">
+                        <Lock className="w-3 h-3 text-emerald-400" />
+                        <span>GeniusPay : Wave, OM, MTN, Carte</span>
+                      </p>
+                    </div>
+
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">Duo Devis + Facture synchronisés en 1 clic.</p>
-                </div>
-                <ul className="space-y-3 text-xs text-slate-300 pt-3 border-t border-slate-800">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>1 Devis Commercial + 1 Facture Client</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Charte graphique assortie</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Économie de 500 FCFA</span>
-                  </li>
-                </ul>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleActionClick('devis')}
-                className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-black transition-all cursor-pointer"
-              >
-                Commander le Pack Duo
-              </button>
-            </div>
+                </Landing3DCard>
+              );
+            })}
 
           </div>
 
@@ -668,7 +1048,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 6. FAQ SECTION                                                            */}
+      {/* 7. FAQ SECTION                                                            */}
       {/* ========================================================================= */}
       <section id="faq" className="py-16 sm:py-20 border-b border-slate-800/70">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -678,7 +1058,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Questions Fréquemment Posées
             </h2>
             <p className="text-xs sm:text-sm text-slate-400">
-              Tout ce que vous devez savoir pour démarrer sereinement sur Dokya AI.
+              Toutes les réponses pour propulser votre carrière et votre facturation sur Dokya.
             </p>
           </div>
 
@@ -712,26 +1092,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 7. FINAL CTA BANNER                                                       */}
+      {/* 8. BANNIÈRE FINALE D'ACTION                                               */}
       {/* ========================================================================= */}
       <section className="py-16 sm:py-20 bg-gradient-to-b from-indigo-950/40 via-slate-950 to-slate-950 text-center">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <div className="w-14 h-14 rounded-3xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center mx-auto text-white shadow-xl shadow-indigo-600/30">
+          <div className="w-14 h-14 rounded-3xl bg-gradient-to-tr from-indigo-600 via-cyan-600 to-emerald-600 flex items-center justify-center mx-auto text-white shadow-xl shadow-indigo-600/30">
             <Sparkles className="w-7 h-7 text-amber-300" />
           </div>
           <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
-            Prêt à transformer votre carrière et vos documents professionnels ?
+            Prêt à faire passer vos documents au standard international ?
           </h2>
           <p className="text-sm text-slate-300 max-w-xl mx-auto">
-            Rejoignez plus de 10 000 candidats et professionnels qui font confiance à Dokya AI au Sénégal et en Afrique de l’Ouest.
+            Rejoignez plus de 10 000 professionnels, cadres, freelances et PME qui font confiance à Dokya au Sénégal et dans le monde.
           </p>
-          <div className="pt-2">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
             <button
               type="button"
               onClick={() => handleActionClick('cv')}
-              className="px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm shadow-xl shadow-indigo-600/40 inline-flex items-center gap-3 transition-all hover:scale-102 cursor-pointer"
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm shadow-xl shadow-indigo-600/40 inline-flex items-center justify-center gap-3 transition-all hover:scale-102 cursor-pointer"
             >
-              <span>Créer mon premier document maintenant</span>
+              <span>Créer mon CV ATS maintenant</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleActionClick('facture')}
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm shadow-xl shadow-emerald-600/40 inline-flex items-center justify-center gap-3 transition-all hover:scale-102 cursor-pointer"
+            >
+              <span>Créer ma Facture OHADA</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -739,22 +1127,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 8. FOOTER                                                                 */}
+      {/* 9. FOOTER                                                                 */}
       {/* ========================================================================= */}
       <footer className="bg-slate-950 border-t border-slate-800/80 py-10 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <DokyaLogo size="xs" variant="compact" showBadge={false} />
             <span className="text-slate-600">•</span>
-            <span>Suite Documentaire & Recrutement IA</span>
+            <span>Suite Documentaire Internationale &amp; Recrutement IA</span>
           </div>
           <div className="flex items-center gap-4 text-[11px]">
-            <span>Dakar, Sénégal (Zone UEMOA)</span>
+            <span>Dakar, Sénégal (Zone UEMOA) &amp; International</span>
             <span>•</span>
-            <span>Support Wave & Orange Money</span>
+            <span>Paiements Sécurisés GeniusPay (Wave, OM, Cartes)</span>
           </div>
         </div>
       </footer>
+
+      {/* Barre d'action rapide flottante (CTA Bottom Sticky) */}
+      <LandingFloatingCta onSelectService={handleActionClick} />
 
     </div>
   );

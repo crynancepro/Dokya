@@ -593,6 +593,11 @@ export async function saveCandidateProfile(profile: CandidateProfile): Promise<b
   }
 }
 
+// User-scoped Local Storage Key Helpers (Strict Data Isolation per User)
+export const getLocalDocumentsKey = (uid?: string) => `dokya_saved_docs_${uid || auth.currentUser?.uid || 'guest'}`;
+export const getLocalProfileKey = (uid?: string) => `dokya_user_profile_${uid || auth.currentUser?.uid || 'guest'}`;
+export const getLocalTransactionsKey = (uid?: string) => `dokya_transactions_${uid || auth.currentUser?.uid || 'guest'}`;
+
 export async function fetchUserDocuments(userId: string): Promise<SavedUserDocument[]> {
   if (!userId || userId === 'guest') return [];
   const path = 'user_documents';
@@ -607,6 +612,42 @@ export async function fetchUserDocuments(userId: string): Promise<SavedUserDocum
   } catch (error) {
     console.warn('Error fetching user documents:', error);
     return [];
+  }
+}
+
+/**
+ * Abonnement en temps réel aux documents d'un utilisateur spécifique.
+ * Garantit l'isolation stricte : un utilisateur ne reçoit JAMAIS les documents d'un autre.
+ */
+export function subscribeToUserDocuments(
+  userId: string,
+  onUpdate: (docs: SavedUserDocument[]) => void
+): () => void {
+  if (!userId || userId === 'guest') {
+    onUpdate([]);
+    return () => {};
+  }
+  try {
+    const q = query(collection(db, 'user_documents'), where('userId', '==', userId));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs: SavedUserDocument[] = [];
+      snapshot.forEach((d) => {
+        docs.push(d.data() as SavedUserDocument);
+      });
+      docs.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
+      
+      try {
+        localStorage.setItem(getLocalDocumentsKey(userId), JSON.stringify(docs));
+      } catch (_e) {}
+
+      onUpdate(docs);
+    }, (err) => {
+      console.warn('[subscribeToUserDocuments warn]:', err);
+    });
+    return unsub;
+  } catch (e) {
+    console.warn('[subscribeToUserDocuments init warn]:', e);
+    return () => {};
   }
 }
 
@@ -689,14 +730,15 @@ export async function saveGeneratedDocumentMetadata(params: SaveDocumentMetadata
   };
 
   try {
-    // Sync to local storage history as well for instant offline reactivity
-    const savedDocsList = localStorage.getItem('senegal_cv_saved_documents');
+    // Sync to user-scoped local storage history for instant offline reactivity
+    const storageKey = getLocalDocumentsKey(currentUid);
+    const savedDocsList = localStorage.getItem(storageKey);
     let docs: any[] = [];
     if (savedDocsList) {
       try { docs = JSON.parse(savedDocsList); } catch (e) {}
     }
     docs.unshift(userDoc);
-    localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(docs));
+    localStorage.setItem(storageKey, JSON.stringify(docs));
   } catch (e) {
     console.warn('Could not sync document metadata to localStorage:', e);
   }
@@ -717,12 +759,25 @@ export async function deleteUserDocument(docId: string): Promise<boolean> {
   if (!auth.currentUser) {
     return true;
   }
+  const currentUid = auth.currentUser.uid;
   const path = `user_documents/${docId}`;
   try {
     const docRef = doc(db, 'user_documents', docId);
     await deleteDoc(docRef);
     const rootDocRef = doc(db, 'documents', docId);
     await deleteDoc(rootDocRef).catch(() => {});
+
+    // Sync user-scoped local cache
+    try {
+      const storageKey = getLocalDocumentsKey(currentUid);
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const list = JSON.parse(raw);
+        const filtered = list.filter((d: any) => d.id !== docId);
+        localStorage.setItem(storageKey, JSON.stringify(filtered));
+      }
+    } catch (_e) {}
+
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
@@ -3001,9 +3056,10 @@ export async function updateInvoicePaymentStatus(
     }
   } catch (e) {}
 
-  // 2. Mise à jour dans le cache local de senegal_cv_saved_documents
+  // 2. Mise à jour dans le cache local isolé de l'utilisateur
   try {
-    const rawDocs = localStorage.getItem('senegal_cv_saved_documents');
+    const storageKey = getLocalDocumentsKey(currentUid);
+    const rawDocs = localStorage.getItem(storageKey);
     if (rawDocs) {
       const docs: SavedUserDocument[] = JSON.parse(rawDocs);
       let changed = false;
@@ -3021,7 +3077,7 @@ export async function updateInvoicePaymentStatus(
         }
       }
       if (changed) {
-        localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(docs));
+        localStorage.setItem(storageKey, JSON.stringify(docs));
       }
     }
   } catch (e) {}
@@ -3140,9 +3196,10 @@ export async function updateQuoteStatus(
     }
   } catch (e) {}
 
-  // 2. Local update saved docs
+  // 2. Mise à jour dans le cache local isolé de l'utilisateur
   try {
-    const rawDocs = localStorage.getItem('senegal_cv_saved_documents');
+    const storageKey = getLocalDocumentsKey(currentUid);
+    const rawDocs = localStorage.getItem(storageKey);
     if (rawDocs) {
       const docs: SavedUserDocument[] = JSON.parse(rawDocs);
       let changed = false;
@@ -3156,7 +3213,7 @@ export async function updateQuoteStatus(
         }
       }
       if (changed) {
-        localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(docs));
+        localStorage.setItem(storageKey, JSON.stringify(docs));
       }
     }
   } catch (e) {}

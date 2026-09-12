@@ -17,7 +17,8 @@ import {
   deleteUserDocument, fetchUserOrders, saveOrderRecord, OrderRecord,
   saveTransactionRecord, fetchUserTransactions, subscribeToUserProfile,
   subscribeToUserTransactions, updateInvoicePaymentStatus, updateQuoteStatus,
-  convertQuoteToInvoice, saveOrUpdateBusinessDocument
+  convertQuoteToInvoice, saveOrUpdateBusinessDocument,
+  subscribeToUserDocuments, getLocalDocumentsKey, getLocalProfileKey, getLocalTransactionsKey
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
@@ -90,75 +91,70 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const [docFilterType, setDocFilterType] = useState<string>('all');
   const [docSearchQuery, setDocSearchQuery] = useState<string>('');
 
-  // Profile state - Production Mode : 0 FCFA Solde Initial
-  const [profile, setProfile] = useState<CandidateProfile>(() => {
-    const saved = localStorage.getItem('senegal_cv_user_profile');
-    if (saved) {
-      try { 
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.walletBalance === 'number') parsed.balance = parsed.walletBalance;
-        if (typeof parsed.balance !== 'number') parsed.balance = 0;
-        if (!parsed.personalInfo) {
-          parsed.personalInfo = {
-            firstName: '',
-            lastName: '',
-            email: parsed.email || user?.email || '',
-            phone: '',
-            address: '',
-            city: 'Dakar',
-            country: 'Sénégal',
-            targetJob: '',
-            linkedin: '',
-            portfolio: ''
-          };
-        }
-        if (!parsed.experiences) parsed.experiences = [];
-        if (!parsed.education) parsed.education = [];
-        if (!parsed.skills) parsed.skills = [];
-        if (!parsed.languages) parsed.languages = [];
-        return parsed;
-      } catch (e) { /* ignore */ }
-    }
-    return {
-      uid: user?.uid || 'guest',
-      email: user?.email || '',
-      personalInfo: {
-        firstName: '',
-        lastName: '',
-        email: user?.email || '',
-        phone: '',
-        address: '',
-        city: 'Dakar',
-        country: 'Sénégal',
-        targetJob: '',
-        linkedin: '',
-        portfolio: ''
-      },
-      experiences: [],
-      education: [],
-      skills: [{ category: 'Compétences Principales', skills: ['Gestion de projet', 'Analyse de données'] }],
-      languages: [{ name: 'Français', level: 'Bilingue / Maternelle' }],
-      credits: 0,
-      balance: 0,
-      subscriptionStatus: 'free',
-      updatedAt: new Date().toISOString()
-    };
+  // Initializer helper for a clean, user-scoped profile
+  const createCleanInitialProfile = (u?: FirebaseUser | null): CandidateProfile => ({
+    uid: u?.uid || 'guest',
+    email: u?.email || '',
+    displayName: u?.displayName || u?.email?.split('@')[0] || 'Candidat',
+    personalInfo: {
+      firstName: '',
+      lastName: '',
+      email: u?.email || '',
+      phone: '',
+      address: '',
+      city: 'Dakar',
+      country: 'Sénégal',
+      targetJob: '',
+      linkedin: '',
+      portfolio: ''
+    },
+    experiences: [],
+    education: [],
+    skills: [{ category: 'Compétences Principales', skills: ['Gestion de projet', 'Analyse de données'] }],
+    languages: [{ name: 'Français', level: 'Bilingue / Maternelle' }],
+    credits: 0,
+    balance: 0,
+    subscriptionStatus: 'free',
+    updatedAt: new Date().toISOString()
   });
 
-  // Saved documents
+  // Profile state - Strictly isolated per authenticated user
+  const [profile, setProfile] = useState<CandidateProfile>(() => {
+    const currentUid = auth.currentUser?.uid;
+    if (currentUid && currentUid !== 'guest') {
+      try {
+        const saved = localStorage.getItem(getLocalProfileKey(currentUid));
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (typeof parsed.walletBalance === 'number') parsed.balance = parsed.walletBalance;
+          if (typeof parsed.balance !== 'number') parsed.balance = 0;
+          return parsed;
+        }
+      } catch (_e) {}
+    }
+    return createCleanInitialProfile(auth.currentUser);
+  });
+
+  // Saved documents - Strictly isolated per authenticated user
   const [documents, setDocuments] = useState<SavedUserDocument[]>(() => {
-    const saved = localStorage.getItem('senegal_cv_saved_documents');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
+    const currentUid = auth.currentUser?.uid;
+    if (currentUid && currentUid !== 'guest') {
+      try {
+        const saved = localStorage.getItem(getLocalDocumentsKey(currentUid));
+        if (saved) return JSON.parse(saved);
+      } catch (_e) {}
     }
     return [];
   });
 
-  // Transactions History - Clean empty array by default (Real Firestore transactions only)
+  // Transactions History - Strictly isolated per authenticated user
   const [transactions, setTransactions] = useState<TransactionRecord[]>(() => {
-    const saved = localStorage.getItem('senegal_cv_transactions');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
+    const currentUid = auth.currentUser?.uid;
+    if (currentUid && currentUid !== 'guest') {
+      try {
+        const saved = localStorage.getItem(getLocalTransactionsKey(currentUid));
+        if (saved) return JSON.parse(saved);
+      } catch (_e) {}
     }
     return [];
   });
@@ -178,18 +174,52 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const [paywallTargetFormat, setPaywallTargetFormat] = useState<'pdf' | 'docx'>('pdf');
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
 
-  // Listen to auth & Real-Time Firestore User Profile and Transactions Subscription
+  // Listen to auth & Real-Time Firestore User Profile, Documents and Transactions Subscriptions
+  // Strict multi-user data isolation: ensures zero cross-user data leakage
   useEffect(() => {
     let unsubProfileSnapshot: (() => void) | null = null;
+    let unsubDocumentsSnapshot: (() => void) | null = null;
     let unsubTransactionsSnapshot: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+
+      // 1. Immediately unsubscribe from previous user listeners
+      if (unsubProfileSnapshot) {
+        unsubProfileSnapshot();
+        unsubProfileSnapshot = null;
+      }
+      if (unsubDocumentsSnapshot) {
+        unsubDocumentsSnapshot();
+        unsubDocumentsSnapshot = null;
+      }
+      if (unsubTransactionsSnapshot) {
+        unsubTransactionsSnapshot();
+        unsubTransactionsSnapshot = null;
+      }
+
       if (u) {
         setIsLoading(true);
 
-        // 1. Real-time Firestore Profile & Wallet Balance Subscription
-        if (unsubProfileSnapshot) unsubProfileSnapshot();
+        // 2. Initialize with user's isolated local cache if exists, or clean initial state
+        try {
+          const userKey = getLocalProfileKey(u.uid);
+          const raw = localStorage.getItem(userKey);
+          if (raw) {
+            setProfile(JSON.parse(raw));
+          } else {
+            setProfile(createCleanInitialProfile(u));
+          }
+          const docKey = getLocalDocumentsKey(u.uid);
+          const rawDocs = localStorage.getItem(docKey);
+          if (rawDocs) {
+            setDocuments(JSON.parse(rawDocs));
+          } else {
+            setDocuments([]);
+          }
+        } catch (_e) {}
+
+        // 3. Real-time Firestore Profile & Wallet Balance Subscription strictly for u.uid
         unsubProfileSnapshot = subscribeToUserProfile(u.uid, (liveProfile) => {
           const liveBalance = liveProfile.walletBalance ?? liveProfile.balance ?? 0;
           const isVip = isUserVipActive(liveProfile.subscription) || liveProfile.subscription?.status === 'ACTIVE' || liveProfile.subscription?.status === 'active';
@@ -207,44 +237,41 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               subscriptionExpiresAt: liveProfile.subscription?.expiresAt || undefined
             };
             try {
-              localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updated));
+              localStorage.setItem(getLocalProfileKey(u.uid), JSON.stringify(updated));
             } catch (_e) {}
             return updated;
           });
+          setIsLoading(false);
         });
 
-        // 2. Chargement des documents et historique des transactions via getDocs() (chargement initial à la demande)
-        try {
-          const remoteDocs = await fetchUserDocuments(u.uid);
-          if (remoteDocs && remoteDocs.length > 0) {
-            setDocuments(remoteDocs);
-            localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(remoteDocs));
-          }
-
-          const remoteTxs = await fetchUserTransactions(u.uid);
-          if (remoteTxs && remoteTxs.length > 0) {
-            setTransactions(remoteTxs);
-            localStorage.setItem('senegal_cv_transactions', JSON.stringify(remoteTxs));
-          }
-        } catch (e) {
-          console.warn('Dashboard sync error:', e);
-        } finally {
+        // 4. Real-time Firestore Documents Subscription strictly for u.uid (where userId == u.uid)
+        unsubDocumentsSnapshot = subscribeToUserDocuments(u.uid, (liveDocs) => {
+          // If the user has 0 documents, set to empty array [] so previous user's documents never persist
+          setDocuments(liveDocs || []);
           setIsLoading(false);
-        }
+        });
+
+        // 5. Real-time Firestore Transactions Subscription strictly for u.uid (where userId == u.uid)
+        unsubTransactionsSnapshot = subscribeToUserTransactions(u.uid, (liveTxs) => {
+          // If the user has 0 transactions, set to empty array [] so previous user's txs never persist
+          setTransactions(liveTxs || []);
+          setIsLoading(false);
+        });
+
       } else {
-        if (unsubProfileSnapshot) {
-          unsubProfileSnapshot();
-          unsubProfileSnapshot = null;
-        }
+        // User is logged out: Reset all user states to completely clean blank values
+        setProfile(createCleanInitialProfile(null));
+        setDocuments([]);
+        setTransactions([]);
+        setIsLoading(false);
       }
     });
 
     return () => {
       unsubscribe();
-      if (unsubProfileSnapshot) {
-        unsubProfileSnapshot();
-        unsubProfileSnapshot = null;
-      }
+      if (unsubProfileSnapshot) unsubProfileSnapshot();
+      if (unsubDocumentsSnapshot) unsubDocumentsSnapshot();
+      if (unsubTransactionsSnapshot) unsubTransactionsSnapshot();
     };
   }, []);
 
@@ -262,27 +289,35 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       if (remoteProfile) {
         const liveBalance = (remoteProfile as any).walletBalance ?? remoteProfile.balance ?? 0;
         const isVip = isUserVipActive(remoteProfile.subscription) || remoteProfile.subscription?.status === 'active' || (remoteProfile.subscription?.status as any) === 'ACTIVE';
-        setProfile(prev => ({
-          ...prev,
-          uid: remoteProfile.uid,
-          email: remoteProfile.email || prev.email,
-          balance: liveBalance,
-          subscription: remoteProfile.subscription,
-          subscriptionStatus: isVip ? ('unlimited' as const) : ('free' as const),
-          subscriptionPlan: remoteProfile.subscription?.planId,
-          subscriptionExpiresAt: remoteProfile.subscription?.expiresAt || undefined
-        }));
+        setProfile(prev => {
+          const updated = {
+            ...prev,
+            uid: remoteProfile.uid,
+            email: remoteProfile.email || prev.email,
+            balance: liveBalance,
+            subscription: remoteProfile.subscription,
+            subscriptionStatus: isVip ? ('unlimited' as const) : ('free' as const),
+            subscriptionPlan: remoteProfile.subscription?.planId,
+            subscriptionExpiresAt: remoteProfile.subscription?.expiresAt || undefined
+          };
+          try {
+            localStorage.setItem(getLocalProfileKey(user.uid), JSON.stringify(updated));
+          } catch (_e) {}
+          return updated;
+        });
       }
 
-      if (remoteDocs && remoteDocs.length > 0) {
-        setDocuments(remoteDocs);
-        localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(remoteDocs));
-      }
+      // Always update documents (even if empty [])
+      setDocuments(remoteDocs || []);
+      try {
+        localStorage.setItem(getLocalDocumentsKey(user.uid), JSON.stringify(remoteDocs || []));
+      } catch (_e) {}
 
-      if (remoteTxs && remoteTxs.length > 0) {
-        setTransactions(remoteTxs);
-        localStorage.setItem('senegal_cv_transactions', JSON.stringify(remoteTxs));
-      }
+      // Always update transactions (even if empty [])
+      setTransactions(remoteTxs || []);
+      try {
+        localStorage.setItem(getLocalTransactionsKey(user.uid), JSON.stringify(remoteTxs || []));
+      } catch (_e) {}
     } catch (e) {
       console.error('Error refreshing dashboard data:', e);
     } finally {
@@ -325,13 +360,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       };
       setProfile(updatedProfile);
       try {
-        localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updatedProfile));
+        localStorage.setItem(getLocalProfileKey(user?.uid), JSON.stringify(updatedProfile));
       } catch (_e) {}
 
       const updatedTxs = [tx, ...transactions];
       setTransactions(updatedTxs);
       try {
-        localStorage.setItem('senegal_cv_transactions', JSON.stringify(updatedTxs));
+        localStorage.setItem(getLocalTransactionsKey(user?.uid), JSON.stringify(updatedTxs));
       } catch (_e) {}
 
       if (user) {
@@ -371,7 +406,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
       setProfile(updatedProfile);
       try {
-        localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updatedProfile));
+        localStorage.setItem(getLocalProfileKey(user?.uid), JSON.stringify(updatedProfile));
       } catch (_e) {}
 
       const tx: TransactionRecord = {
@@ -395,7 +430,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       const updatedTxs = [tx, ...transactions];
       setTransactions(updatedTxs);
       try {
-        localStorage.setItem('senegal_cv_transactions', JSON.stringify(updatedTxs));
+        localStorage.setItem(getLocalTransactionsKey(user?.uid), JSON.stringify(updatedTxs));
       } catch (_e) {}
 
       if (user) {
@@ -427,7 +462,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         ...profile,
         updatedAt: new Date().toISOString()
       };
-      localStorage.setItem('senegal_cv_user_profile', JSON.stringify(updatedProfile));
+      localStorage.setItem(getLocalProfileKey(user?.uid), JSON.stringify(updatedProfile));
       if (user) {
         await saveCandidateProfile(updatedProfile);
       }
@@ -515,7 +550,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     if (window.confirm('Voulez-vous vraiment supprimer définitivement ce document de votre historique ?')) {
       const updated = documents.filter(d => d.id !== id);
       setDocuments(updated);
-      localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(updated));
+      try {
+        localStorage.setItem(getLocalDocumentsKey(user?.uid), JSON.stringify(updated));
+      } catch (_e) {}
       if (user && user.uid !== 'guest') {
         await deleteUserDocument(id);
       }

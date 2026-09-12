@@ -1,6 +1,6 @@
 {
   "name": "Dokya",
-  "description": "Dokya - Plateforme IA complète de création de CV ATS, lettres de motivation, devis pros, factures clients et livres numériques (Ebooks) avec paiements Wave, Orange Money et portefeuille intégré.",
+  "description": "Dokya - CV ATS Internationaux & Factures Pro pilotés par l'IA avec paiements 100% sécurisés via GeniusPay (Wave, Orange, MTN, Cartes Bancaires).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
