@@ -14,7 +14,8 @@ import {
   where, 
   getDocs, 
   limit,
-  Timestamp 
+  Timestamp,
+  arrayUnion
 } from 'firebase/firestore';
 
 /**
@@ -104,19 +105,37 @@ export async function POST(req) {
       return NextResponse.json({ received: true, warning: 'userId manquant' });
     }
 
-    // Calcul de la durée de validité de l'abonnement
+    // Résolution du nom de la formule et de la durée
+    const targetDocId = metadata.targetDocId || metadata.documentId;
+    let planName = 'Pass VIP Mensuel';
     let durationDays = 30;
-    if (planType === 'annual') durationDays = 365;
-    else if (planType === 'weekly') durationDays = 7;
+
+    if (planType === 'single') {
+      planName = "Paiement à l'acte (Document)";
+      durationDays = 0;
+    } else if (planType === 'vip_career') {
+      planName = 'Pass VIP Carrière (30 jours)';
+      durationDays = 30;
+    } else if (planType === 'business') {
+      planName = 'Pass Business (30 jours)';
+      durationDays = 30;
+    } else if (planType === 'annual') {
+      planName = 'Pass VIP Annuel';
+      durationDays = 365;
+    } else if (planType === 'weekly') {
+      planName = 'Pass VIP Semaine';
+      durationDays = 7;
+    }
+
     const expiresDate = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-    // 4. Mise à jour de Firestore : Activation de l'abonnement de l'utilisateur
+    // 4. Mise à jour de Firestore : Activation de l'accès document ou abonnement
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
 
     const subscriptionData = {
       planId: planType,
-      planName: planType === 'annual' ? 'Pass VIP Annuel' : (planType === 'weekly' ? 'Pass VIP Semaine' : 'Pass VIP Mensuel'),
+      planName,
       status: 'ACTIVE',
       activatedAt: now.toISOString(),
       expiresAt: expiresDate.toISOString(),
@@ -126,23 +145,32 @@ export async function POST(req) {
       updatedAt: now.toISOString()
     };
 
+    const userUpdateFields = {
+      updatedAt: now.toISOString()
+    };
+
+    // Si un document spécifique a été acheté
+    if (targetDocId) {
+      userUpdateFields.purchasedDocIds = arrayUnion(targetDocId);
+    }
+
+    // Si c'est un abonnement complet (VIP ou Business)
+    if (planType !== 'single') {
+      userUpdateFields.subscription = subscriptionData;
+      userUpdateFields.subscriptionStatus = 'unlimited';
+    }
+
     if (userSnap.exists()) {
-      await updateDoc(userRef, {
-        subscription: subscriptionData,
-        subscriptionStatus: 'unlimited',
-        updatedAt: now.toISOString()
-      });
+      await updateDoc(userRef, userUpdateFields);
     } else {
       await setDoc(userRef, {
         uid: userId,
-        subscription: subscriptionData,
-        subscriptionStatus: 'unlimited',
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString()
+        ...userUpdateFields,
+        createdAt: now.toISOString()
       }, { merge: true });
     }
 
-    console.log(`[GeniusPay Webhook] Abonnement activé avec succès pour l'utilisateur ${userId}`);
+    console.log(`[GeniusPay Webhook] Droits activés avec succès pour l'utilisateur ${userId} (${planName})`);
 
     // 5. Gestion de la commission d'affiliation (20%) si referredBy est renseigné
     if (referredBy) {
@@ -211,8 +239,10 @@ export async function POST(req) {
         userId,
         userEmail: userSnap.exists() ? userSnap.data().email : (paymentData.customer?.email || ''),
         userName: userSnap.exists() ? userSnap.data().displayName : (paymentData.customer?.name || 'Client'),
-        type: 'SUBSCRIPTION_PURCHASE',
+        type: planType === 'single' ? 'DIRECT_PURCHASE' : 'SUBSCRIPTION_PURCHASE',
         planId: planType,
+        targetDocId: targetDocId || '',
+        unlockedDocId: targetDocId || '',
         amount,
         currency,
         paymentMethod: 'geniuspay',
