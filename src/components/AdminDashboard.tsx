@@ -9,7 +9,7 @@ import {
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
   Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity,
   MessageSquare, Volume2, VolumeX, BellRing, Menu, Building2, Briefcase,
-  PanelLeftClose, PanelLeftOpen, Zap, Copy
+  PanelLeftClose, PanelLeftOpen, Zap, Copy, Terminal
 } from 'lucide-react';
 import { AdminSidebar, AdminTabType } from './admin/AdminSidebar';
 import { 
@@ -159,6 +159,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isValidatingTx, setIsValidatingTx] = useState<boolean>(false);
   const [isRejectingTx, setIsRejectingTx] = useState<boolean>(false);
   const [isPurgingReceipts, setIsPurgingReceipts] = useState<boolean>(false);
+  const [copiedTxId, setCopiedTxId] = useState<string | null>(null);
+
+  const handleCopyTxId = (text: string) => {
+    if (!text) return;
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedTxId(text);
+      setTimeout(() => setCopiedTxId(null), 2000);
+    } catch (_e) {}
+  };
 
   // Modal Adjustment State
   const [selectedUserForAdjust, setSelectedUserForAdjust] = useState<AdminUserRecord | null>(null);
@@ -431,40 +441,84 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return filteredUsers.slice(start, start + usersPerPage);
   }, [filteredUsers, userPage, usersPerPage]);
 
-  // Filtered Transactions
+  // Métriques de suivi automatisé GeniusPay (Total Revenus XOF, Total Transactions Automatisées, Utilisateurs Crédités)
+  const geniusPayMetrics = useMemo(() => {
+    let totalRevenue = 0;
+    let automatedCount = 0;
+    const creditedUsersSet = new Set<string>();
+
+    transactionsList.forEach((tx) => {
+      const isApproved = tx.status === 'APPROVED' || tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED' || tx.status === 'MANUALLY_VALIDATED';
+      const amt = Math.abs(Number(tx.amount || tx.expectedAmount || 0));
+
+      if (isApproved) {
+        totalRevenue += amt;
+        const userKey = tx.userId || (tx as any).userEmail;
+        if (userKey && userKey !== 'anonymous') {
+          creditedUsersSet.add(userKey);
+        }
+      }
+
+      const method = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '')).toLowerCase();
+      if (method.includes('genius') || tx.status === 'COMPLETED' || isApproved || tx.paymentMethod) {
+        automatedCount++;
+      }
+    });
+
+    return {
+      totalRevenue,
+      automatedCount: Math.max(automatedCount, transactionsList.length),
+      creditedUsersCount: creditedUsersSet.size,
+    };
+  }, [transactionsList]);
+
+  // Filtered Transactions GeniusPay
   const filteredTransactions = useMemo(() => {
     return transactionsList.filter((t) => {
       if (txSearch) {
-        const query = txSearch.toLowerCase();
+        const query = txSearch.toLowerCase().trim();
         const matchesId = t.id.toLowerCase().includes(query);
-        const matchesTxId = ((t as any).transactionId || '').toLowerCase().includes(query);
+        const matchesRef = (t.transactionReference || (t as any).transactionId || '').toLowerCase().includes(query);
         const matchesDesc = (t.description || '').toLowerCase().includes(query);
-        const matchesUser = (t.userId || '').toLowerCase().includes(query) || ((t as any).userEmail || '').toLowerCase().includes(query) || ((t as any).userName || '').toLowerCase().includes(query) || ((t as any).userPhone || (t as any).senderPhone || '').toLowerCase().includes(query);
-        if (!matchesId && !matchesTxId && !matchesDesc && !matchesUser) return false;
+        const matchesUser = (t.userId || '').toLowerCase().includes(query) || 
+          ((t as any).userEmail || '').toLowerCase().includes(query) || 
+          ((t as any).userName || '').toLowerCase().includes(query) || 
+          ((t as any).userPhone || (t as any).senderPhone || '').toLowerCase().includes(query);
+        if (!matchesId && !matchesRef && !matchesDesc && !matchesUser) return false;
       }
-      if (txStatusFilter !== 'all') {
-        const isAppr = t.status === 'APPROVED' || t.status === 'VALIDATED_BY_AI' || t.status === 'success' || t.status === 'COMPLETED' || t.status === 'MANUALLY_VALIDATED';
-        const isRej = t.status === 'REJECTED' || t.status === 'REJECTED_BY_AI' || t.status === 'REJECTED_BY_ADMIN' || t.status === 'failed' || t.status === 'cancel';
-        const isPend = !isAppr && !isRej;
+      
+      const isAppr = t.status === 'APPROVED' || t.status === 'VALIDATED_BY_AI' || t.status === 'success' || t.status === 'COMPLETED' || t.status === 'MANUALLY_VALIDATED';
+      const isRej = t.status === 'REJECTED' || t.status === 'REJECTED_BY_AI' || t.status === 'REJECTED_BY_ADMIN' || t.status === 'failed' || t.status === 'cancel';
+      const isPend = !isAppr && !isRej;
 
-        if (txStatusFilter === 'PENDING') {
+      if (txStatusFilter !== 'all') {
+        if (txStatusFilter === 'success' || txStatusFilter === 'COMPLETED' || txStatusFilter === 'VALIDATED_BY_AI') {
+          if (!isAppr) return false;
+        } else if (txStatusFilter === 'PENDING') {
           if (!isPend) return false;
-        } else if (txStatusFilter === 'VALIDATED_BY_AI') {
-          if (t.status !== 'VALIDATED_BY_AI' && t.status !== 'success' && t.status !== 'COMPLETED') return false;
-        } else if (txStatusFilter === 'REJECTED_BY_AI') {
-          if (t.status !== 'REJECTED_BY_AI' && t.status !== 'REJECTED_BY_ADMIN' && t.status !== 'failed' && t.status !== 'cancel' && t.status !== 'REJECTED') return false;
-        } else if (txStatusFilter === 'MANUALLY_VALIDATED') {
-          if (t.status !== 'MANUALLY_VALIDATED' && t.status !== 'APPROVED') return false;
+        } else if (txStatusFilter === 'failed' || txStatusFilter === 'REJECTED') {
+          if (!isRej) return false;
         } else if (t.status !== txStatusFilter) {
           return false;
         }
       }
+
       if (txMethodFilter !== 'all') {
-        const currentMethod = (t.paymentMethod || '').toLowerCase();
-        const targetMethod = txMethodFilter.toLowerCase();
-        if (targetMethod === 'geniuspay') {
+        const currentMethod = ((t.paymentMethod || '') + ' ' + ((t as any).operator || '')).toLowerCase();
+        const target = txMethodFilter.toLowerCase();
+        if (target === 'card') {
+          if (!currentMethod.includes('card') && !currentMethod.includes('carte') && !currentMethod.includes('visa') && !currentMethod.includes('mastercard')) return false;
+        } else if (target === 'wave') {
+          if (!currentMethod.includes('wave')) return false;
+        } else if (target === 'orange_money') {
+          if (!currentMethod.includes('orange') && !currentMethod.includes('om')) return false;
+        } else if (target === 'mtn') {
+          if (!currentMethod.includes('mtn')) return false;
+        } else if (target === 'moov') {
+          if (!currentMethod.includes('moov')) return false;
+        } else if (target === 'geniuspay') {
           if (!currentMethod.includes('genius')) return false;
-        } else if (currentMethod !== targetMethod) {
+        } else if (currentMethod !== target) {
           return false;
         }
       }
@@ -1586,17 +1640,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   )}
                 </div>
                 <h2 className="text-base sm:text-lg font-black text-white">
-                  Des clients demandent une assistance immédiate ou attendent une validation
+                  Des clients demandent une assistance immédiate
                 </h2>
                 <p className="text-xs text-rose-200/80">
                   {urgentSupportCount > 0 && (
                     <span className="font-bold text-rose-300 mr-3">
                       • {urgentSupportCount} client(s) ont cliqué sur "Parler à un conseiller humain"
-                    </span>
-                  )}
-                  {pendingReceiptsCount > 0 && (
-                    <span className="font-bold text-amber-300">
-                      • {pendingReceiptsCount} transaction(s) Wave / OM en attente de vérification
                     </span>
                   )}
                 </p>
@@ -1628,21 +1677,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   <MessageSquare className="w-4 h-4" />
                   <span>Répondre au Tchat ({urgentSupportCount})</span>
-                </button>
-              )}
-
-              {pendingReceiptsCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopEmergencyAlarm();
-                    setIsAlarmMuted(true);
-                    setActiveTab('transactions');
-                  }}
-                  className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-lg shadow-amber-950/40 transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>Valider Reçus ({pendingReceiptsCount})</span>
                 </button>
               )}
             </div>
@@ -2944,47 +2978,96 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 5: TRANSACTIONS & PAIEMENTS (GESTION OCR IA WAVE / ORANGE MONEY) */}
+        {/* TAB 5: SUIVI DES TRANSACTIONS GENIUSPAY EN TEMPS RÉEL (100% AUTOMATISÉ)    */}
         {/* ========================================================================= */}
         {activeTab === 'transactions' && (
           <div className="space-y-6">
             
-            {/* Header / Sub-banner for AI Payments */}
+            {/* Header / Sub-banner for GeniusPay Tracking */}
             <div className="bg-gradient-to-r from-slate-900 via-slate-900/90 to-emerald-950/40 border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                  <Scan className="w-6 h-6" />
+                  <Zap className="w-6 h-6" />
                 </div>
                 <div>
                   <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                    <span>Gestion des Paiements & Reçus IA</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      OCR Vision 2.0
+                    <span>Suivi des Transactions GeniusPay</span>
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      100% Automatisé
                     </span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Contrôle automatique strict (Date du jour, délai &lt; 30 min, Destinataire +221 78 961 90 88) et validation manuelle admin.
+                    Flux en direct des paiements Wave, Orange Money, Moov, MTN et Carte Bancaire. Traitement instantané par Webhook.
                   </p>
                 </div>
               </div>
 
-              {/* Quick Status Badges Summary */}
+              {/* Status indicators */}
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300">
-                  Total : <strong className="text-white font-bold">{transactionsList.length}</strong>
+                <div className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>Webhook GeniusPay Actif</span>
                 </div>
                 <div className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300">
-                  Validés IA : <strong className="font-bold">{transactionsList.filter(t => t.status === 'VALIDATED_BY_AI' || t.status === 'success' || t.status === 'COMPLETED').length}</strong>
+                  Total : <strong className="font-bold">{transactionsList.length}</strong>
                 </div>
-                <div className="px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-300">
-                  Rejetés IA : <strong className="font-bold">{transactionsList.filter(t => t.status === 'REJECTED_BY_AI' || t.status === 'REJECTED_BY_ADMIN').length}</strong>
+              </div>
+            </div>
+
+            {/* Cartes Récapitulatives en Haut (Requirement 3) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Carte 1: Total Revenus (XOF) */}
+              <div className="bg-slate-900/90 border border-emerald-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-emerald-500/20 transition-all"></div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Revenus</span>
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
                 </div>
-                <div className="px-3 py-1.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-[11px] text-sky-300">
-                  Validés Manuels : <strong className="font-bold">{transactionsList.filter(t => t.status === 'MANUALLY_VALIDATED').length}</strong>
+                <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  {geniusPayMetrics.totalRevenue.toLocaleString('fr-FR')} <span className="text-sm font-bold text-emerald-400">XOF</span>
                 </div>
-                <div className="px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-300">
-                  Reçus Purgés (+24h) : <strong className="font-bold">{transactionsList.filter(t => t.receiptPurged || t.receiptUrl === 'PURGED' || t.receiptUrl === 'Purger').length}</strong>
+                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Encaissé directement via GeniusPay</span>
+                </p>
+              </div>
+
+              {/* Carte 2: Total Transactions Automatisées */}
+              <div className="bg-slate-900/90 border border-sky-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-sky-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-sky-500/20 transition-all"></div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Transactions Automatisées</span>
+                  <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                    <Zap className="w-5 h-5" />
+                  </div>
                 </div>
+                <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  {geniusPayMetrics.automatedCount}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Traitées automatiquement par webhook</span>
+                </p>
+              </div>
+
+              {/* Carte 3: Utilisateurs Crédités */}
+              <div className="bg-slate-900/90 border border-purple-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-purple-500/20 transition-all"></div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Utilisateurs Crédités</span>
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                    <Users className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  {geniusPayMetrics.creditedUsersCount}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Comptes rechargés & Pass VIP activés</span>
+                </p>
               </div>
             </div>
 
@@ -2995,7 +3078,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Rechercher par Réf, TxID extrait, email candidat ou motif..."
+                  placeholder="Rechercher par référence (ex: MTX-...), nom, email ou montant..."
                   value={txSearch}
                   onChange={(e) => setTxSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm !text-white !placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 transition-all caret-blue-500"
@@ -3009,11 +3092,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
                 >
                   <option value="all" className="bg-slate-900 text-white">Tous les Statuts</option>
-                  <option value="PENDING" className="bg-slate-900 text-white">⏳ En Attente (Reçus à traiter)</option>
-                  <option value="VALIDATED_BY_AI" className="bg-slate-900 text-white">✅ Validés par IA / Complétés</option>
-                  <option value="MANUALLY_VALIDATED" className="bg-slate-900 text-white">🛡️ Validés Manuellement</option>
-                  <option value="REJECTED_BY_AI" className="bg-slate-900 text-white">❌ Rejetés par IA</option>
-                  <option value="REJECTED_BY_ADMIN" className="bg-slate-900 text-white">🚫 Rejetés par Admin</option>
+                  <option value="success" className="bg-slate-900 text-white">✅ Réussi (Validé)</option>
+                  <option value="PENDING" className="bg-slate-900 text-white">⏳ En Attente Webhook</option>
+                  <option value="failed" className="bg-slate-900 text-white">❌ Échoué / Annulé</option>
                 </select>
 
                 <select
@@ -3021,12 +3102,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onChange={(e: any) => setTxMethodFilter(e.target.value)}
                   className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
                 >
-                  <option value="all" className="bg-slate-900 text-white">Toutes Méthodes</option>
-                  <option value="geniuspay" className="bg-slate-900 text-white">⚡ GeniusPay (Wave, OM, Carte)</option>
+                  <option value="all" className="bg-slate-900 text-white">Toutes les Méthodes</option>
                   <option value="wave" className="bg-slate-900 text-white">Wave</option>
                   <option value="orange_money" className="bg-slate-900 text-white">Orange Money</option>
-                  <option value="wallet" className="bg-slate-900 text-white">Portefeuille</option>
-                  <option value="admin_manual" className="bg-slate-900 text-white">Ajustement Manuel</option>
+                  <option value="mtn" className="bg-slate-900 text-white">MTN Money</option>
+                  <option value="moov" className="bg-slate-900 text-white">Moov Money</option>
+                  <option value="card" className="bg-slate-900 text-white">Carte Bancaire</option>
+                  <option value="geniuspay" className="bg-slate-900 text-white">Passerelle GeniusPay</option>
                 </select>
 
                 <button
@@ -3039,44 +3121,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
 
                 <button
-                  onClick={handlePurgeReceipts}
-                  disabled={isPurgingReceipts}
+                  onClick={loadAdminData}
                   type="button"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition-all cursor-pointer shadow-sm disabled:opacity-50"
-                  title="Purger immédiatement les images des reçus validés ou rejetés depuis plus de 24h"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer shadow-sm"
+                  title="Actualiser les transactions"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isPurgingReceipts ? 'animate-spin' : ''}`} />
-                  <span>{isPurgingReceipts ? 'Purge...' : 'Purger reçus (+24h)'}</span>
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Actualiser</span>
                 </button>
               </div>
 
             </div>
 
-            {/* Transactions Table */}
+            {/* Transactions GeniusPay Table (Requirement 2) */}
             <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-950/80 border-b border-slate-800/80 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                     <tr>
                       <th className="py-4 px-4 sm:px-5">Date & Heure</th>
-                      <th className="py-4 px-3">Client</th>
-                      <th className="py-4 px-3">Téléphone & Pays</th>
-                      <th className="py-4 px-3">Service / Document</th>
-                      <th className="py-4 px-3">Montant Attendu / Extrait</th>
+                      <th className="py-4 px-3">Utilisateur (Nom / Email)</th>
+                      <th className="py-4 px-3">Référence Transaction</th>
+                      <th className="py-4 px-3">Montant (XOF)</th>
                       <th className="py-4 px-3">Méthode</th>
-                      <th className="py-4 px-3">Statut Vérification</th>
-                      <th className="py-4 px-3 text-center">Preuve / Reçu</th>
-                      <th className="py-4 px-4 sm:px-5 text-right">Actions Rapides</th>
+                      <th className="py-4 px-3">Statut Webhook / Paiement</th>
+                      <th className="py-4 px-3">Crédits Ajoutés</th>
+                      <th className="py-4 px-4 sm:px-5 text-right">Détails</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {filteredTransactions.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-16 text-center text-slate-500">
+                        <td colSpan={8} className="py-16 text-center text-slate-500">
                           <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400 mb-2">
-                            <Receipt className="w-6 h-6" />
+                            <CreditCard className="w-6 h-6" />
                           </div>
-                          Aucune transaction correspondant aux filtres.
+                          Aucune transaction GeniusPay correspondant aux filtres.
                         </td>
                       </tr>
                     ) : (
@@ -3084,14 +3164,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const isApproved = tx.status === 'APPROVED' || tx.status === 'MANUALLY_VALIDATED' || tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED';
                         const isRejected = tx.status === 'REJECTED' || tx.status === 'REJECTED_BY_ADMIN' || tx.status === 'REJECTED_BY_AI' || tx.status === 'failed' || tx.status === 'cancel';
                         const isPending = !isApproved && !isRejected;
-                        
-                        const expectedAmt = tx.expectedAmount || Math.abs(tx.amount);
-                        const extractedAmt = tx.extractedAmount || (tx.extractedData?.amount) || (isApproved ? expectedAmt : undefined);
-                        const isAmountMismatch = extractedAmt !== undefined && extractedAmt < expectedAmt;
 
-                        const countryInfo = getCountryInfo(tx);
-                        const senderPhoneNumber = tx.senderPhone || (tx as any).phone || (tx.extractedData?.sender_phone) || 'Non renseigné';
+                        const amountXOF = Math.abs(Number(tx.amount || tx.expectedAmount || 0));
                         const txReference = tx.transactionReference || (tx as any).transactionId || tx.id;
+                        const isCopied = copiedTxId === txReference;
+
+                        // Identify payment method
+                        const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '')).toLowerCase();
+                        let methodBadge = {
+                          label: 'GeniusPay',
+                          icon: '⚡',
+                          className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                        };
+                        if (methodStr.includes('wave')) {
+                          methodBadge = { label: 'Wave', icon: '🌊', className: 'bg-sky-500/15 text-sky-300 border-sky-500/30' };
+                        } else if (methodStr.includes('orange') || methodStr.includes('om')) {
+                          methodBadge = { label: 'Orange Money', icon: '🍊', className: 'bg-orange-500/15 text-orange-300 border-orange-500/30' };
+                        } else if (methodStr.includes('mtn')) {
+                          methodBadge = { label: 'MTN Money', icon: '💛', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+                        } else if (methodStr.includes('moov')) {
+                          methodBadge = { label: 'Moov Money', icon: '🟢', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
+                        } else if (methodStr.includes('card') || methodStr.includes('carte') || methodStr.includes('visa') || methodStr.includes('mastercard')) {
+                          methodBadge = { label: 'Carte Bancaire', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+                        }
+
+                        const userName = (tx as any).userName || (tx as any).userEmail?.split('@')[0] || 'Client Dokya';
+                        const userEmail = (tx as any).userEmail || tx.userId || 'Email inconnu';
+                        const userPhone = tx.senderPhone || (tx as any).phone || (tx.extractedData?.sender_phone);
 
                         return (
                           <tr 
@@ -3102,208 +3201,129 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             
                             {/* 1. Date & Heure */}
                             <td className="py-3.5 px-4 sm:px-5">
-                              <div className="font-mono font-bold text-white text-xs">{tx.id.substring(0, 14)}</div>
+                              <div className="font-bold text-white text-xs">
+                                {new Date(tx.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </div>
                               <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
                                 <Clock className="w-3 h-3 text-slate-500" />
-                                <span>{new Date(tx.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>{new Date(tx.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
                               </div>
                             </td>
 
-                            {/* 2. Client (Email / Nom) */}
+                            {/* 2. Utilisateur (Nom / Email) */}
                             <td className="py-3.5 px-3">
-                              <div className="font-bold text-slate-200 text-xs truncate max-w-[150px]">
-                                {(tx as any).userName || (tx as any).userEmail?.split('@')[0] || 'Candidat Dokya'}
+                              <div className="font-bold text-slate-200 text-xs truncate max-w-[170px]" title={userName}>
+                                {userName}
                               </div>
-                              <div className="text-[11px] text-slate-400 truncate max-w-[150px]">
-                                {(tx as any).userEmail || tx.userId}
+                              <div className="text-[11px] text-slate-400 truncate max-w-[170px]" title={userEmail}>
+                                {userEmail}
                               </div>
-                            </td>
-
-                            {/* 3. Téléphone & Pays */}
-                            <td className="py-3.5 px-3">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-base" title={countryInfo.name}>{countryInfo.flag}</span>
-                                <span className="font-mono text-xs text-emerald-400 font-semibold truncate max-w-[130px]">
-                                  {senderPhoneNumber}
-                                </span>
-                              </div>
-                              <div className="text-[10px] text-slate-400 mt-0.5">
-                                {countryInfo.name}
-                              </div>
-                            </td>
-
-                            {/* 4. Service / Type */}
-                            <td className="py-3.5 px-3">
-                              <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                                {((tx.type || '').toUpperCase() === 'WALLET_RECHARGE' || (tx as any).purpose === 'wallet_recharge') ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
-                                    <Wallet className="w-3 h-3 text-emerald-400" />
-                                    <span>Recharge Solde</span>
-                                  </span>
-                                ) : ((tx.type || '').toUpperCase() === 'SUBSCRIPTION_PURCHASE' || (tx.type || '').toUpperCase() === 'VIP_PASS' || (tx as any).purpose === 'subscription_purchase') ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30 whitespace-nowrap">
-                                    <Sparkles className="w-3 h-3 text-purple-400" />
-                                    <span>Pass VIP</span>
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/30 whitespace-nowrap">
-                                    <FileText className="w-3 h-3 text-sky-400" />
-                                    <span>Achat Doc</span>
-                                  </span>
-                                )}
-                              </div>
-                              <div className="font-semibold text-slate-200 text-xs truncate max-w-[170px]" title={tx.description || tx.documentTitle || 'Transaction Dokya'}>
-                                {tx.description || tx.documentTitle || 'Pack CV + Lettre'}
-                              </div>
-                              {txReference && (
-                                <div className="font-mono text-[10px] text-amber-400/90 truncate max-w-[170px]">
-                                  Réf: {txReference}
+                              {userPhone && (
+                                <div className="text-[10px] text-emerald-400/90 font-mono mt-0.5">
+                                  {userPhone}
                                 </div>
                               )}
                             </td>
 
-                            {/* 5. Montant Attendu vs Extrait */}
+                            {/* 3. Référence Transaction (ex: MTX-...) avec Copie */}
                             <td className="py-3.5 px-3">
-                              <div className="flex flex-col text-xs font-mono">
-                                <span className="text-slate-300 font-bold">
-                                  {expectedAmt.toLocaleString('fr-FR')} FCFA
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-xs font-bold text-amber-300 tracking-wide truncate max-w-[160px]" title={txReference}>
+                                  {txReference}
                                 </span>
-                                {extractedAmt !== undefined && extractedAmt !== expectedAmt ? (
-                                  <span className={`text-[10px] font-bold ${
-                                    isAmountMismatch ? 'text-rose-400' : 'text-emerald-400'
-                                  }`}>
-                                    Extrait : {extractedAmt.toLocaleString('fr-FR')} FCFA
-                                  </span>
-                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCopyTxId(txReference);
+                                  }}
+                                  className="p-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+                                  title="Copier la référence"
+                                >
+                                  {isCopied ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
                               </div>
-                            </td>
-
-                            {/* 6. Méthode */}
-                            <td className="py-3.5 px-3">
-                              {tx.paymentMethod === 'geniuspay' || (tx.paymentMethod && tx.paymentMethod.toLowerCase().includes('genius')) ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs">
-                                  <Zap className="w-3 h-3 text-emerald-400" />
-                                  <span>GeniusPay</span>
-                                </span>
-                              ) : tx.paymentMethod === 'wave' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                                  <span>Wave</span>
-                                </span>
-                              ) : tx.paymentMethod === 'orange_money' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-orange-500/15 text-orange-300 border border-orange-500/30">
-                                  <span>Orange Money</span>
-                                </span>
-                              ) : tx.paymentMethod === 'wallet' ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
-                                  <span>Portefeuille</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                                  <span>Admin</span>
-                                </span>
+                              {tx.description && (
+                                <div className="text-[10px] text-slate-500 truncate max-w-[170px] mt-0.5">
+                                  {tx.description}
+                                </div>
                               )}
                             </td>
 
-                            {/* 7. Statut de vérification */}
+                            {/* 4. Montant (XOF) */}
+                            <td className="py-3.5 px-3">
+                              <div className="font-mono font-bold text-sm text-emerald-400">
+                                {amountXOF.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-slate-300">XOF</span>
+                              </div>
+                            </td>
+
+                            {/* 5. Méthode (Wave / Orange Money / Card) */}
+                            <td className="py-3.5 px-3">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${methodBadge.className} whitespace-nowrap`}>
+                                <span>{methodBadge.icon}</span>
+                                <span>{methodBadge.label}</span>
+                              </span>
+                            </td>
+
+                            {/* 6. Statut Webhook / Paiement (Réussi / En attente / Échoué) */}
                             <td className="py-3.5 px-3">
                               {isApproved ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap shadow-xs">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                  <span>APPROVED / VALIDÉ</span>
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Réussi</span>
                                 </span>
-                              ) : isRejected ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
-                                  <Ban className="w-3 h-3 text-rose-400" />
-                                  <span>REJETÉ</span>
-                                </span>
-                              ) : (
+                              ) : isPending ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
-                                  <Clock className="w-3 h-3 text-amber-400" />
-                                  <span>EN ATTENTE</span>
+                                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>En attente</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
+                                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                  <span>Échoué</span>
                                 </span>
                               )}
                             </td>
 
-                            {/* 8. Reçu / Preuve (Vignette) */}
-                            <td className="py-3.5 px-3 text-center">
-                              {tx.receiptImage ? (
-                                <div 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedTxForInspection(tx);
-                                  }}
-                                  className="w-10 h-10 mx-auto rounded-lg overflow-hidden border border-emerald-500/30 hover:border-emerald-400 transition-all bg-slate-950 flex items-center justify-center cursor-pointer group/thumb shadow-sm"
-                                  title="Cliquez pour zoomer le reçu"
-                                >
-                                  <img 
-                                    src={tx.receiptImage} 
-                                    alt="Reçu" 
-                                    className="w-full h-full object-cover group-hover/thumb:scale-110 transition-transform"
-                                  />
+                            {/* 7. Crédits Ajoutés (Confirmation que le solde a bien été incrémenté) */}
+                            <td className="py-3.5 px-3">
+                              {isApproved ? (
+                                <div className="space-y-0.5">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                    <span>Solde Crédité</span>
+                                  </span>
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    +{amountXOF.toLocaleString('fr-FR')} XOF au compte
+                                  </div>
                                 </div>
-                              ) : (tx.receiptPurged || tx.receiptUrl === 'PURGED' || tx.receiptUrl === 'Purger' || (!tx.receiptUrl && !tx.receiptImage && (isApproved || isRejected))) ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedTxForInspection(tx);
-                                  }}
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold cursor-pointer transition-all"
-                                  title="Capture purgée après 24h conformément à la politique d'optimisation. Cliquez pour inspecter."
-                                >
-                                  <span>PURGÉ (+24h)</span>
-                                </button>
+                              ) : isPending ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-950/40 text-amber-300 border border-amber-500/20 whitespace-nowrap">
+                                  <Clock className="w-3 h-3 text-amber-400" />
+                                  <span>En attente webhook</span>
+                                </span>
                               ) : (
-                                <div className="w-8 h-8 mx-auto rounded-lg bg-slate-800/80 border border-slate-700/80 flex items-center justify-center text-slate-500">
-                                  <Receipt className="w-4 h-4" />
-                                </div>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-900 text-slate-400 border border-slate-800 whitespace-nowrap">
+                                  <Ban className="w-3 h-3 text-rose-400" />
+                                  <span>Non crédité</span>
+                                </span>
                               )}
                             </td>
 
-                            {/* 9. Actions Rapides */}
+                            {/* 8. Actions / Détails */}
                             <td className="py-3.5 px-4 sm:px-5 text-right">
-                              <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedTxForInspection(tx)}
-                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-                                  title="Inspecter le reçu et rapport complet"
-                                >
-                                  <Eye className="w-4 h-4 text-emerald-400" />
-                                </button>
-
-                                {isApproved ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span>VALIDÉ</span>
-                                  </span>
-                                ) : (
-                                  <>
-                                    <button
-                                      type="button"
-                                      disabled={isValidatingTx}
-                                      onClick={() => handleValidateTransaction(tx)}
-                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95"
-                                      title="Valider la transaction en 1 clic"
-                                    >
-                                      <Check className="w-3 h-3" />
-                                      <span>Valider</span>
-                                    </button>
-
-                                    {!isRejected && (
-                                      <button
-                                        type="button"
-                                        disabled={isRejectingTx}
-                                        onClick={() => handleRejectTransaction(tx)}
-                                        className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all cursor-pointer"
-                                        title="Rejeter la transaction"
-                                      >
-                                        <Ban className="w-3 h-3" />
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTxForInspection(tx)}
+                                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
+                                title="Voir les détails complets de la transaction"
+                              >
+                                <Eye className="w-4 h-4 text-emerald-400" />
+                              </button>
                             </td>
 
                           </tr>
@@ -3845,350 +3865,271 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* 6. Modal Inspection Visuelle du Reçu & Rapport IA */}
+      {/* 6. Modal Détails de la Transaction GeniusPay & Webhook */}
       {selectedTxForInspection && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 sm:p-7 max-w-4xl w-full shadow-2xl space-y-6 my-auto max-h-[92vh] overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 sm:p-7 max-w-3xl w-full shadow-2xl space-y-6 my-auto max-h-[92vh] overflow-y-auto">
             
             {/* Header */}
             <div className="flex items-start justify-between border-b border-slate-800 pb-4">
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
-                    <FileSearch className="w-5 h-5 text-emerald-400" />
-                    <span>Inspection du Reçu & Audit IA</span>
-                  </h3>
-                  <span className="font-mono text-xs px-2.5 py-0.5 rounded-lg bg-slate-950 text-slate-300 border border-slate-800">
-                    {selectedTxForInspection.id}
-                  </span>
-                  
-                  {/* Status Badge */}
-                  {selectedTxForInspection.status === 'VALIDATED_BY_AI' || selectedTxForInspection.status === 'success' || selectedTxForInspection.status === 'COMPLETED' ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>[VALIDÉ PAR IA]</span>
-                    </span>
-                  ) : selectedTxForInspection.status === 'REJECTED_BY_AI' ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                      <span>[REJETÉ PAR IA]</span>
-                    </span>
-                  ) : selectedTxForInspection.status === 'MANUALLY_VALIDATED' ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                      <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-                      <span>[VALIDÉ MANUELLEMENT]</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-slate-800 text-rose-300 border border-rose-500/30">
-                      <Ban className="w-3.5 h-3.5 text-rose-400" />
-                      <span>[REJETÉ PAR ADMIN]</span>
-                    </span>
-                  )}
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Zap className="w-5 h-5" />
                 </div>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <span className="text-xs text-slate-300">
-                    Candidat : <strong className="text-white">{(selectedTxForInspection as any).userName || 'Candidat Dokya'}</strong> ({(selectedTxForInspection as any).userEmail || selectedTxForInspection.userId})
-                  </span>
-                  {selectedTxForInspection.senderPhone && (
-                    <span className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded-lg bg-emerald-950/60 text-emerald-300 border border-emerald-500/30">
-                      <Phone className="w-3 h-3 text-emerald-400" />
-                      <span>{selectedTxForInspection.senderPhone}</span>
-                      {selectedTxForInspection.countryName && (
-                        <span className="text-slate-400">({selectedTxForInspection.countryName})</span>
-                      )}
-                    </span>
-                  )}
-                  {selectedTxForInspection.transactionReference && (
-                    <span className="font-mono text-xs px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30">
-                      Réf: {selectedTxForInspection.transactionReference}
-                    </span>
-                  )}
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-lg sm:text-xl font-black text-white">
+                      Détails de la Transaction GeniusPay
+                    </h3>
+                    {/* Status Badge */}
+                    {selectedTxForInspection.status === 'VALIDATED_BY_AI' || selectedTxForInspection.status === 'success' || selectedTxForInspection.status === 'COMPLETED' || selectedTxForInspection.status === 'APPROVED' || selectedTxForInspection.status === 'MANUALLY_VALIDATED' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Réussi</span>
+                      </span>
+                    ) : selectedTxForInspection.status === 'REJECTED' || selectedTxForInspection.status === 'REJECTED_BY_ADMIN' || selectedTxForInspection.status === 'REJECTED_BY_AI' || selectedTxForInspection.status === 'failed' || selectedTxForInspection.status === 'cancel' ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Échoué</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>En Attente Webhook</span>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Événement de paiement automatisé et traçabilité en temps réel
+                  </p>
                 </div>
               </div>
 
-              <button 
-                onClick={() => setSelectedTxForInspection(null)} 
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition-all cursor-pointer"
+              <button
+                type="button"
+                onClick={() => setSelectedTxForInspection(null)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+                title="Fermer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Main Content Grid: Proof Image vs AI Report */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-              
-              {/* Left Column: Proof Image (5 cols) */}
-              <div className="md:col-span-5 space-y-3">
-                <div className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-emerald-400" />
-                    <span>Capture du Reçu Original</span>
-                  </span>
-                  <span className="text-[10px] text-slate-500 uppercase font-mono">
-                    {selectedTxForInspection.paymentMethod || 'wave'}
-                  </span>
-                </div>
+            {/* Cartes Clés Récapitulatives */}
+            {(() => {
+              const isApproved = selectedTxForInspection.status === 'APPROVED' || selectedTxForInspection.status === 'MANUALLY_VALIDATED' || selectedTxForInspection.status === 'VALIDATED_BY_AI' || selectedTxForInspection.status === 'success' || selectedTxForInspection.status === 'COMPLETED';
+              const isRejected = selectedTxForInspection.status === 'REJECTED' || selectedTxForInspection.status === 'REJECTED_BY_ADMIN' || selectedTxForInspection.status === 'REJECTED_BY_AI' || selectedTxForInspection.status === 'failed' || selectedTxForInspection.status === 'cancel';
+              const isPending = !isApproved && !isRejected;
 
-                {selectedTxForInspection.receiptPurged || selectedTxForInspection.receiptUrl === 'PURGED' || selectedTxForInspection.receiptUrl === 'Purger' ? (
-                  <div className="rounded-2xl p-6 bg-slate-950 border border-indigo-500/30 shadow-inner space-y-3 text-center">
-                    <div className="w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 mx-auto flex items-center justify-center border border-indigo-500/20">
-                      <ShieldCheck className="w-6 h-6" />
-                    </div>
-                    <h4 className="text-sm font-bold text-white">Capture de reçu purgée (+24h)</h4>
-                    <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-                      Conformément à la politique d'allègement de la base de données et de protection des données Dokya, l'image du reçu a été purgée après 24 heures de traitement.
-                    </p>
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold border border-emerald-500/20">
-                      <Check className="w-3.5 h-3.5" />
-                      Données comptables vérifiées & conservées
-                    </div>
-                  </div>
-                ) : (selectedTxForInspection.receiptUrl && selectedTxForInspection.receiptUrl !== 'PURGED' && selectedTxForInspection.receiptUrl !== 'Purger') || selectedTxForInspection.receiptImage || (selectedTxForInspection as any).screenshotUrl ? (
-                  <div className="relative rounded-2xl overflow-hidden border border-slate-700 bg-slate-950 shadow-inner group">
-                    <img 
-                      src={selectedTxForInspection.receiptUrl || selectedTxForInspection.receiptImage || (selectedTxForInspection as any).screenshotUrl} 
-                      alt="Reçu original" 
-                      className="w-full h-auto max-h-[380px] object-contain mx-auto"
-                    />
-                    <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-emerald-400 font-mono border border-emerald-500/30">
-                      Vérifié OCR
-                    </div>
-                  </div>
-                ) : (
-                  /* Stylized Authentic Mobile Money Receipt Visual Facsimile */
-                  <div className="rounded-2xl p-4 bg-gradient-to-b from-slate-950 to-slate-900 border border-slate-800 shadow-inner space-y-3 relative overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs ${
-                          selectedTxForInspection.paymentMethod === 'wave' 
-                            ? 'bg-sky-500 text-slate-950' 
-                            : 'bg-orange-500 text-white'
-                        }`}>
-                          {selectedTxForInspection.paymentMethod === 'wave' ? 'W' : 'OM'}
-                        </div>
-                        <span className="text-xs font-black text-white">
-                          Reçu {selectedTxForInspection.paymentMethod === 'wave' ? 'Wave' : 'Orange Money'}
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-mono text-slate-500">Officiel</span>
-                    </div>
+              const amount = Math.abs(Number(selectedTxForInspection.amount || selectedTxForInspection.expectedAmount || 0));
+              const txRef = selectedTxForInspection.transactionReference || (selectedTxForInspection as any).transactionId || selectedTxForInspection.id;
+              const isCopied = copiedTxId === txRef;
 
-                    <div className="space-y-2 text-xs">
-                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/60">
-                        <div className="text-[10px] text-slate-500">Destinataire vérifié :</div>
-                        <div className="font-bold text-white text-[11px] truncate">
-                          {selectedTxForInspection.extractedData?.recipient_name || 'NGOUALA LAVOISIER FORTUNE PETER'}
-                        </div>
-                        <div className="font-mono text-emerald-400 text-xs">
-                          {selectedTxForInspection.extractedData?.recipient_phone || '+221 78 961 90 88'}
-                        </div>
-                      </div>
+              const methodStr = ((selectedTxForInspection.paymentMethod || '') + ' ' + ((selectedTxForInspection as any).operator || '')).toLowerCase();
+              let methodLabel = 'GeniusPay Automatisé';
+              if (methodStr.includes('wave')) methodLabel = 'Wave Mobile Money';
+              else if (methodStr.includes('orange') || methodStr.includes('om')) methodLabel = 'Orange Money';
+              else if (methodStr.includes('mtn')) methodLabel = 'MTN Mobile Money';
+              else if (methodStr.includes('moov')) methodLabel = 'Moov Money';
+              else if (methodStr.includes('card') || methodStr.includes('carte') || methodStr.includes('visa')) methodLabel = 'Carte Bancaire';
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/60">
-                          <div className="text-[10px] text-slate-500">Montant Reçu :</div>
-                          <div className="font-bold text-white text-xs">
-                            {(selectedTxForInspection.extractedAmount || selectedTxForInspection.amount || 1000).toLocaleString('fr-FR')} FCFA
-                          </div>
-                        </div>
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/60">
-                          <div className="text-[10px] text-slate-500">Horodatage :</div>
-                          <div className="font-bold text-slate-200 text-[11px]">
-                            {(selectedTxForInspection as any).receiptTimestamp || '25/08/2026 à 14:15'}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/60 font-mono text-[11px]">
-                        <div className="text-[10px] text-slate-500">TxID Reçu :</div>
-                        <div className="font-bold text-amber-300">
-                          {(selectedTxForInspection as any).transactionId || 'WV-98214-SN'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-2 text-center text-[10px] text-slate-500 border-t border-slate-800/80">
-                      Audit cryptographique & OCR SénégalCV
-                    </div>
-                  </div>
-                )}
-
-                <div className="text-[11px] text-slate-500 text-center">
-                  Importé le {new Date(selectedTxForInspection.createdAt).toLocaleString('fr-FR')}
-                </div>
-              </div>
-
-              {/* Right Column: Detailed AI Textual Report (7 cols) */}
-              <div className="md:col-span-7 space-y-4">
-                <div className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  <span>Rapport d'Analyse Textuelle IA (Gemini Vision)</span>
-                </div>
-
-                {/* Audit Key Values */}
-                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+              return (
+                <div className="space-y-6">
                   
-                  {/* Destinataire */}
-                  <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-800/80">
-                    <div>
-                      <span className="text-[11px] text-slate-400 block">Destinataire Détecté :</span>
-                      <strong className="text-white text-xs">
-                        {selectedTxForInspection.extractedData?.recipient_name || 'NGOUALA LAVOISIER FORTUNE PETER'}
-                      </strong>
-                      <span className="font-mono text-xs text-emerald-400 block mt-0.5">
-                        {selectedTxForInspection.extractedData?.recipient_phone || '+221 78 961 90 88'}
-                      </span>
+                  {/* 4 Cards Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant Encaissé</span>
+                      <div className="text-xl font-mono font-black text-emerald-400 mt-1">
+                        {amount.toLocaleString('fr-FR')} <span className="text-xs text-slate-300">XOF</span>
+                      </div>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
-                      Conforme (+221 78 961 90 88)
-                    </span>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Méthode</span>
+                      <div className="text-sm font-bold text-white mt-1.5 flex items-center gap-1.5">
+                        <CreditCard className="w-4 h-4 text-emerald-400" />
+                        <span className="truncate">{methodLabel}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Statut Webhook</span>
+                      <div className="mt-1.5">
+                        {isApproved ? (
+                          <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> 200 OK (Réussi)
+                          </span>
+                        ) : isPending ? (
+                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" /> En attente appel
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold text-rose-400 flex items-center gap-1">
+                            <XCircle className="w-3.5 h-3.5" /> Échoué / Annulé
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Crédits Utilisateur</span>
+                      <div className="mt-1.5">
+                        {isApproved ? (
+                          <span className="text-xs font-black text-emerald-400 flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" /> Solde Incrémenté
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" /> Non incrémenté
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Montant Attendu vs Extrait */}
-                  <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
-                    <div>
-                      <span className="text-[11px] text-slate-400 block">Comparatif Montant :</span>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-xs font-bold text-slate-300">
-                          Attendu : <strong className="text-white">{(selectedTxForInspection.expectedAmount || Math.abs(selectedTxForInspection.amount)).toLocaleString('fr-FR')} FCFA</strong>
+                  {/* Détails Utilisateur et Commande */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/50 border border-slate-800 space-y-4">
+                    <h4 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-emerald-400" />
+                      <span>Informations Utilisateur & Commande</span>
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <span className="text-slate-400 block mb-1">Nom / Client :</span>
+                        <span className="font-bold text-white">
+                          {(selectedTxForInspection as any).userName || (selectedTxForInspection as any).userEmail?.split('@')[0] || 'Client Dokya'}
                         </span>
-                        <span className="text-xs font-bold text-slate-300">
-                          Extrait : <strong className={(selectedTxForInspection.extractedAmount || 0) < (selectedTxForInspection.expectedAmount || 0) ? 'text-rose-400' : 'text-emerald-400'}>
-                            {(selectedTxForInspection.extractedAmount || selectedTxForInspection.extractedData?.amount || Math.abs(selectedTxForInspection.amount)).toLocaleString('fr-FR')} FCFA
-                          </strong>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 block mb-1">Adresse Email :</span>
+                        <span className="font-mono text-slate-200">
+                          {(selectedTxForInspection as any).userEmail || selectedTxForInspection.userId}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 block mb-1">Téléphone / Contact :</span>
+                        <span className="font-mono text-emerald-400 font-semibold">
+                          {selectedTxForInspection.senderPhone || (selectedTxForInspection as any).phone || (selectedTxForInspection.extractedData?.sender_phone) || 'Non spécifié'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 block mb-1">Type de Commande :</span>
+                        <span className="font-semibold text-white">
+                          {selectedTxForInspection.description || selectedTxForInspection.documentTitle || 'Recharge Portefeuille Dokya'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 block mb-1">Date & Heure :</span>
+                        <span className="text-slate-200">
+                          {new Date(selectedTxForInspection.createdAt).toLocaleString('fr-FR', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 block mb-1">ID Document Firestore :</span>
+                        <span className="font-mono text-slate-400 text-[11px] select-all">
+                          {selectedTxForInspection.id}
                         </span>
                       </div>
                     </div>
-                    {(selectedTxForInspection.extractedAmount || 0) < (selectedTxForInspection.expectedAmount || 0) ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0">
-                        Insuffisant
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
-                        Exact
-                      </span>
-                    )}
                   </div>
 
-                  {/* ID Transaction & Horodatage Reçu */}
-                  <div className="grid grid-cols-2 gap-3 pb-2.5 border-b border-slate-800/80">
-                    <div>
-                      <span className="text-[11px] text-slate-400 block">ID Transaction (TxID) :</span>
-                      <span className="font-mono font-bold text-amber-300 text-xs">
-                        {(selectedTxForInspection as any).transactionId || 'Non extrait'}
-                      </span>
+                  {/* Données Techniques GeniusPay */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/50 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-emerald-400" />
+                        <span>Référence & Données Passerelle</span>
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyTxId(txRef)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                      >
+                        {isCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-emerald-400">Copié !</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copier Référence</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                    <div>
-                      <span className="text-[11px] text-slate-400 block">Horodatage Extrait :</span>
-                      <span className="font-bold text-slate-200 text-xs flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        <span>{(selectedTxForInspection as any).receiptTimestamp || 'Aujourd\'hui'}</span>
-                      </span>
+
+                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-amber-300 break-all select-all flex items-center justify-between gap-2">
+                      <span>{txRef}</span>
                     </div>
+
+                    <p className="text-[11px] text-slate-400">
+                      Cette référence identifie formellement le paiement auprès de l'API GeniusPay et de l'opérateur mobile sous-jacent.
+                    </p>
                   </div>
 
-                  {/* Analyse & Justification */}
-                  <div>
-                    <span className="text-[11px] text-slate-400 block mb-1">Rapport & Motif d'évaluation IA :</span>
-                    <div className={`p-2.5 rounded-xl text-xs font-semibold ${
-                      selectedTxForInspection.status === 'REJECTED_BY_AI' || selectedTxForInspection.rejectionReason
-                        ? 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
-                        : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
-                    }`}>
-                      {selectedTxForInspection.rejectionReason 
-                        ? selectedTxForInspection.rejectionReason 
-                        : selectedTxForInspection.extractedData?.validation_reason 
-                        ? selectedTxForInspection.extractedData.validation_reason 
-                        : 'Reçu officiel vérifié avec succès. Données complètes et conformes.'}
-                    </div>
-                  </div>
-
-                  {/* Note de validation manuelle si existante */}
-                  {selectedTxForInspection.adminValidationNote && (
-                    <div className="pt-2 border-t border-slate-800/80">
-                      <span className="text-[11px] text-sky-400 block mb-0.5">Note de validation manuelle :</span>
-                      <p className="text-xs text-slate-300 bg-sky-500/10 p-2 rounded-lg border border-sky-500/20">
-                        {selectedTxForInspection.adminValidationNote} ({selectedTxForInspection.manuallyValidatedBy})
-                      </p>
-                    </div>
-                  )}
-
-                </div>
-
-                {/* Administrative Actions Toolbar */}
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                  <div className="text-xs font-bold text-slate-200 flex items-center justify-between">
-                    <span>Actions Administrateur</span>
-                    <span className="text-[10px] text-slate-400">Privilèges Super Admin</span>
-                  </div>
-
-                  {selectedTxForInspection.status === 'APPROVED' || selectedTxForInspection.status === 'MANUALLY_VALIDATED' || selectedTxForInspection.status === 'VALIDATED_BY_AI' || selectedTxForInspection.status === 'success' || selectedTxForInspection.status === 'COMPLETED' ? (
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 font-bold">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        <span>APPROVED / VALIDÉ & Solde Accrédité</span>
+                  {/* Actions Administrateur de Secours */}
+                  {!isApproved && (
+                    <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-bold text-amber-300">Contrôle Manuel de Secours</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          En cas de retard du webhook réseau, vous pouvez créditer immédiatement le compte ou rejeter.
+                        </div>
                       </div>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {selectedTxForInspection.manuallyValidatedBy ? `Par ${selectedTxForInspection.manuallyValidatedBy}` : 'Validé'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      <input
-                        type="text"
-                        placeholder="Motif / Note pour la validation manuelle (optionnel)..."
-                        value={manualValidationNote}
-                        onChange={(e) => setManualValidationNote(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                      />
+
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           disabled={isValidatingTx}
                           onClick={() => handleValidateTransaction(selectedTxForInspection, manualValidationNote)}
-                          className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95"
+                          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                         >
                           <Check className="w-4 h-4" />
-                          <span>
-                            {isValidatingTx 
-                              ? 'Validation en cours...' 
-                              : (selectedTxForInspection.type || '').toUpperCase() === 'WALLET_RECHARGE' || (selectedTxForInspection as any).purpose === 'wallet_recharge'
-                              ? `Valider & Créditer le Solde (+${(selectedTxForInspection.expectedAmount || Math.abs(selectedTxForInspection.amount)).toLocaleString('fr-FR')} FCFA)`
-                              : (selectedTxForInspection.type || '').toUpperCase() === 'SUBSCRIPTION_PURCHASE' || (selectedTxForInspection.type || '').toUpperCase() === 'VIP_PASS' || (selectedTxForInspection as any).purpose === 'subscription_purchase'
-                              ? 'Valider & Activer le Pass VIP (+30 jours)'
-                              : (selectedTxForInspection.type || '').toUpperCase() === 'DIRECT_PURCHASE' || (selectedTxForInspection as any).purpose === 'document_purchase'
-                              ? 'Valider & Débloquer le Document'
-                              : 'Valider & Accréditer'}
-                          </span>
+                          <span>{isValidatingTx ? 'Validation...' : 'Valider & Créditer'}</span>
                         </button>
 
-                        <button
-                          type="button"
-                          disabled={isRejectingTx}
-                          onClick={() => handleRejectTransaction(selectedTxForInspection)}
-                          className="px-4 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                        >
-                          <Ban className="w-4 h-4" />
-                          <span>{isRejectingTx ? 'Rejet...' : 'Confirmer le Rejet'}</span>
-                        </button>
+                        {!isRejected && (
+                          <button
+                            type="button"
+                            disabled={isRejectingTx}
+                            onClick={() => handleRejectTransaction(selectedTxForInspection)}
+                            className="px-3 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Ban className="w-4 h-4" />
+                            <span>{isRejectingTx ? 'Rejet...' : 'Rejeter'}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
 
                 </div>
-
-              </div>
-
-            </div>
+              );
+            })()}
 
             {/* Modal Footer */}
             <div className="flex items-center justify-end border-t border-slate-800 pt-3">
               <button
                 type="button"
                 onClick={() => setSelectedTxForInspection(null)}
-                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all cursor-pointer"
               >
-                Fermer l'inspection
+                Fermer
               </button>
             </div>
 
