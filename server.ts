@@ -32,13 +32,14 @@ function getGenAIClient() {
 
 // Robust Gemini call wrapper with automatic retries and instant model failovers for 503 / 429 demand spikes
 async function generateContentWithRetry(ai: GoogleGenAI, params: any) {
-  const requestedModel = params.model || 'gemini-flash-latest';
+  const requestedModel = params.model || 'gemini-3.1-flash-lite';
   // Deduplicated fallback list using valid Gemini models with separate quota & demand pools
   const rawModels = [
     requestedModel,
-    'gemini-flash-latest',
     'gemini-3.1-flash-lite',
     'gemini-3.7-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-pro-preview',
   ];
   const modelsToTry = Array.from(new Set(rawModels));
   
@@ -63,11 +64,17 @@ async function generateContentWithRetry(ai: GoogleGenAI, params: any) {
         throw new Error(`Erreur d'authentification Gemini API (403): La clé GEMINI_API_KEY est manquante ou invalide. (${errMessage})`);
       }
 
-      const isQuotaError = errMessage.includes('429') || errMessage.includes('RESOURCE_EXHAUSTED') || errMessage.includes('Quota exceeded') || errMessage.includes('quota');
+      const isQuotaError = errMessage.includes('429') || 
+        errMessage.includes('RESOURCE_EXHAUSTED') || 
+        errMessage.includes('resource_exhausted') || 
+        errMessage.includes('Quota exceeded') || 
+        errMessage.includes('quota') || 
+        errMessage.includes('rate-limit') ||
+        errMessage.includes('per_model_per_day');
       const isTransientServerOverload = errMessage.includes('503') || errMessage.includes('high demand') || errMessage.includes('UNAVAILABLE') || errMessage.includes('Overloaded');
 
       if (isTransientServerOverload || isQuotaError) {
-        console.info(`[Gemini API] Modèle '${model}' temporairement surchargé (503/429). Basculement automatique vers le modèle de secours...`);
+        console.info(`[Gemini API] Modèle '${model}' indisponible ou quota atteint (503/429/ResourceExhausted). Basculement automatique vers le modèle de secours...`);
         // Immediately try the next model in fallback list without blocking delay
         continue;
       }
@@ -77,9 +84,12 @@ async function generateContentWithRetry(ai: GoogleGenAI, params: any) {
     }
   }
 
-  const isQuota = lastError?.message?.includes('429') || lastError?.message?.includes('RESOURCE_EXHAUSTED') || lastError?.message?.includes('Quota exceeded');
+  const isQuota = lastError?.message?.includes('429') || 
+    lastError?.message?.includes('RESOURCE_EXHAUSTED') || 
+    lastError?.message?.includes('resource_exhausted') ||
+    lastError?.message?.includes('Quota exceeded');
   if (isQuota) {
-    throw new Error("Quota d'utilisation IA Gemini temporairement dépassé (limite de requêtes/jour atteinte sur le compte gratuit). Veuillez réessayer dans quelques instants ou configurer une clé API Gemini avec facturation dans les secrets d'environnement.");
+    throw new Error("Quota d'utilisation IA Gemini temporairement dépassé sur certains modèles. Le système bascule automatiquement sur les modèles haute disponibilité.");
   }
 
   throw lastError || new Error("Erreur de communication avec le service IA Gemini.");
@@ -2872,96 +2882,7 @@ const adminStore: {
   transactions: any[];
   documents: any[];
 } = {
-  users: [
-    {
-      uid: 'USR-001',
-      email: 'moussa.diop@gmail.com',
-      firstName: 'Moussa',
-      lastName: 'Diop',
-      phone: '+221 77 123 45 67',
-      city: 'Dakar',
-      targetJob: 'Ingénieur DevOps & Cloud',
-      balance: 4500,
-      credits: 3,
-      role: 'candidate',
-      subscriptionStatus: 'pro',
-      documentsCount: 4,
-      ordersCount: 3,
-      createdAt: new Date(Date.now() - 14 * 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 2 * 86400000).toISOString()
-    },
-    {
-      uid: 'USR-002',
-      email: 'fatou.sow@orange.sn',
-      firstName: 'Fatou',
-      lastName: 'Sow',
-      phone: '+221 78 987 65 43',
-      city: 'Saint-Louis',
-      targetJob: 'Comptable & Gestionnaire Financière',
-      balance: 1000,
-      credits: 1,
-      role: 'candidate',
-      subscriptionStatus: 'free',
-      documentsCount: 2,
-      ordersCount: 1,
-      createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 1 * 86400000).toISOString()
-    },
-    {
-      uid: 'USR-003',
-      email: 'amadou.ba@outlook.com',
-      firstName: 'Amadou',
-      lastName: 'Bâ',
-      phone: '+221 76 543 21 00',
-      city: 'Thiès',
-      targetJob: 'Chef de Projet Digital',
-      balance: 0,
-      credits: 0,
-      role: 'candidate',
-      subscriptionStatus: 'free',
-      documentsCount: 1,
-      ordersCount: 1,
-      createdAt: new Date(Date.now() - 7 * 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 7 * 86400000).toISOString()
-    },
-    {
-      uid: 'USR-004',
-      email: 'awa.ndiaye@gmail.com',
-      firstName: 'Awa',
-      lastName: 'Ndiaye',
-      phone: '+221 70 852 14 78',
-      city: 'Dakar',
-      targetJob: 'Responsable Ressources Humaines',
-      balance: 6000,
-      credits: 5,
-      role: 'candidate',
-      subscriptionStatus: 'unlimited',
-      documentsCount: 8,
-      ordersCount: 4,
-      createdAt: new Date(Date.now() - 21 * 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 1 * 86400000).toISOString()
-    },
-    {
-      uid: 'USR-005',
-      email: 'peter25ngouala@gmail.com',
-      firstName: 'Super',
-      lastName: 'Admin',
-      phone: '+221 77 000 00 00',
-      city: 'Dakar',
-      targetJob: 'Administrateur Plateforme',
-      balance: 999000,
-      credits: 999,
-      role: 'admin',
-      subscriptionStatus: 'unlimited',
-      status: 'active',
-      documentsCount: 15,
-      ordersCount: 10,
-      unlockedDocsCount: 15,
-      hasForceUnlockedDocs: true,
-      createdAt: new Date(Date.now() - 60 * 86400000).toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ],
+  users: [],
   pricing: {
     cvOnlyPrice: 1000,
     letterOnlyPrice: 1000,
@@ -3083,222 +3004,8 @@ const adminStore: {
       createdBy: 'peter25ngouala@gmail.com'
     }
   ],
-  auditLogs: [
-    {
-      id: 'LOG-001',
-      timestamp: new Date(Date.now() - 10 * 60000).toISOString(),
-      category: 'admin_action' as const,
-      action: 'ADMIN_LOGIN',
-      actorEmail: 'peter25ngouala@gmail.com',
-      actorRole: 'admin' as const,
-      details: 'Connexion sécurisée au Tableau de Bord Administrateur',
-      status: 'success' as const
-    },
-    {
-      id: 'LOG-002',
-      timestamp: new Date(Date.now() - 45 * 60000).toISOString(),
-      category: 'payment' as const,
-      action: 'SENEPAY_PAYMENT_SUCCESS',
-      actorEmail: 'moussa.diop@gmail.com',
-      actorRole: 'candidate' as const,
-      targetUserEmail: 'moussa.diop@gmail.com',
-      details: 'Paiement Wave 5 000 FCFA validé avec succès (Réf: TX-SP-98214)',
-      status: 'success' as const
-    },
-    {
-      id: 'LOG-003',
-      timestamp: new Date(Date.now() - 2 * 3600000).toISOString(),
-      category: 'document' as const,
-      action: 'CV_ATS_DOWNLOAD',
-      actorEmail: 'moussa.diop@gmail.com',
-      actorRole: 'candidate' as const,
-      targetUserEmail: 'moussa.diop@gmail.com',
-      details: 'Téléchargement du document CV DevOps Senior au format PDF & DOCX',
-      status: 'success' as const
-    },
-    {
-      id: 'LOG-004',
-      timestamp: new Date(Date.now() - 5 * 3600000).toISOString(),
-      category: 'wallet' as const,
-      action: 'WALLET_ADJUSTMENT',
-      actorEmail: 'peter25ngouala@gmail.com',
-      actorRole: 'admin' as const,
-      targetUserEmail: 'amadou.ba@outlook.com',
-      targetUserId: 'USR-003',
-      details: 'Ajustement de solde : +1 000 FCFA accordés (Motif: Geste commercial support technique)',
-      status: 'success' as const
-    },
-    {
-      id: 'LOG-005',
-      timestamp: new Date(Date.now() - 18 * 3600000).toISOString(),
-      category: 'auth' as const,
-      action: 'USER_SIGNUP',
-      actorEmail: 'fatou.sow@orange.sn',
-      actorRole: 'candidate' as const,
-      details: 'Création d\'un nouveau compte candidat (Comptable & Gestionnaire)',
-      status: 'success' as const
-    },
-    {
-      id: 'LOG-006',
-      timestamp: new Date(Date.now() - 24 * 3600000).toISOString(),
-      category: 'promo' as const,
-      action: 'PROMO_CODE_CREATED',
-      actorEmail: 'peter25ngouala@gmail.com',
-      actorRole: 'admin' as const,
-      details: 'Création du code promo DAKAR2026 (-30%, limite: 100 utilisations)',
-      status: 'success' as const
-    }
-  ],
-  transactions: [
-    {
-      id: 'TX-OCR-88201',
-      transactionId: 'WV-98214-SN',
-      userId: 'USR-001',
-      userEmail: 'moussa.diop@gmail.com',
-      userName: 'Moussa Diop',
-      type: 'recharge',
-      amount: 5000,
-      expectedAmount: 5000,
-      extractedAmount: 5000,
-      currency: 'XOF',
-      description: 'Recharge Portefeuille via Wave (Reçu validé par IA)',
-      status: 'VALIDATED_BY_AI',
-      aiStatus: 'VALIDATED_BY_AI',
-      paymentMethod: 'wave',
-      receiptTimestamp: '25/08/2026 à 14:15',
-      newBalance: 4500,
-      createdAt: new Date(Date.now() - 15 * 60000).toISOString(),
-      extractedData: {
-        recipient_phone: '+221 78 961 90 88',
-        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
-        amount: 5000,
-        expectedAmount: 5000,
-        transaction_id: 'WV-98214-SN',
-        date_time: '25/08/2026 à 14:15',
-        validation_reason: 'Reçu officiel Wave authentique. Montant 5 000 FCFA et destinataire conformes.'
-      }
-    },
-    {
-      id: 'TX-OCR-77301',
-      transactionId: 'OM-77301-SN',
-      userId: 'USR-002',
-      userEmail: 'fatou.sow@orange.sn',
-      userName: 'Fatou Sow',
-      type: 'document_purchase',
-      amount: -1399,
-      expectedAmount: 1399,
-      extractedAmount: 1399,
-      currency: 'XOF',
-      description: 'Achat Pack Duo CV + Lettre (Orange Money - Validé par IA)',
-      documentTitle: 'Pack Duo CV & Lettre Marketing',
-      status: 'VALIDATED_BY_AI',
-      aiStatus: 'VALIDATED_BY_AI',
-      paymentMethod: 'orange_money',
-      receiptTimestamp: '25/08/2026 à 14:22',
-      newBalance: 1000,
-      createdAt: new Date(Date.now() - 8 * 60000).toISOString(),
-      extractedData: {
-        recipient_phone: '+221 78 961 90 88',
-        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
-        amount: 1399,
-        expectedAmount: 1399,
-        transaction_id: 'OM-77301-SN',
-        date_time: '25/08/2026 à 14:22',
-        validation_reason: 'Reçu Orange Money validé avec succès. Destinataire +221 78 961 90 88 vérifié.'
-      }
-    },
-    {
-      id: 'TX-REJ-99412',
-      transactionId: 'WV-EXP-4401',
-      userId: 'USR-003',
-      userEmail: 'amadou.ba@outlook.com',
-      userName: 'Amadou Ba',
-      type: 'recharge',
-      amount: 1000,
-      expectedAmount: 1000,
-      extractedAmount: 1000,
-      currency: 'XOF',
-      description: 'Tentative Recharge Solde (Wave)',
-      status: 'REJECTED_BY_AI',
-      aiStatus: 'REJECTED_BY_AI',
-      paymentMethod: 'wave',
-      rejectionReason: 'Reçu expiré : émis il y a 52 minutes (limite max: 30 minutes)',
-      rejectionCode: 'EXPIRED_RECEIPT',
-      receiptTimestamp: '25/08/2026 à 13:30',
-      createdAt: new Date(Date.now() - 25 * 60000).toISOString(),
-      extractedData: {
-        recipient_phone: '+221 78 961 90 88',
-        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
-        amount: 1000,
-        expectedAmount: 1000,
-        transaction_id: 'WV-EXP-4401',
-        date_time: '25/08/2026 à 13:30',
-        validation_reason: 'Date conforme mais heure supérieure au délai limite autorisé de 30 minutes.',
-        details: 'Heure reçue: 13:30 (52 min écoulées)'
-      }
-    },
-    {
-      id: 'TX-REJ-99413',
-      transactionId: 'OM-BAD-1092',
-      userId: 'USR-004',
-      userEmail: 'awa.ndiaye@gmail.com',
-      userName: 'Awa Ndiaye',
-      type: 'document_purchase',
-      amount: 1000,
-      expectedAmount: 1000,
-      extractedAmount: 500,
-      currency: 'XOF',
-      description: 'Tentative Déblocage Document (CV Juriste)',
-      documentTitle: 'CV Juriste d\'Affaires',
-      status: 'REJECTED_BY_AI',
-      aiStatus: 'REJECTED_BY_AI',
-      paymentMethod: 'orange_money',
-      rejectionReason: 'Montant insuffisant (500 FCFA au lieu de 1 000 FCFA attendus)',
-      rejectionCode: 'INSUFFICIENT_AMOUNT',
-      receiptTimestamp: '25/08/2026 à 14:10',
-      createdAt: new Date(Date.now() - 18 * 60000).toISOString(),
-      extractedData: {
-        recipient_phone: '+221 78 961 90 88',
-        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
-        amount: 500,
-        expectedAmount: 1000,
-        transaction_id: 'OM-BAD-1092',
-        date_time: '25/08/2026 à 14:10',
-        validation_reason: 'Le montant extrait sur le reçu (500 FCFA) est inférieur au montant requis (1 000 FCFA).'
-      }
-    },
-    {
-      id: 'TX-ADM-1002',
-      transactionId: 'MAN-WV-3391',
-      userId: 'USR-003',
-      userEmail: 'amadou.ba@outlook.com',
-      userName: 'Amadou Ba',
-      type: 'recharge',
-      amount: 1000,
-      expectedAmount: 1000,
-      extractedAmount: 1000,
-      currency: 'XOF',
-      description: 'Recharge Solde via Wave (Validé Manuellement par Admin)',
-      status: 'MANUALLY_VALIDATED',
-      aiStatus: 'MANUALLY_VALIDATED',
-      paymentMethod: 'wave',
-      receiptTimestamp: '25/08/2026 à 12:45',
-      manuallyValidatedBy: 'peter25ngouala@gmail.com',
-      manuallyValidatedAt: new Date(Date.now() - 3600000).toISOString(),
-      adminValidationNote: 'Validation manuelle après vérification du reçu sur l\'application Wave Business.',
-      newBalance: 1000,
-      createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-      extractedData: {
-        recipient_phone: '+221 78 961 90 88',
-        recipient_name: 'NGOUALA LAVOISIER FORTUNE PETER',
-        amount: 1000,
-        expectedAmount: 1000,
-        transaction_id: 'MAN-WV-3391',
-        date_time: '25/08/2026 à 12:45',
-        validation_reason: 'Reçu rejeté initialement par IA pour dépassement de 35 min, mais validé après confirmation bancaire.'
-      }
-    }
-  ],
+  auditLogs: [],
+  transactions: [],
   documents: []
 };
 
@@ -4558,21 +4265,18 @@ app.post('/api/admin/purge-demo-data', requireAdmin, (req, res) => {
     }
 
     const previousTxCount = adminStore.transactions.length;
+    const previousUsersCount = adminStore.users.length;
     adminStore.transactions = [];
+    adminStore.users = [];
+    adminStore.auditLogs = [];
     verifiedReceiptIds.clear();
-
-    // Reset user test balances to 0 for production mode
-    adminStore.users.forEach(u => {
-      u.balance = 0;
-      u.ordersCount = 0;
-    });
 
     recordAuditLog(
       'admin_action',
       'PURGE_DEMO_DATA',
       adminEmail,
-      `Purge complète des données de démonstration et réinitialisation de la base pour le lancement production (${previousTxCount} transactions effacées).`,
-      { previousTxCount },
+      `Purge complète des données de démonstration et réinitialisation de la base pour le lancement production (${previousTxCount} transactions effacées, utilisateurs démo effacés).`,
+      { previousTxCount, previousUsersCount },
       undefined,
       undefined,
       'warning'
@@ -4581,7 +4285,8 @@ app.post('/api/admin/purge-demo-data', requireAdmin, (req, res) => {
     return res.json({
       success: true,
       deletedTransactions: previousTxCount,
-      message: `Toutes les données de test (${previousTxCount} transactions) ont été purgées avec succès.`
+      deletedUsers: previousUsersCount,
+      message: `Toutes les données de démonstration (${previousTxCount} transactions et faux utilisateurs) ont été purgées avec succès. Seuls les comptes enregistrés dans Firebase seront affichés.`
     });
   } catch (err: any) {
     console.error('[Purge Demo Data Error]:', err);
@@ -4662,7 +4367,7 @@ RÈGLES D'OR DU SUPPORT DOKYA :
       const fullPrompt = promptParts.join('\n\n');
 
       const response = await generateContentWithRetry(ai, {
-        model: 'gemini-3.8-flash',
+        model: 'gemini-3.1-flash-lite',
         contents: [
           { role: 'user', parts: [{ text: `${systemInstruction}\n\nHistorique de la conversation :\n${fullPrompt}` }] }
         ]

@@ -258,14 +258,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setEditingPricing((prev) => (prev && prev.cvOnlyPrice ? prev : DEFAULT_PLATFORM_PRICING));
       setPromoCodesList((prev) => (prev && prev.length > 0 ? prev : DEFAULT_PROMO_CODES));
 
-      // 2. Chargement direct des Utilisateurs depuis Firestore
+      // 2. Chargement direct des Utilisateurs depuis Firestore (100% réel)
       try {
         const adminUsers = await fetchAllAdminUsersWithSubscriptions();
-        if (adminUsers.length > 0) {
+        if (adminUsers && adminUsers.length > 0) {
           setUsersList(adminUsers);
         } else {
           const firestoreUsers = await fetchAllFirestoreUserProfiles();
-          if (firestoreUsers.length > 0) {
+          if (firestoreUsers && firestoreUsers.length > 0) {
             const mapped: AdminUserRecord[] = firestoreUsers.map(p => ({
               uid: p.uid,
               email: p.email || 'candidat@dokya.sn',
@@ -285,20 +285,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               role: (p as any).role === 'admin' ? 'admin' : 'candidate'
             }));
             setUsersList(mapped);
+          } else {
+            setUsersList([]);
           }
         }
       } catch (userErr) {
         console.warn('[AdminDashboard] Erreur chargement utilisateurs Firestore:', userErr);
+        setUsersList([]);
       }
 
-      // 3. Chargement direct des Transactions depuis Firestore
+      // 3. Chargement direct des Transactions depuis Firestore (100% réel)
       try {
         const firestoreTx = await fetchAllFirestoreTransactions();
-        if (firestoreTx.length > 0) {
-          setTransactionsList(firestoreTx);
-        }
+        setTransactionsList(Array.isArray(firestoreTx) ? firestoreTx : []);
       } catch (txErr) {
         console.warn('[AdminDashboard] Erreur chargement transactions Firestore:', txErr);
+        setTransactionsList([]);
       }
 
       // 4. Synchronisation facultative en arrière-plan avec l'API Serverless (Tolérance 100% aux pannes)
@@ -347,7 +349,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // Synchronisation temps réel directe avec la collection 'transactions' de Firestore
       const unsubTx = subscribeToAllTransactions((liveTxs) => {
-        if (Array.isArray(liveTxs) && liveTxs.length > 0) {
+        if (Array.isArray(liveTxs)) {
           setTransactionsList(liveTxs);
         }
       });
@@ -363,10 +365,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const unsubRealtimeMetrics = subscribeToRealtimeAdminDashboardMetrics((liveMetrics) => {
         setRealtimeMetrics(liveMetrics);
         setIsRealtimeStatsLoading(false);
-        if (liveMetrics.realtimeUsers && liveMetrics.realtimeUsers.length > 0) {
+        if (Array.isArray(liveMetrics.realtimeUsers)) {
           setUsersList(liveMetrics.realtimeUsers);
         }
-        if (liveMetrics.transactions && liveMetrics.transactions.length > 0) {
+        if (Array.isArray(liveMetrics.transactions)) {
           setTransactionsList(liveMetrics.transactions);
         }
       }, (err) => {

@@ -609,6 +609,7 @@ export function formatRemainingSubscriptionTime(sub?: UserSubscription | any): s
 export interface CandidateProfile {
   uid: string;
   email: string;
+  displayName?: string;
   personalInfo: PersonalInfo;
   experiences: Experience[];
   education: Education[];

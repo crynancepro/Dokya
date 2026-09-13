@@ -1974,26 +1974,33 @@ export async function purgeDemoDataInFirestore(
   try {
     let deletedCount = 0;
 
-    // 1. Purge all transactions in Firestore
+    // 1. Purge all transactions, payments, and orders in Firestore
     try {
-      const txQuery = query(collection(db, 'transactions'));
-      const txSnapshot = await getDocs(txQuery);
-
-      if (!txSnapshot.empty) {
-        // Delete in batches of up to 400
-        const docs = txSnapshot.docs;
-        for (let i = 0; i < docs.length; i += 400) {
-          const chunk = docs.slice(i, i + 400);
-          const batch = writeBatch(db);
-          chunk.forEach((docSnap) => {
-            batch.delete(docSnap.ref);
-          });
-          await batch.commit();
-          deletedCount += chunk.length;
+      const collectionsToPurge = ['transactions', 'payments', 'orders'];
+      for (const colName of collectionsToPurge) {
+        try {
+          const colQuery = query(collection(db, colName));
+          const colSnapshot = await getDocs(colQuery);
+          if (!colSnapshot.empty) {
+            const docs = colSnapshot.docs;
+            for (let i = 0; i < docs.length; i += 400) {
+              const chunk = docs.slice(i, i + 400);
+              const batch = writeBatch(db);
+              chunk.forEach((docSnap) => {
+                batch.delete(docSnap.ref);
+              });
+              await batch.commit();
+              if (colName === 'transactions') {
+                deletedCount += chunk.length;
+              }
+            }
+          }
+        } catch (_colErr) {
+          console.warn(`[Purge ${colName} Warning]:`, _colErr);
         }
       }
     } catch (txErr) {
-      console.warn('[Purge Transactions Warning]:', txErr);
+      console.warn('[Purge Collections Warning]:', txErr);
     }
 
     // 2. Reset demo balances in 'users' collection to 0 FCFA
