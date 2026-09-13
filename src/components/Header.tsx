@@ -8,6 +8,8 @@ import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail } from '../lib/adminAuth';
 import { DokyaLogo } from './DokyaLogo';
+import { CurrencyCountrySelector } from './CurrencyCountrySelector';
+import { useLocale } from '../contexts/LocaleContext';
 
 interface HeaderProps {
   currentView?: string;
@@ -39,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenRecharge
 }) => {
   const [user, setUser] = useState<FirebaseUser | null>(auth.currentUser);
+  const { formatPrice, userCurrency } = useLocale();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
@@ -48,13 +51,17 @@ export const Header: React.FC<HeaderProps> = ({
   const isUserAdmin = isAdminEmail(user?.email);
 
   const getServiceBadge = () => {
+    const cvPrice = userCurrency === 'XOF' ? '1 000 FCFA' : formatPrice(1000);
+    const packPrice = userCurrency === 'XOF' ? '1 499 FCFA' : formatPrice(1499);
+    const ebookPrice = userCurrency === 'XOF' ? '3 000 FCFA' : formatPrice(3000);
+
     switch (currentView) {
       case 'cv':
       case 'cv_gallery':
       case 'cv_preview':
         return {
           title: currentView === 'cv_preview' ? "Aperçu Final : CV Pro ATS" : "Éditeur Dédié : CV Pro ATS",
-          price: "1 000 FCFA",
+          price: cvPrice,
           icon: FileText,
           color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10"
         };
@@ -63,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'letter_preview':
         return {
           title: currentView === 'letter_preview' ? "Aperçu Final : Lettre IA" : "Éditeur Dédié : Lettre IA",
-          price: "1 000 FCFA",
+          price: cvPrice,
           icon: Mail,
           color: "text-blue-400 border-blue-500/30 bg-blue-500/10"
         };
@@ -72,7 +79,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'devis_preview':
         return {
           title: currentView === 'devis_preview' ? "Aperçu Final : Devis Pro" : "Éditeur Dédié : Devis OHADA",
-          price: "1 000 FCFA",
+          price: cvPrice,
           icon: FileCheck,
           color: "text-teal-400 border-teal-500/30 bg-teal-500/10"
         };
@@ -81,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'facture_preview':
         return {
           title: currentView === 'facture_preview' ? "Aperçu Final : Facture Client" : "Éditeur Dédié : Facture OHADA",
-          price: "1 000 FCFA",
+          price: cvPrice,
           icon: Receipt,
           color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
         };
@@ -90,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'pack_business_preview':
         return {
           title: "Éditeur : Pack Business (Devis + Facture)",
-          price: "1 499 FCFA",
+          price: packPrice,
           icon: Package,
           color: "text-purple-400 border-purple-500/30 bg-purple-500/10"
         };
@@ -98,14 +105,14 @@ export const Header: React.FC<HeaderProps> = ({
       case 'ebook_preview':
         return {
           title: "Assistant : Ebook & Rapport KDP",
-          price: "3 000 FCFA",
+          price: ebookPrice,
           icon: BookOpen,
           color: "text-fuchsia-400 border-fuchsia-500/30 bg-fuchsia-500/10"
         };
       default:
         return {
           title: "Studio Documentaire Dokya AI",
-          price: "1 000 FCFA",
+          price: cvPrice,
           icon: Sparkles,
           color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10"
         };
@@ -200,6 +207,9 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Effacer</span>
               </button>
             )}
+
+            {/* Sélecteur de Devise & Pays International */}
+            <CurrencyCountrySelector compact showRates />
 
             {/* Espace Candidat Button with Balance */}
             {onOpenDashboard && (

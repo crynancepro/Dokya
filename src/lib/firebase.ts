@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, User as FirebaseUser } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, OAuthProvider, User as FirebaseUser } from 'firebase/auth';
 import { 
   initializeFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, 
   collection, query, where, getDocs, onSnapshot, Unsubscribe, runTransaction,
@@ -26,6 +26,9 @@ export const db = initializeFirestore(app, {
 export const auth = getAuth(app);
 export const storage = getStorage(app, firebaseConfig.storageBucket);
 export const googleProvider = new GoogleAuthProvider();
+export const appleProvider = new OAuthProvider('apple.com');
+appleProvider.addScope('email');
+appleProvider.addScope('name');
 
 export enum OperationType {
   CREATE = 'create',
@@ -196,7 +199,14 @@ export async function saveTransactionRecord(tx: TransactionRecord): Promise<bool
  */
 export async function initializeUserAccountDoc(
   user: FirebaseUser,
-  extra?: { displayName?: string }
+  extra?: { 
+    displayName?: string; 
+    phone?: string; 
+    phoneNumber?: string; 
+    country?: string; 
+    residenceCountry?: string; 
+    currency?: string; 
+  }
 ): Promise<FirebaseUserProfile> {
   const userRef = doc(db, 'users', user.uid);
   try {
@@ -232,7 +242,7 @@ export async function initializeUserAccountDoc(
         displayName: extra?.displayName || user.displayName || user.email?.split('@')[0] || 'Candidat',
         photoURL: user.photoURL || '',
         walletBalance: 0,
-        currency: 'FCFA',
+        currency: extra?.currency || 'FCFA',
         subscription: {
           planId: 'FREE',
           status: 'INACTIVE',
@@ -248,10 +258,16 @@ export async function initializeUserAccountDoc(
         affiliateBalance: 0,
         totalAffiliateEarnings: 0,
         totalReferred: 0,
+        phone: extra?.phone || extra?.phoneNumber || '',
+        phoneNumber: extra?.phone || extra?.phoneNumber || '',
         createdAt: nowIso,
         updatedAt: nowIso,
         role: user.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate'
       };
+      if (extra?.country || extra?.residenceCountry) {
+        (initialProfile as any).country = extra.country || extra.residenceCountry;
+        (initialProfile as any).residenceCountry = extra.country || extra.residenceCountry;
+      }
       await setDoc(userRef, initialProfile, { merge: true });
 
       // Si l'utilisateur est parrainé, mettre à jour le parrain et enregistrer dans son sous-ensemble

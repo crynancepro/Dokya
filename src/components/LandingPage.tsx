@@ -40,6 +40,8 @@ import { LandingAtsSimulator } from './landing/LandingAtsSimulator';
 import { LandingComparison } from './landing/LandingComparison';
 import { LandingTestimonials } from './landing/LandingTestimonials';
 import { LandingFloatingCta } from './landing/LandingFloatingCta';
+import { CurrencyCountrySelector } from './CurrencyCountrySelector';
+import { useLocale } from '../contexts/LocaleContext';
 
 interface LandingPageProps {
   onGoToAuth: (mode?: 'login' | 'signup') => void;
@@ -319,6 +321,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           {/* Action CTAs */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Global Currency / Country Selector */}
+            <CurrencyCountrySelector compact showRates />
+
             {currentUser ? (
               <button
                 type="button"

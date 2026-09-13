@@ -49,31 +49,11 @@ import {
   subscribeToUserProfile,
   auth
 } from '../lib/firebase';
+import { COUNTRIES, CountryOption, isMobileMoneyCountry } from '../constants/countries';
+import { useLocale } from '../contexts/LocaleContext';
 
-export interface CountryOption {
-  code: string;
-  name: string;
-  dialCode: string;
-  flag: string;
-  example: string;
-}
-
-export const AFRICAN_COUNTRIES: CountryOption[] = [
-  { code: 'SN', name: 'Sénégal', dialCode: '+221', flag: '🇸🇳', example: '77 123 45 67' },
-  { code: 'CI', name: "Côte d'Ivoire", dialCode: '+225', flag: '🇨🇮', example: '07 12 34 56 78' },
-  { code: 'ML', name: 'Mali', dialCode: '+223', flag: '🇲🇱', example: '70 12 34 56' },
-  { code: 'BF', name: 'Burkina Faso', dialCode: '+226', flag: '🇧🇫', example: '70 12 34 56' },
-  { code: 'GN', name: 'Guinée', dialCode: '+224', flag: '🇬🇳', example: '620 12 34 56' },
-  { code: 'CM', name: 'Cameroun', dialCode: '+237', flag: '🇨🇲', example: '6 70 12 34 56' },
-  { code: 'CG', name: 'Congo', dialCode: '+242', flag: '🇨🇬', example: '06 123 45 67' },
-  { code: 'GA', name: 'Gabon', dialCode: '+241', flag: '🇬🇦', example: '074 12 34 56' },
-  { code: 'BJ', name: 'Bénin', dialCode: '+229', flag: '🇧🇯', example: '97 12 34 56' },
-  { code: 'TG', name: 'Togo', dialCode: '+228', flag: '🇹🇬', example: '90 12 34 56' },
-  { code: 'NE', name: 'Niger', dialCode: '+227', flag: '🇳🇪', example: '90 12 34 56' },
-  { code: 'CD', name: 'RDC', dialCode: '+243', flag: '🇨🇩', example: '81 123 45 67' },
-  { code: 'FR', name: 'France / Diaspora', dialCode: '+33', flag: '🇫🇷', example: '6 12 34 56 78' },
-  { code: 'OTHER', name: 'Autre / International', dialCode: '+', flag: '🌍', example: 'Numéro complet' }
-];
+export { type CountryOption };
+export const AFRICAN_COUNTRIES: CountryOption[] = COUNTRIES;
 
 // Official Wave Merchant Link
 export const WAVE_OFFICIAL_URL = 'https://pay.wave.com/m/M_sn_wXlszdyVZOIV/c/sn/';
@@ -222,10 +202,21 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   const [selectedMethod, setSelectedMethod] = useState<'geniuspay' | 'wave' | 'orange_money' | 'wallet'>('geniuspay');
   const [isGeniusPayLoading, setIsGeniusPayLoading] = useState<boolean>(false);
   
+  // Locale and Regional Preferences
+  const { userCountry, setUserCountry, userCurrency, formatPrice, isInternational } = useLocale();
+
   // Country and Phone
-  const [selectedCountry, setSelectedCountry] = useState<CountryOption>(AFRICAN_COUNTRIES[0]);
+  const [selectedCountry, setSelectedCountry] = useState<CountryOption>(userCountry || COUNTRIES[0]);
   const [senderPhoneNumber, setSenderPhoneNumber] = useState<string>('');
   const [transactionRef, setTransactionRef] = useState<string>('');
+
+  useEffect(() => {
+    if (userCountry) {
+      setSelectedCountry(userCountry);
+    }
+  }, [userCountry]);
+
+  const isLocalMobileMoney = isMobileMoneyCountry(selectedCountry.code);
 
   // UI state
   const [copiedField, setCopiedField] = useState<'phone' | 'name' | 'amount' | null>(null);
@@ -619,6 +610,10 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
             userId: userId || 'anonymous',
             planType: planId || 'PASS_VIP',
             documentId: targetDocId || '',
+            country: selectedCountry.code,
+            countryName: selectedCountry.name,
+            currency: userCurrency,
+            preferredPaymentChannel: isLocalMobileMoney ? 'mobile_money' : 'card_apple_pay',
             source: 'dokya_payment_modal'
           }
         })
@@ -1156,6 +1151,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       <div className="text-base font-black text-amber-400 font-mono">
                         {rawPrice.toLocaleString('fr-FR')} FCFA
                       </div>
+                      {userCurrency !== 'XOF' && (
+                        <div className="text-xs font-bold text-amber-300/90 font-sans">
+                          ≈ {formatPrice(rawPrice)}
+                        </div>
+                      )}
                       <div className="text-[10px] text-slate-400">
                         {planId === 'annual' ? '/ an' : planId === 'weekly' ? '/ semaine' : '/ mois'}
                       </div>
@@ -1178,6 +1178,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       <div className="text-base font-black text-emerald-400 font-mono">
                         {rawPrice.toLocaleString('fr-FR')} FCFA
                       </div>
+                      {userCurrency !== 'XOF' && (
+                        <div className="text-xs font-bold text-emerald-300/90 font-sans">
+                          ≈ {formatPrice(rawPrice)}
+                        </div>
+                      )}
                       <div className="text-[10px] text-slate-400">Paiement unique</div>
                     </div>
                   </div>
@@ -1281,12 +1286,52 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
               ) : (
                 /* Payment Methods Grid */
                 <div className="space-y-3">
-                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-                    Mode de paiement :
-                  </label>
+                  {/* Détection Régionale & Sélecteur Rapide de Pays/Devise */}
+                  <div className="p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Globe className="w-4 h-4 text-indigo-400 shrink-0" />
+                      <div className="text-xs truncate">
+                        <span className="text-slate-400">Région :</span>{' '}
+                        <span className="text-white font-bold">{selectedCountry.flag} {selectedCountry.name}</span>
+                        {userCurrency !== 'XOF' && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold">
+                            {userCurrency}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <select
+                      value={selectedCountry.code}
+                      onChange={(e) => {
+                        const target = COUNTRIES.find(c => c.code === e.target.value);
+                        if (target) {
+                          setSelectedCountry(target);
+                          setUserCountry(target);
+                        }
+                      }}
+                      className="bg-slate-950 border border-slate-700 text-[11px] text-slate-200 rounded-xl px-2 py-1 focus:border-indigo-500 focus:outline-hidden cursor-pointer shrink-0"
+                      title="Changer de pays pour adapter les modes de paiement"
+                    >
+                      {COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code} className="bg-slate-900 text-white">
+                          {c.flag} {c.name} ({c.currency})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                      Mode de paiement recommandé :
+                    </label>
+                    <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                      {isLocalMobileMoney ? '⚡ Priorité Mobile Money' : '💳 Priorité Carte & Apple Pay'}
+                    </span>
+                  </div>
 
                   <div className="grid grid-cols-1 gap-3">
-                    {/* 0. GeniusPay Checkout (Automatique Recommandé) */}
+                    {/* 0. GeniusPay Checkout (Adapté dynamiquement au pays) */}
                     <button
                       type="button"
                       onClick={() => setSelectedMethod('geniuspay')}
@@ -1297,25 +1342,53 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       }`}
                     >
                       <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                        <Zap className="w-5 h-5 text-emerald-400" />
+                        {isLocalMobileMoney ? (
+                          <Zap className="w-5 h-5 text-emerald-400" />
+                        ) : (
+                          <CreditCard className="w-5 h-5 text-emerald-400" />
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-1">
                           <p className="text-sm font-black text-white flex items-center gap-2">
-                            <span>GeniusPay Checkout</span>
+                            <span>
+                              {isLocalMobileMoney 
+                                ? 'GeniusPay • Mobile Money Local' 
+                                : 'GeniusPay • Carte Bancaire & Apple Pay'
+                              }
+                            </span>
                             <span className="text-[10px] bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
-                              Automatisé • Immédiat
+                              {isLocalMobileMoney ? '⚡ Recommandé Afrique' : '🌍 Recommandé Diaspora'}
                             </span>
                           </p>
                         </div>
                         <p className="text-xs text-slate-400 mt-1">
-                          Paiement en ligne instantané et 100% sécurisé via <strong className="text-slate-200">Wave, Orange Money, Moov, MTN</strong> ou <strong className="text-slate-200">Carte Bancaire (Visa / Mastercard)</strong>.
+                          {isLocalMobileMoney ? (
+                            <>
+                              Paiement instantané en FCFA via <strong className="text-slate-200">Wave, Orange Money, Moov, MTN</strong> ou <strong className="text-slate-200">Carte Bancaire</strong>.
+                            </>
+                          ) : (
+                            <>
+                              Paiement international sécurisé 3D-Secure en <strong className="text-slate-200">{userCurrency} ({formatPrice(payablePrice)})</strong> par <strong className="text-slate-200">Carte Bancaire (Visa / Mastercard)</strong> ou <strong className="text-slate-200">Apple Pay</strong>.
+                            </>
+                          )}
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">🌊 Wave</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">💳 Carte Bancaire</span>
+                          {isLocalMobileMoney ? (
+                            <>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">🌊 Wave (0% frais)</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN / Moov</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">💳 Carte Bancaire</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">💳 Carte Visa / Mastercard</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-900 text-slate-200 border border-slate-700">🍏 Apple Pay</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">🔒 3D-Secure International</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-950/60 text-purple-300 border border-purple-800/60">⚡ Déblocage Immédiat</span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </button>
@@ -1339,6 +1412,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                             <p className="text-sm font-black text-white">Solde Portefeuille Dokya</p>
                             <span className={`text-xs font-mono font-bold ${hasEnoughBalance ? 'text-emerald-400' : 'text-rose-400'}`}>
                               {safeBalance.toLocaleString('fr-FR')} FCFA
+                              {userCurrency !== 'XOF' && ` (≈ ${formatPrice(safeBalance)})`}
                             </span>
                           </div>
                           <p className="text-xs text-slate-400 mt-1">
@@ -1363,10 +1437,20 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                             <Loader2 className="w-4 h-4 animate-spin" />
                             <span>Connexion sécurisée GeniusPay...</span>
                           </>
-                        ) : (
+                        ) : isLocalMobileMoney ? (
                           <>
                             <Zap className="w-4 h-4" />
-                            <span>Payer via GeniusPay ({payablePrice.toLocaleString('fr-FR')} FCFA)</span>
+                            <span>
+                              Payer via GeniusPay ({payablePrice.toLocaleString('fr-FR')} FCFA{userCurrency !== 'XOF' ? ` ≈ ${formatPrice(payablePrice)}` : ''})
+                            </span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="w-4 h-4" />
+                            <span>
+                              Payer par Carte / Apple Pay ({formatPrice(payablePrice)} • {payablePrice.toLocaleString('fr-FR')} FCFA)
+                            </span>
                             <ArrowRight className="w-4 h-4" />
                           </>
                         )}
@@ -1379,7 +1463,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         className="w-full py-4 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Check className="w-4 h-4" />
-                        <span>Confirmer avec mon solde ({payablePrice.toLocaleString('fr-FR')} FCFA)</span>
+                        <span>
+                          Confirmer avec mon solde ({payablePrice.toLocaleString('fr-FR')} FCFA{userCurrency !== 'XOF' ? ` ≈ ${formatPrice(payablePrice)}` : ''})
+                        </span>
                       </button>
                     )}
                   </div>
