@@ -34,7 +34,7 @@ import { InterviewPrepView } from './components/InterviewPrepView';
 import { AuthModal } from './components/AuthModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
-import { auth, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, initializeUserAccountDoc, saveBusinessInvoice } from './lib/firebase';
+import { auth, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, initializeUserAccountDoc, saveBusinessInvoice, getLocalProfileKey, getLocalTransactionsKey, getLocalDocumentsKey } from './lib/firebase';
 import { initAffiliateTracking } from './lib/referralTracking';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { generateCVWithGemini, generateInterviewPrepWithGemini } from './lib/geminiService';
@@ -215,12 +215,15 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
   // User Wallet Balance - Real-time synchronization with Firestore (starts at 0 FCFA)
   const [userBalance, setUserBalance] = useState<number>(() => {
-    const saved = localStorage.getItem('senegal_cv_user_profile');
-    if (saved) {
+    const currentUid = auth.currentUser?.uid;
+    if (currentUid && currentUid !== 'guest') {
       try {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.walletBalance === 'number') return parsed.walletBalance;
-        if (typeof parsed.balance === 'number') return parsed.balance;
+        const saved = localStorage.getItem(getLocalProfileKey(currentUid));
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (typeof parsed.walletBalance === 'number') return parsed.walletBalance;
+          if (typeof parsed.balance === 'number') return parsed.balance;
+        }
       } catch (e) { /* ignore */ }
     }
     return 0;
@@ -411,9 +414,10 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           setUserBalance(prev => {
             const nextBal = prev + amountParam;
             try {
-              const profile = JSON.parse(localStorage.getItem('senegal_cv_user_profile') || '{}');
+              const uKey = getLocalProfileKey(auth.currentUser?.uid);
+              const profile = JSON.parse(localStorage.getItem(uKey) || '{}');
               profile.balance = nextBal;
-              localStorage.setItem('senegal_cv_user_profile', JSON.stringify(profile));
+              localStorage.setItem(uKey, JSON.stringify(profile));
             } catch (_e) {}
             return nextBal;
           });
@@ -487,25 +491,27 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         }
 
         try {
-          const savedProfileStr = localStorage.getItem('senegal_cv_user_profile');
+          const profileKey = getLocalProfileKey(currentUser?.uid);
+          const savedProfileStr = localStorage.getItem(profileKey);
           let profileObj: any = {};
           if (savedProfileStr) {
             try { profileObj = JSON.parse(savedProfileStr); } catch (e) {}
           }
           profileObj.balance = typeof tx.newBalance === 'number' ? tx.newBalance : Math.max(0, userBalance - paymentPrice);
-          localStorage.setItem('senegal_cv_user_profile', JSON.stringify(profileObj));
+          localStorage.setItem(profileKey, JSON.stringify(profileObj));
         } catch (e) {
           console.warn('[Profile LocalStorage Warn]:', e);
         }
 
         try {
-          const savedTxList = localStorage.getItem('senegal_cv_transactions');
+          const txKey = getLocalTransactionsKey(currentUser?.uid);
+          const savedTxList = localStorage.getItem(txKey);
           let txs: any[] = [];
           if (savedTxList) {
             try { txs = JSON.parse(savedTxList); } catch (e) {}
           }
           txs.unshift(tx);
-          localStorage.setItem('senegal_cv_transactions', JSON.stringify(txs));
+          localStorage.setItem(txKey, JSON.stringify(txs));
         } catch (e) {
           console.warn('[Tx LocalStorage Warn]:', e);
         }
@@ -576,7 +582,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     };
 
     try {
-      const savedDocsList = localStorage.getItem('senegal_cv_saved_documents');
+      const docKey = getLocalDocumentsKey(auth.currentUser?.uid);
+      const savedDocsList = localStorage.getItem(docKey);
       let docs: SavedUserDocument[] = [];
       if (savedDocsList) {
         try { docs = JSON.parse(savedDocsList); } catch (e) {}
@@ -587,7 +594,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       } else {
         docs.unshift(savedDoc);
       }
-      localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(docs));
+      localStorage.setItem(docKey, JSON.stringify(docs));
     } catch (e) {
       console.warn('LocalStorage error saving document:', e);
     }
@@ -804,10 +811,11 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         };
 
         try {
-          const raw = localStorage.getItem('senegal_cv_saved_documents');
+          const docKey = getLocalDocumentsKey(auth.currentUser?.uid);
+          const raw = localStorage.getItem(docKey);
           let list: SavedUserDocument[] = raw ? JSON.parse(raw) : [];
           list = [prepDoc, ...list.filter(d => d.id !== prepDoc.id)];
-          localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(list));
+          localStorage.setItem(docKey, JSON.stringify(list));
         } catch (e) {
           console.error('Erreur sauvegarde locale:', e);
         }
@@ -1620,10 +1628,11 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
                   isPaid: true
                 };
                 try {
-                  const raw = localStorage.getItem('senegal_cv_saved_documents');
+                  const docKey = getLocalDocumentsKey(auth.currentUser?.uid);
+                  const raw = localStorage.getItem(docKey);
                   let list: SavedUserDocument[] = raw ? JSON.parse(raw) : [];
                   list = [prepDoc, ...list.filter(d => d.id !== prepDoc.id)];
-                  localStorage.setItem('senegal_cv_saved_documents', JSON.stringify(list));
+                  localStorage.setItem(docKey, JSON.stringify(list));
                 } catch (e) {}
                 if (auth.currentUser) {
                   saveUserDocument(prepDoc).catch(() => {});
@@ -1694,13 +1703,14 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           const newBal = userBalance + addedAmount;
           setUserBalance(newBal);
           
-          const profileStr = localStorage.getItem('senegal_cv_user_profile');
+          const profileKey = getLocalProfileKey(currentUser?.uid);
+          const profileStr = localStorage.getItem(profileKey);
           let profileObj: any = {};
           if (profileStr) {
             try { profileObj = JSON.parse(profileStr); } catch (e) {}
           }
           profileObj.balance = newBal;
-          localStorage.setItem('senegal_cv_user_profile', JSON.stringify(profileObj));
+          localStorage.setItem(profileKey, JSON.stringify(profileObj));
 
           setSuccessMessage(`Solde rechargé avec succès (+${(addedAmount || 0).toLocaleString('fr-FR')} FCFA) !`);
           setTimeout(() => setSuccessMessage(null), 4000);

@@ -1,5 +1,5 @@
 import { User as FirebaseUser } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, getLocalProfileKey } from './firebase';
 
 export const PRIMARY_ADMIN_EMAIL = 'peter25ngouala@gmail.com';
 
@@ -27,7 +27,8 @@ export function isCurrentUserAdmin(customUser?: FirebaseUser | null): boolean {
   }
   // Check local profile cache if available
   try {
-    const localProfile = localStorage.getItem('senegal_cv_user_profile');
+    const currentUid = customUser?.uid || auth.currentUser?.uid;
+    const localProfile = (currentUid ? localStorage.getItem(getLocalProfileKey(currentUid)) : null) || localStorage.getItem('senegal_cv_user_profile');
     if (localProfile) {
       const parsed = JSON.parse(localProfile);
       if (parsed.email && isAdminEmail(parsed.email)) return true;
