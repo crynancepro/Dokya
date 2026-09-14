@@ -250,39 +250,33 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
       let checkoutUrl: string | null = null;
 
       if (selectedGateway === 'moneyfusion') {
-        // Appelle /api/moneyfusion/checkout avec les paramètres { amount, docId, userId }
+        const user = auth.currentUser;
+        // Requête POST vers le backend local /api/moneyfusion/checkout
         const response = await fetch('/api/moneyfusion/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            amount: selectedFormula.price,
+            amount: selectedFormula.price || 3000,
             docId: targetDocId || '',
-            userId: currentUid,
-            userPhone: (auth.currentUser as any)?.phoneNumber || '',
-            userName: currentUserName,
-            email: currentUserEmail,
-            description,
-            currency: 'XOF',
-            success_url: `${window.location.origin}/dashboard?payment=success&provider=moneyfusion&docId=${targetDocId || ''}`,
-            cancel_url: `${window.location.origin}/dashboard?payment=cancelled&provider=moneyfusion&docId=${targetDocId || ''}`,
-            metadata: {
-              userId: currentUid,
-              targetDocId: targetDocId || '',
-              planType: selectedFormula.id,
-              documentTitle: documentTitle || '',
-              source: 'paywall_modal'
-            }
+            userId: user?.uid || currentUid || '',
+            userPhone: (user as any)?.phoneNumber || '',
+            userName: user?.displayName || currentUserName || ''
           })
         });
 
         const data = await response.json().catch(() => ({}));
 
-        if (!response.ok) {
+        if (!response.ok || !data.success) {
           throw new Error(data.error || 'Erreur lors de la création de la session de paiement Money Fusion.');
         }
 
-        // Redirige l'utilisateur vers la propriété 'url' renvoyée par l'API choisie
-        checkoutUrl = data.url || data.checkout_url || data.checkoutUrl;
+        // Redirection vers la propriété 'url' renvoyée par le backend
+        if (data.url) {
+          window.location.href = data.url;
+          return;
+        } else {
+          throw new Error("L'URL de paiement retournée par Money Fusion est indisponible.");
+        }
       } else {
         // Appelle /api/geniuspay/checkout
         const response = await fetch('/api/geniuspay/checkout', {

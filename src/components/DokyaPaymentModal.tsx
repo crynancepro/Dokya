@@ -645,38 +645,27 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     setErrorMessage(null);
 
     try {
+      const user = auth.currentUser;
       const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: payablePrice,
+          amount: payablePrice || 3000,
           docId: targetDocId || '',
-          userId: userId || auth.currentUser?.uid || 'anonymous',
-          userPhone: (auth.currentUser as any)?.phoneNumber || '',
-          userName: userName || 'Client Dokya',
-          email: userEmail || 'client@dokya.com',
-          currency: 'XOF',
-          description: activeMode === 'subscription' ? `Abonnement Pass VIP - ${planTitle}` : `Achat document - ${documentTitle || 'Dokya'}`,
-          success_url: `${window.location.origin}/dashboard?payment=success&provider=moneyfusion&docId=${targetDocId || ''}`,
-          cancel_url: `${window.location.origin}/dashboard?payment=cancelled&provider=moneyfusion&docId=${targetDocId || ''}`,
-          metadata: {
-            userId: userId || 'anonymous',
-            planType: planId || 'PASS_VIP',
-            documentId: targetDocId || '',
-            source: 'dokya_payment_modal'
-          }
+          userId: user?.uid || userId || '',
+          userPhone: (user as any)?.phoneNumber || '',
+          userName: user?.displayName || userName || ''
         })
       });
 
       const data = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
+      if (!response.ok || !data.success) {
         throw new Error(data.error || 'Erreur lors de la création de la session de paiement Money Fusion.');
       }
 
-      const checkoutUrl = data.url || data.checkout_url || data.checkoutUrl;
-      if (checkoutUrl) {
-        window.location.href = checkoutUrl;
+      if (data.url) {
+        window.location.href = data.url;
       } else {
         throw new Error("L'URL de paiement retournée par Money Fusion est indisponible.");
       }

@@ -189,10 +189,9 @@ export default async function handler(req: any, res: any) {
     const apiKey = process.env.MONEYFUSION_API_KEY;
     const directPaymentUrl = process.env.MONEYFUSION_PAYMENT_URL;
 
-    let apiUrl = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
-    let targetEndpoint = apiUrl;
-    if (!targetEndpoint.includes('/api/')) {
-      targetEndpoint = `${targetEndpoint.replace(/\/+$/, '')}/api/v1/payments`;
+    let targetEndpoint = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
+    if (targetEndpoint === 'https://api.moneyfusion.net' || targetEndpoint === 'https://api.moneyfusion.net/') {
+      targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
     }
 
     const payload = {
@@ -218,13 +217,12 @@ export default async function handler(req: any, res: any) {
         });
         const data: any = await response.json().catch(() => ({}));
         if (response.ok) {
-          const redirectUrl = data.url || data.paymentUrl || data.checkout_url || data.checkoutUrl || data.data?.url || (data.token ? `https://pay.moneyfusion.net/pay/${data.token}` : null);
-          if (redirectUrl) {
+          const checkoutUrl = data.url || (data.token ? `https://pay.moneyfusion.net/checkout/${data.token}` : null);
+          if (checkoutUrl) {
             return res.status(200).json({
               success: true,
-              url: redirectUrl,
-              checkout_url: redirectUrl,
-              paymentId: data.token || data.id || null
+              url: checkoutUrl,
+              token: data.token || null
             });
           }
         }
@@ -233,21 +231,10 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    if (directPaymentUrl) {
-      const sep = directPaymentUrl.includes('?') ? '&' : '?';
-      const checkoutUrl = `${directPaymentUrl}${sep}amount=${targetAmount}&docId=${encodeURIComponent(targetDocId)}&userId=${encodeURIComponent(targetUserId)}`;
-      return res.status(200).json({
-        success: true,
-        url: checkoutUrl,
-        checkout_url: checkoutUrl
-      });
-    }
-
     const simulatedUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
     return res.status(200).json({
       success: true,
       url: simulatedUrl,
-      checkout_url: simulatedUrl,
       simulated: true
     });
   }

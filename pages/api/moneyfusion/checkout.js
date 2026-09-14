@@ -3,7 +3,6 @@
  * POST /api/moneyfusion/checkout
  */
 export default async function handler(req, res) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-KEY');
@@ -27,7 +26,7 @@ export default async function handler(req, res) {
     }
 
     const {
-      amount = 1000,
+      amount = 3000,
       docId = '',
       userId = '',
       userPhone = '',
@@ -35,7 +34,7 @@ export default async function handler(req, res) {
       customer = {}
     } = body || {};
 
-    const targetAmount = Math.max(100, Math.round(Number(amount) || 1000));
+    const targetAmount = Math.max(100, Math.round(Number(amount) || 3000));
     const targetDocId = String(docId || '').trim();
     const targetUserId = String(userId || 'guest').trim() || 'guest';
     const targetPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
@@ -46,15 +45,12 @@ export default async function handler(req, res) {
     const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
     const apiKey = process.env.MONEYFUSION_API_KEY;
-    const directPaymentUrl = process.env.MONEYFUSION_PAYMENT_URL;
 
-    let apiUrl = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
-    let targetEndpoint = apiUrl;
-    if (!targetEndpoint.includes('/api/')) {
-      targetEndpoint = `${targetEndpoint.replace(/\/+$/, '')}/api/v1/payments`;
+    let targetEndpoint = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
+    if (targetEndpoint === 'https://api.moneyfusion.net' || targetEndpoint === 'https://api.moneyfusion.net/') {
+      targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
     }
 
-    // Structure payload requise par Money Fusion
     const payload = {
       totalPrice: Number(targetAmount),
       article: [{ "Déblocage Document Dokya": Number(targetAmount) }],
@@ -78,38 +74,25 @@ export default async function handler(req, res) {
         });
 
         const data = await response.json().catch(() => ({}));
-
         if (response.ok) {
-          const redirectUrl = data.url || data.paymentUrl || data.checkout_url || data.checkoutUrl || data.data?.url || (data.token ? `https://pay.moneyfusion.net/pay/${data.token}` : null);
-          if (redirectUrl) {
+          const checkoutUrl = data.url || (data.token ? `https://pay.moneyfusion.net/checkout/${data.token}` : null);
+          if (checkoutUrl) {
             return res.status(200).json({
               success: true,
-              url: redirectUrl,
-              checkout_url: redirectUrl,
-              paymentId: data.token || data.id || null
+              url: checkoutUrl,
+              token: data.token || null
             });
           }
         }
       } catch (err) {
-        console.error('[Money Fusion Pages API] Erreur API:', err);
+        console.error('[Money Fusion Pages API] Erreur:', err);
       }
-    }
-
-    if (directPaymentUrl) {
-      const sep = directPaymentUrl.includes('?') ? '&' : '?';
-      const checkoutUrl = `${directPaymentUrl}${sep}amount=${targetAmount}&docId=${encodeURIComponent(targetDocId)}&userId=${encodeURIComponent(targetUserId)}`;
-      return res.status(200).json({
-        success: true,
-        url: checkoutUrl,
-        checkout_url: checkoutUrl
-      });
     }
 
     const simulatedUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
     return res.status(200).json({
       success: true,
       url: simulatedUrl,
-      checkout_url: simulatedUrl,
       simulated: true
     });
   } catch (error) {

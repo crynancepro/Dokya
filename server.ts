@@ -2538,13 +2538,11 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
     const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
     const apiKey = process.env.MONEYFUSION_API_KEY;
-    const directPaymentUrl = process.env.MONEYFUSION_PAYMENT_URL;
 
     // Détermination de l'endpoint API Money Fusion
-    let apiUrl = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
-    let targetEndpoint = apiUrl;
-    if (!targetEndpoint.includes('/api/')) {
-      targetEndpoint = `${targetEndpoint.replace(/\/+$/, '')}/api/v1/payments`;
+    let targetEndpoint = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
+    if (targetEndpoint === 'https://api.moneyfusion.net' || targetEndpoint === 'https://api.moneyfusion.net/') {
+      targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
     }
 
     console.log('[Money Fusion Checkout] Requête reçue:', {
@@ -2584,15 +2582,13 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
         const data: any = await response.json().catch(() => ({}));
 
         if (response.ok) {
-          const paymentUrl = data.url || data.paymentUrl || data.checkout_url || data.checkoutUrl || data.data?.url || (data.token ? `https://pay.moneyfusion.net/pay/${data.token}` : null);
-          if (paymentUrl) {
-            console.log('[Money Fusion Checkout] URL générée avec succès par l\'API Money Fusion:', paymentUrl);
+          const checkoutUrl = data.url || (data.token ? `https://pay.moneyfusion.net/checkout/${data.token}` : null);
+          if (checkoutUrl) {
+            console.log('[Money Fusion Checkout] URL générée avec succès par l\'API Money Fusion:', checkoutUrl);
             return res.json({
               success: true,
-              url: paymentUrl,
-              checkout_url: paymentUrl,
-              checkoutUrl: paymentUrl,
-              paymentId: data.token || data.id || data.orderId || null,
+              url: checkoutUrl,
+              token: data.token || null,
               provider: 'moneyfusion'
             });
           }
@@ -2604,20 +2600,7 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       }
     }
 
-    // 2. Si un lien marchand direct Money Fusion (Fusion Link) est configuré
-    if (directPaymentUrl) {
-      const separator = directPaymentUrl.includes('?') ? '&' : '?';
-      const checkoutUrl = `${directPaymentUrl}${separator}amount=${targetAmount}&docId=${encodeURIComponent(targetDocId)}&userId=${encodeURIComponent(targetUserId)}`;
-      return res.json({
-        success: true,
-        url: checkoutUrl,
-        checkout_url: checkoutUrl,
-        checkoutUrl,
-        provider: 'moneyfusion'
-      });
-    }
-
-    // 3. Fallback de test/simulation en prévisualisation si aucune clé API configurée
+    // 2. Fallback de test/simulation en prévisualisation si aucune clé API configurée
     console.info('[Money Fusion Checkout] Mode simulation/test actif (Définissez MONEYFUSION_API_KEY dans les paramètres pour la production).');
     const simulatedSuccessUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
 

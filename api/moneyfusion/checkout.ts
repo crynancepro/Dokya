@@ -19,7 +19,7 @@ interface MoneyFusionRequestBody {
 
 export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
   const {
-    amount = 1000,
+    amount = 3000,
     docId = '',
     userId = '',
     userPhone = '',
@@ -27,7 +27,7 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
     customer = {}
   } = body || {};
 
-  const targetAmount = Math.max(100, Math.round(Number(amount) || 1000));
+  const targetAmount = Math.max(100, Math.round(Number(amount) || 3000));
   const targetDocId = String(docId || '').trim();
   const targetUserId = String(userId || 'guest').trim() || 'guest';
   const targetPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
@@ -38,15 +38,12 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
   const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
   const apiKey = process.env.MONEYFUSION_API_KEY;
-  const directPaymentUrl = process.env.MONEYFUSION_PAYMENT_URL;
 
-  let apiUrl = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
-  let targetEndpoint = apiUrl;
-  if (!targetEndpoint.includes('/api/')) {
-    targetEndpoint = `${targetEndpoint.replace(/\/+$/, '')}/api/v1/payments`;
+  let targetEndpoint = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
+  if (targetEndpoint === 'https://api.moneyfusion.net' || targetEndpoint === 'https://api.moneyfusion.net/') {
+    targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
   }
 
-  // Structure du payload requise par Money Fusion
   const payload = {
     totalPrice: Number(targetAmount),
     article: [{ "Déblocage Document Dokya": Number(targetAmount) }],
@@ -72,15 +69,14 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
       const data: any = await response.json().catch(() => ({}));
 
       if (response.ok) {
-        const redirectUrl = data.url || data.paymentUrl || data.checkout_url || data.checkoutUrl || data.data?.url || (data.token ? `https://pay.moneyfusion.net/pay/${data.token}` : null);
-        if (redirectUrl) {
+        const checkoutUrl = data.url || (data.token ? `https://pay.moneyfusion.net/checkout/${data.token}` : null);
+        if (checkoutUrl) {
           return {
             status: 200,
             data: {
               success: true,
-              url: redirectUrl,
-              checkout_url: redirectUrl,
-              paymentId: data.token || data.id || null
+              url: checkoutUrl,
+              token: data.token || null
             }
           };
         }
@@ -90,26 +86,12 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
     }
   }
 
-  if (directPaymentUrl) {
-    const sep = directPaymentUrl.includes('?') ? '&' : '?';
-    const checkoutUrl = `${directPaymentUrl}${sep}amount=${targetAmount}&docId=${encodeURIComponent(targetDocId)}&userId=${encodeURIComponent(targetUserId)}`;
-    return {
-      status: 200,
-      data: {
-        success: true,
-        url: checkoutUrl,
-        checkout_url: checkoutUrl
-      }
-    };
-  }
-
   const simulatedUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
   return {
     status: 200,
     data: {
       success: true,
       url: simulatedUrl,
-      checkout_url: simulatedUrl,
       simulated: true
     }
   };
@@ -117,7 +99,6 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
 
 export default async function handler(req: any, res?: any) {
   if (!res || typeof res.status !== 'function') {
-    // Request standard
     const body = req && typeof req.json === 'function' ? await req.json().catch(() => ({})) : {};
     const result = await processMoneyFusionCheckout(body);
     return new Response(JSON.stringify(result.data), {
@@ -126,7 +107,6 @@ export default async function handler(req: any, res?: any) {
     });
   }
 
-  // Node req / res
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-KEY');
