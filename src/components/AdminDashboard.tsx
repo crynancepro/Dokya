@@ -151,6 +151,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Transactions filters
   const [txSearch, setTxSearch] = useState<string>('');
   const [txStatusFilter, setTxStatusFilter] = useState<string>('all');
+  const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'document' | 'subscription' | 'wallet'>('all');
   const [txMethodFilter, setTxMethodFilter] = useState<string>('all');
 
   // Transaction Inspection & Action State
@@ -394,7 +395,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return transactionsList.filter((t) => t.status === 'PENDING' || t.status === 'WAITING_FOR_ADMIN' || t.status === 'WAITING_VALIDATION').length;
   }, [transactionsList]);
 
-  // Les paiements étant 100% automatisés via GeniusPay, seules les demandes humaines urgentes déclenchent une alerte
+  // Les paiements étant 100% automatisés via Money Fusion, seules les demandes humaines urgentes déclenchent une alerte
   const totalEmergencyCount = urgentSupportCount;
 
   // Sirène manuelle ou sur test uniquement - Désactivation des alarmes automatiques intrusives
@@ -443,38 +444,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return filteredUsers.slice(start, start + usersPerPage);
   }, [filteredUsers, userPage, usersPerPage]);
 
-  // Métriques de suivi automatisé GeniusPay (Total Revenus XOF, Total Transactions Automatisées, Utilisateurs Crédités)
-  const geniusPayMetrics = useMemo(() => {
+  // Métriques de suivi automatisé Money Fusion avec répartition par types : Document, Abonnement, Rechargement Wallet
+  const moneyFusionMetrics = useMemo(() => {
     let totalRevenue = 0;
-    let automatedCount = 0;
+    let validatedCount = 0;
+    let documentCount = 0;
+    let documentRevenue = 0;
+    let subscriptionCount = 0;
+    let subscriptionRevenue = 0;
+    let walletCount = 0;
+    let walletRevenue = 0;
     const creditedUsersSet = new Set<string>();
 
     transactionsList.forEach((tx) => {
       const isApproved = tx.status === 'APPROVED' || tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED' || tx.status === 'MANUALLY_VALIDATED';
       const amt = Math.abs(Number(tx.amount || tx.expectedAmount || 0));
 
+      // Détection claire du type (Document, Abonnement ou Wallet)
+      const txType = (tx.type || (tx as any).transactionType || '').toUpperCase();
+      const desc = ((tx.description || '') + ' ' + (tx.title || '')).toLowerCase();
+      const isDoc = txType.includes('DOC') || Boolean(tx.targetDocId) || Boolean((tx as any).docId) || desc.includes('document') || desc.includes('déblocage') || desc.includes('deblocage');
+      const isSub = !isDoc && (txType.includes('SUB') || Boolean((tx as any).planId) || desc.includes('abonnement') || desc.includes('pass') || desc.includes('vip') || amt === 2500 || amt === 5000);
+      const isWallet = !isDoc && !isSub;
+
       if (isApproved) {
         totalRevenue += amt;
+        validatedCount++;
         const userKey = tx.userId || (tx as any).userEmail;
         if (userKey && userKey !== 'anonymous') {
           creditedUsersSet.add(userKey);
         }
-      }
 
-      const method = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '')).toLowerCase();
-      if (method.includes('genius') || tx.status === 'COMPLETED' || isApproved || tx.paymentMethod) {
-        automatedCount++;
+        if (isDoc) {
+          documentCount++;
+          documentRevenue += amt;
+        } else if (isSub) {
+          subscriptionCount++;
+          subscriptionRevenue += amt;
+        } else {
+          walletCount++;
+          walletRevenue += amt;
+        }
       }
     });
 
     return {
       totalRevenue,
-      automatedCount: Math.max(automatedCount, transactionsList.length),
+      validatedCount,
+      documentCount,
+      documentRevenue,
+      subscriptionCount,
+      subscriptionRevenue,
+      walletCount,
+      walletRevenue,
       creditedUsersCount: creditedUsersSet.size,
     };
   }, [transactionsList]);
 
-  // Filtered Transactions GeniusPay
+  // Filtered Transactions Money Fusion
   const filteredTransactions = useMemo(() => {
     return transactionsList.filter((t) => {
       if (txSearch) {
@@ -505,11 +532,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
+      // Filtre par Type (Document, Abonnement, Wallet)
+      if (txTypeFilter !== 'all') {
+        const txType = (t.type || (t as any).transactionType || '').toUpperCase();
+        const desc = ((t.description || '') + ' ' + (t.title || '')).toLowerCase();
+        const amt = Math.abs(Number(t.amount || t.expectedAmount || 0));
+        const isDoc = txType.includes('DOC') || Boolean(t.targetDocId) || Boolean((t as any).docId) || desc.includes('document') || desc.includes('déblocage') || desc.includes('deblocage');
+        const isSub = !isDoc && (txType.includes('SUB') || Boolean((t as any).planId) || desc.includes('abonnement') || desc.includes('pass') || desc.includes('vip') || amt === 2500 || amt === 5000);
+        const isWallet = !isDoc && !isSub;
+
+        if (txTypeFilter === 'document' && !isDoc) return false;
+        if (txTypeFilter === 'subscription' && !isSub) return false;
+        if (txTypeFilter === 'wallet' && !isWallet) return false;
+      }
+
       if (txMethodFilter !== 'all') {
         const currentMethod = ((t.paymentMethod || '') + ' ' + ((t as any).operator || '')).toLowerCase();
         const target = txMethodFilter.toLowerCase();
-        if (target === 'card') {
-          if (!currentMethod.includes('card') && !currentMethod.includes('carte') && !currentMethod.includes('visa') && !currentMethod.includes('mastercard')) return false;
+        if (target === 'card' || target === 'qr') {
+          if (!currentMethod.includes('card') && !currentMethod.includes('carte') && !currentMethod.includes('qr') && !currentMethod.includes('visa') && !currentMethod.includes('mastercard')) return false;
         } else if (target === 'wave') {
           if (!currentMethod.includes('wave')) return false;
         } else if (target === 'orange_money') {
@@ -518,15 +559,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           if (!currentMethod.includes('mtn')) return false;
         } else if (target === 'moov') {
           if (!currentMethod.includes('moov')) return false;
-        } else if (target === 'geniuspay') {
-          if (!currentMethod.includes('genius')) return false;
+        } else if (target === 'moneyfusion') {
+          if (!currentMethod.includes('money') && !currentMethod.includes('fusion')) return false;
         } else if (currentMethod !== target) {
           return false;
         }
       }
       return true;
     });
-  }, [transactionsList, txSearch, txStatusFilter, txMethodFilter]);
+  }, [transactionsList, txSearch, txStatusFilter, txTypeFilter, txMethodFilter]);
 
   // Financial Analytics & Metrics (Aujourd'hui, Cette Semaine, Ce Mois, Global)
   const financialStats = useMemo(() => {
@@ -2980,26 +3021,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 5: SUIVI DES TRANSACTIONS GENIUSPAY EN TEMPS RÉEL (100% AUTOMATISÉ)    */}
+        {/* TAB 5: SUIVI DES TRANSACTIONS MONEY FUSION EN TEMPS RÉEL (100% AUTOMATISÉ) */}
         {/* ========================================================================= */}
         {activeTab === 'transactions' && (
           <div className="space-y-6">
             
-            {/* Header / Sub-banner for GeniusPay Tracking */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-900/90 to-emerald-950/40 border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Header / Sub-banner for Money Fusion Tracking */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-900/90 to-blue-950/40 border border-blue-500/20 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
                   <Zap className="w-6 h-6" />
                 </div>
                 <div>
                   <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                    <span>Suivi des Transactions GeniusPay</span>
-                    <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span>Suivi des Transactions Money Fusion</span>
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/30">
                       100% Automatisé
                     </span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Flux en direct des paiements Wave, Orange Money, Moov, MTN et Carte Bancaire. Traitement instantané par Webhook.
+                    Flux en direct des paiements Wave, Orange Money, Moov, MTN et QR Code. Traitement instantané par Webhook Money Fusion.
                   </p>
                 </div>
               </div>
@@ -3008,67 +3049,85 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span>Webhook GeniusPay Actif</span>
+                  <span>Webhook Money Fusion Actif</span>
                 </div>
-                <div className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300">
+                <div className="px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-300">
                   Total : <strong className="font-bold">{transactionsList.length}</strong>
                 </div>
               </div>
             </div>
 
-            {/* Cartes Récapitulatives en Haut (Requirement 3) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Carte 1: Total Revenus (XOF) */}
-              <div className="bg-slate-900/90 border border-emerald-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-emerald-500/20 transition-all"></div>
+            {/* Cartes Récapitulatives : Total & Répartition claire par Type (Document, Abonnement, Wallet) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Carte 1: Total Revenus Money Fusion */}
+              <div className="bg-slate-900/90 border border-blue-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-blue-500/20 transition-all"></div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Revenus</span>
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Validé</span>
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
                     <DollarSign className="w-5 h-5" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                  {geniusPayMetrics.totalRevenue.toLocaleString('fr-FR')} <span className="text-sm font-bold text-emerald-400">XOF</span>
+                  {moneyFusionMetrics.totalRevenue.toLocaleString('fr-FR')} <span className="text-sm font-bold text-blue-400">XOF</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
                   <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Encaissé directement via GeniusPay</span>
+                  <span>{moneyFusionMetrics.validatedCount} paiements validés au total</span>
                 </p>
               </div>
 
-              {/* Carte 2: Total Transactions Automatisées */}
-              <div className="bg-slate-900/90 border border-sky-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-sky-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-sky-500/20 transition-all"></div>
+              {/* Carte 2: Répartition Déblocages Document */}
+              <div className="bg-slate-900/90 border border-emerald-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-emerald-500/20 transition-all"></div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Transactions Automatisées</span>
-                  <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
-                    <Zap className="w-5 h-5" />
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Déblocages Document</span>
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <FileText className="w-5 h-5" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                  {geniusPayMetrics.automatedCount}
+                  {moneyFusionMetrics.documentCount} <span className="text-sm font-bold text-emerald-400">docs</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Traitées automatiquement par webhook</span>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{moneyFusionMetrics.documentRevenue.toLocaleString('fr-FR')} XOF encaissés</span>
                 </p>
               </div>
 
-              {/* Carte 3: Utilisateurs Crédités */}
+              {/* Carte 3: Répartition Abonnements VIP */}
+              <div className="bg-slate-900/90 border border-amber-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-amber-500/20 transition-all"></div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Abonnements VIP</span>
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  {moneyFusionMetrics.subscriptionCount} <span className="text-sm font-bold text-amber-400">pass</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{moneyFusionMetrics.subscriptionRevenue.toLocaleString('fr-FR')} XOF encaissés</span>
+                </p>
+              </div>
+
+              {/* Carte 4: Répartition Rechargements Wallet */}
               <div className="bg-slate-900/90 border border-purple-500/30 rounded-3xl p-5 shadow-xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-purple-500/20 transition-all"></div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Utilisateurs Crédités</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recharges Wallet</span>
                   <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
-                    <Users className="w-5 h-5" />
+                    <CreditCard className="w-5 h-5" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                  {geniusPayMetrics.creditedUsersCount}
+                  {moneyFusionMetrics.walletCount} <span className="text-sm font-bold text-purple-400">recharges</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Comptes rechargés & Pass VIP activés</span>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
+                  <span>{moneyFusionMetrics.walletRevenue.toLocaleString('fr-FR')} XOF crédités</span>
                 </p>
               </div>
             </div>
@@ -3080,18 +3139,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Rechercher par référence (ex: MTX-...), nom, email ou montant..."
+                  placeholder="Rechercher par référence, nom, email ou montant..."
                   value={txSearch}
                   onChange={(e) => setTxSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm !text-white !placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 transition-all caret-blue-500"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm !text-white !placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-all caret-blue-500"
                 />
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Filtre Statut */}
                 <select
                   value={txStatusFilter}
                   onChange={(e: any) => setTxStatusFilter(e.target.value)}
-                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
+                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-blue-500 cursor-pointer font-semibold"
                 >
                   <option value="all" className="bg-slate-900 text-white">Tous les Statuts</option>
                   <option value="success" className="bg-slate-900 text-white">✅ Réussi (Validé)</option>
@@ -3099,18 +3159,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="failed" className="bg-slate-900 text-white">❌ Échoué / Annulé</option>
                 </select>
 
+                {/* Filtre Type (Document, Abonnement, Wallet) */}
+                <select
+                  value={txTypeFilter}
+                  onChange={(e: any) => setTxTypeFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-blue-500 cursor-pointer font-semibold"
+                >
+                  <option value="all" className="bg-slate-900 text-white">Tous les Types</option>
+                  <option value="document" className="bg-slate-900 text-white">📄 Déblocage Document</option>
+                  <option value="subscription" className="bg-slate-900 text-white">👑 Abonnement VIP</option>
+                  <option value="wallet" className="bg-slate-900 text-white">💳 Rechargement Wallet</option>
+                </select>
+
+                {/* Filtre Méthode */}
                 <select
                   value={txMethodFilter}
                   onChange={(e: any) => setTxMethodFilter(e.target.value)}
-                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
+                  className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-blue-500 cursor-pointer font-semibold"
                 >
                   <option value="all" className="bg-slate-900 text-white">Toutes les Méthodes</option>
                   <option value="wave" className="bg-slate-900 text-white">Wave</option>
                   <option value="orange_money" className="bg-slate-900 text-white">Orange Money</option>
                   <option value="mtn" className="bg-slate-900 text-white">MTN Money</option>
                   <option value="moov" className="bg-slate-900 text-white">Moov Money</option>
-                  <option value="card" className="bg-slate-900 text-white">Carte Bancaire</option>
-                  <option value="geniuspay" className="bg-slate-900 text-white">Passerelle GeniusPay</option>
+                  <option value="card" className="bg-slate-900 text-white">QR Code / Carte</option>
+                  <option value="moneyfusion" className="bg-slate-900 text-white">Passerelle Money Fusion</option>
                 </select>
 
                 <button
@@ -3118,7 +3191,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer shadow-sm"
                 >
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <Download className="w-3.5 h-3.5 text-blue-400" />
                   <span>Exporter CSV</span>
                 </button>
 
@@ -3135,30 +3208,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             </div>
 
-            {/* Transactions GeniusPay Table (Requirement 2) */}
+            {/* Transactions Money Fusion Table with Clear Types */}
             <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-950/80 border-b border-slate-800/80 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                     <tr>
-                      <th className="py-4 px-4 sm:px-5">Date & Heure</th>
-                      <th className="py-4 px-3">Utilisateur (Nom / Email)</th>
-                      <th className="py-4 px-3">Référence Transaction</th>
+                      <th className="py-4 px-4 sm:px-5">Date &amp; Heure</th>
+                      <th className="py-4 px-3">Utilisateur</th>
+                      <th className="py-4 px-3">Référence</th>
+                      <th className="py-4 px-3">Type</th>
                       <th className="py-4 px-3">Montant (XOF)</th>
                       <th className="py-4 px-3">Méthode</th>
-                      <th className="py-4 px-3">Statut Webhook / Paiement</th>
-                      <th className="py-4 px-3">Crédits Ajoutés</th>
+                      <th className="py-4 px-3">Statut Webhook</th>
+                      <th className="py-4 px-3">Impact / Action</th>
                       <th className="py-4 px-4 sm:px-5 text-right">Détails</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {filteredTransactions.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-16 text-center text-slate-500">
+                        <td colSpan={9} className="py-16 text-center text-slate-500">
                           <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400 mb-2">
                             <CreditCard className="w-6 h-6" />
                           </div>
-                          Aucune transaction GeniusPay correspondant aux filtres.
+                          Aucune transaction Money Fusion correspondant aux filtres.
                         </td>
                       </tr>
                     ) : (
@@ -3171,12 +3245,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const txReference = tx.transactionReference || (tx as any).transactionId || tx.id;
                         const isCopied = copiedTxId === txReference;
 
+                        // Type detection
+                        const txType = (tx.type || (tx as any).transactionType || '').toUpperCase();
+                        const desc = ((tx.description || '') + ' ' + (tx.title || '')).toLowerCase();
+                        const isDoc = txType.includes('DOC') || Boolean(tx.targetDocId) || Boolean((tx as any).docId) || desc.includes('document') || desc.includes('déblocage') || desc.includes('deblocage');
+                        const isSub = !isDoc && (txType.includes('SUB') || Boolean((tx as any).planId) || desc.includes('abonnement') || desc.includes('pass') || desc.includes('vip') || amountXOF === 2500 || amountXOF === 5000);
+
+                        let typeBadge = {
+                          label: 'Rechargement Wallet',
+                          icon: '💳',
+                          className: 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                        };
+                        if (isDoc) {
+                          typeBadge = {
+                            label: 'Document',
+                            icon: '📄',
+                            className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                          };
+                        } else if (isSub) {
+                          typeBadge = {
+                            label: 'Abonnement VIP',
+                            icon: '👑',
+                            className: 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          };
+                        }
+
                         // Identify payment method
                         const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '')).toLowerCase();
                         let methodBadge = {
-                          label: 'GeniusPay',
+                          label: 'Money Fusion',
                           icon: '⚡',
-                          className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                          className: 'bg-blue-500/15 text-blue-300 border-blue-500/30'
                         };
                         if (methodStr.includes('wave')) {
                           methodBadge = { label: 'Wave', icon: '🌊', className: 'bg-sky-500/15 text-sky-300 border-sky-500/30' };
@@ -3186,8 +3285,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           methodBadge = { label: 'MTN Money', icon: '💛', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
                         } else if (methodStr.includes('moov')) {
                           methodBadge = { label: 'Moov Money', icon: '🟢', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
-                        } else if (methodStr.includes('card') || methodStr.includes('carte') || methodStr.includes('visa') || methodStr.includes('mastercard')) {
-                          methodBadge = { label: 'Carte Bancaire', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+                        } else if (methodStr.includes('card') || methodStr.includes('carte') || methodStr.includes('qr')) {
+                          methodBadge = { label: 'QR Code / Carte', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
                         }
 
                         const userName = (tx as any).userName || (tx as any).userEmail?.split('@')[0] || 'Client Dokya';
@@ -3214,10 +3313,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                             {/* 2. Utilisateur (Nom / Email) */}
                             <td className="py-3.5 px-3">
-                              <div className="font-bold text-slate-200 text-xs truncate max-w-[170px]" title={userName}>
+                              <div className="font-bold text-slate-200 text-xs truncate max-w-[160px]" title={userName}>
                                 {userName}
                               </div>
-                              <div className="text-[11px] text-slate-400 truncate max-w-[170px]" title={userEmail}>
+                              <div className="text-[11px] text-slate-400 truncate max-w-[160px]" title={userEmail}>
                                 {userEmail}
                               </div>
                               {userPhone && (
@@ -3227,10 +3326,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </td>
 
-                            {/* 3. Référence Transaction (ex: MTX-...) avec Copie */}
+                            {/* 3. Référence Transaction avec Copie */}
                             <td className="py-3.5 px-3">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-xs font-bold text-amber-300 tracking-wide truncate max-w-[160px]" title={txReference}>
+                                <span className="font-mono text-xs font-bold text-amber-300 tracking-wide truncate max-w-[140px]" title={txReference}>
                                   {txReference}
                                 </span>
                                 <button
@@ -3249,21 +3348,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   )}
                                 </button>
                               </div>
-                              {tx.description && (
-                                <div className="text-[10px] text-slate-500 truncate max-w-[170px] mt-0.5">
-                                  {tx.description}
-                                </div>
-                              )}
                             </td>
 
-                            {/* 4. Montant (XOF) */}
+                            {/* 4. Type de Transaction (Document, Abonnement, Wallet) */}
+                            <td className="py-3.5 px-3">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border ${typeBadge.className} whitespace-nowrap`}>
+                                <span>{typeBadge.icon}</span>
+                                <span>{typeBadge.label}</span>
+                              </span>
+                            </td>
+
+                            {/* 5. Montant (XOF) */}
                             <td className="py-3.5 px-3">
                               <div className="font-mono font-bold text-sm text-emerald-400">
                                 {amountXOF.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-slate-300">XOF</span>
                               </div>
                             </td>
 
-                            {/* 5. Méthode (Wave / Orange Money / Card) */}
+                            {/* 6. Méthode */}
                             <td className="py-3.5 px-3">
                               <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${methodBadge.className} whitespace-nowrap`}>
                                 <span>{methodBadge.icon}</span>
@@ -3271,12 +3373,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </span>
                             </td>
 
-                            {/* 6. Statut Webhook / Paiement (Réussi / En attente / Échoué) */}
+                            {/* 7. Statut Webhook */}
                             <td className="py-3.5 px-3">
                               {isApproved ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap shadow-xs">
                                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                  <span>Réussi</span>
+                                  <span>Validé</span>
                                 </span>
                               ) : isPending ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
@@ -3291,40 +3393,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </td>
 
-                            {/* 7. Crédits Ajoutés (Confirmation que le solde a bien été incrémenté) */}
+                            {/* 8. Impact / Action */}
                             <td className="py-3.5 px-3">
                               {isApproved ? (
-                                <div className="space-y-0.5">
+                                isDoc ? (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
-                                    <Check className="w-3 h-3 text-emerald-400" />
-                                    <span>Solde Crédité</span>
+                                    <FileText className="w-3 h-3 text-emerald-400" />
+                                    <span>Doc Débloqué</span>
                                   </span>
-                                  <div className="text-[10px] text-slate-400 font-mono">
-                                    +{amountXOF.toLocaleString('fr-FR')} XOF au compte
+                                ) : isSub ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-950/80 text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                                    <Sparkles className="w-3 h-3 text-amber-400" />
+                                    <span>Pass VIP (30j)</span>
+                                  </span>
+                                ) : (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-purple-950/80 text-purple-300 border border-purple-500/30 whitespace-nowrap">
+                                      <Check className="w-3 h-3 text-purple-400" />
+                                      <span>Solde Crédité</span>
+                                    </span>
+                                    <div className="text-[10px] text-slate-400 font-mono">
+                                      +{amountXOF.toLocaleString('fr-FR')} XOF
+                                    </div>
                                   </div>
-                                </div>
+                                )
                               ) : isPending ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-950/40 text-amber-300 border border-amber-500/20 whitespace-nowrap">
                                   <Clock className="w-3 h-3 text-amber-400" />
-                                  <span>En attente webhook</span>
+                                  <span>En attente</span>
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-900 text-slate-400 border border-slate-800 whitespace-nowrap">
                                   <Ban className="w-3 h-3 text-rose-400" />
-                                  <span>Non crédité</span>
+                                  <span>Non appliqué</span>
                                 </span>
                               )}
                             </td>
 
-                            {/* 8. Actions / Détails */}
+                            {/* 9. Détails */}
                             <td className="py-3.5 px-4 sm:px-5 text-right">
                               <button
                                 type="button"
                                 onClick={() => setSelectedTxForInspection(tx)}
                                 className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-                                title="Voir les détails complets de la transaction"
+                                title="Voir les détails complets"
                               >
-                                <Eye className="w-4 h-4 text-emerald-400" />
+                                <Eye className="w-4 h-4 text-blue-400" />
                               </button>
                             </td>
 
@@ -3867,7 +3981,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* 6. Modal Détails de la Transaction GeniusPay & Webhook */}
+      {/* 6. Modal Détails de la Transaction Money Fusion & Webhook */}
       {selectedTxForInspection && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 sm:p-7 max-w-3xl w-full shadow-2xl space-y-6 my-auto max-h-[92vh] overflow-y-auto">
@@ -3875,19 +3989,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Header */}
             <div className="flex items-start justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <div className="w-11 h-11 rounded-2xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
                   <Zap className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-lg sm:text-xl font-black text-white">
-                      Détails de la Transaction GeniusPay
+                      Détails de la Transaction Money Fusion
                     </h3>
                     {/* Status Badge */}
                     {selectedTxForInspection.status === 'VALIDATED_BY_AI' || selectedTxForInspection.status === 'success' || selectedTxForInspection.status === 'COMPLETED' || selectedTxForInspection.status === 'APPROVED' || selectedTxForInspection.status === 'MANUALLY_VALIDATED' ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Réussi</span>
+                        <span>Validé</span>
                       </span>
                     ) : selectedTxForInspection.status === 'REJECTED' || selectedTxForInspection.status === 'REJECTED_BY_ADMIN' || selectedTxForInspection.status === 'REJECTED_BY_AI' || selectedTxForInspection.status === 'failed' || selectedTxForInspection.status === 'cancel' ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
@@ -3927,13 +4041,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               const txRef = selectedTxForInspection.transactionReference || (selectedTxForInspection as any).transactionId || selectedTxForInspection.id;
               const isCopied = copiedTxId === txRef;
 
+              // Type identification
+              const txType = (selectedTxForInspection.type || (selectedTxForInspection as any).transactionType || '').toUpperCase();
+              const desc = ((selectedTxForInspection.description || '') + ' ' + (selectedTxForInspection.title || '')).toLowerCase();
+              const isDoc = txType.includes('DOC') || Boolean(selectedTxForInspection.targetDocId) || Boolean((selectedTxForInspection as any).docId) || desc.includes('document') || desc.includes('déblocage') || desc.includes('deblocage');
+              const isSub = !isDoc && (txType.includes('SUB') || Boolean((selectedTxForInspection as any).planId) || desc.includes('abonnement') || desc.includes('pass') || desc.includes('vip') || amount === 2500 || amount === 5000);
+
               const methodStr = ((selectedTxForInspection.paymentMethod || '') + ' ' + ((selectedTxForInspection as any).operator || '')).toLowerCase();
-              let methodLabel = 'GeniusPay Automatisé';
+              let methodLabel = 'Money Fusion Automatisé';
               if (methodStr.includes('wave')) methodLabel = 'Wave Mobile Money';
               else if (methodStr.includes('orange') || methodStr.includes('om')) methodLabel = 'Orange Money';
               else if (methodStr.includes('mtn')) methodLabel = 'MTN Mobile Money';
               else if (methodStr.includes('moov')) methodLabel = 'Moov Money';
-              else if (methodStr.includes('card') || methodStr.includes('carte') || methodStr.includes('visa')) methodLabel = 'Carte Bancaire';
+              else if (methodStr.includes('card') || methodStr.includes('carte') || methodStr.includes('qr')) methodLabel = 'QR Code Express / Carte';
 
               return (
                 <div className="space-y-6">
@@ -3948,9 +4068,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Type & Action</span>
+                      <div className="text-sm font-bold text-white mt-1.5 flex items-center gap-1.5">
+                        {isDoc ? (
+                          <>
+                            <FileText className="w-4 h-4 text-emerald-400" />
+                            <span className="truncate text-emerald-300">Déblocage Document</span>
+                          </>
+                        ) : isSub ? (
+                          <>
+                            <Sparkles className="w-4 h-4 text-amber-400" />
+                            <span className="truncate text-amber-300">Abonnement VIP</span>
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="w-4 h-4 text-purple-400" />
+                            <span className="truncate text-purple-300">Recharge Wallet</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Méthode</span>
                       <div className="text-sm font-bold text-white mt-1.5 flex items-center gap-1.5">
-                        <CreditCard className="w-4 h-4 text-emerald-400" />
+                        <CreditCard className="w-4 h-4 text-blue-400" />
                         <span className="truncate">{methodLabel}</span>
                       </div>
                     </div>
@@ -3960,30 +4102,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="mt-1.5">
                         {isApproved ? (
                           <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> 200 OK (Réussi)
+                            <CheckCircle2 className="w-3.5 h-3.5" /> 200 OK (Validé)
                           </span>
                         ) : isPending ? (
                           <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" /> En attente appel
+                            <Clock className="w-3.5 h-3.5" /> En attente notification
                           </span>
                         ) : (
                           <span className="text-xs font-bold text-rose-400 flex items-center gap-1">
                             <XCircle className="w-3.5 h-3.5" /> Échoué / Annulé
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Crédits Utilisateur</span>
-                      <div className="mt-1.5">
-                        {isApproved ? (
-                          <span className="text-xs font-black text-emerald-400 flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" /> Solde Incrémenté
-                          </span>
-                        ) : (
-                          <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" /> Non incrémenté
                           </span>
                         )}
                       </div>
@@ -3993,7 +4120,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {/* Détails Utilisateur et Commande */}
                   <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/50 border border-slate-800 space-y-4">
                     <h4 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                      <UserCheck className="w-4 h-4 text-emerald-400" />
+                      <UserCheck className="w-4 h-4 text-blue-400" />
                       <span>Informations Utilisateur & Commande</span>
                     </h4>
 
@@ -4022,7 +4149,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div>
                         <span className="text-slate-400 block mb-1">Type de Commande :</span>
                         <span className="font-semibold text-white">
-                          {selectedTxForInspection.description || selectedTxForInspection.documentTitle || 'Recharge Portefeuille Dokya'}
+                          {selectedTxForInspection.description || selectedTxForInspection.documentTitle || (isDoc ? 'Déblocage de Document Dokya' : isSub ? 'Abonnement VIP Dokya' : 'Recharge Portefeuille Dokya')}
                         </span>
                       </div>
 
@@ -4049,11 +4176,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
-                  {/* Données Techniques GeniusPay */}
+                  {/* Données Techniques Money Fusion */}
                   <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/50 border border-slate-800 space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                        <Terminal className="w-4 h-4 text-emerald-400" />
+                        <Terminal className="w-4 h-4 text-blue-400" />
                         <span>Référence & Données Passerelle</span>
                       </h4>
                       <button
@@ -4080,7 +4207,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <p className="text-[11px] text-slate-400">
-                      Cette référence identifie formellement le paiement auprès de l'API GeniusPay et de l'opérateur mobile sous-jacent.
+                      Cette référence identifie formellement le paiement auprès de l'API Money Fusion et de l'opérateur mobile sous-jacent.
                     </p>
                   </div>
 
@@ -4090,7 +4217,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div>
                         <div className="text-xs font-bold text-amber-300">Contrôle Manuel de Secours</div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
-                          En cas de retard du webhook réseau, vous pouvez créditer immédiatement le compte ou rejeter.
+                          En cas de retard du webhook réseau, vous pouvez valider manuellement la transaction.
                         </div>
                       </div>
 
@@ -4102,7 +4229,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                         >
                           <Check className="w-4 h-4" />
-                          <span>{isValidatingTx ? 'Validation...' : 'Valider & Créditer'}</span>
+                          <span>{isValidatingTx ? 'Validation...' : 'Valider & Appliquer'}</span>
                         </button>
 
                         {!isRejected && (

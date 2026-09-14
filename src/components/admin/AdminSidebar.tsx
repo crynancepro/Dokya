@@ -215,11 +215,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           )}
         </button>
 
-        {/* Item 3: Suivi des Transactions GeniusPay */}
+        {/* Item 3: Suivi des Transactions Money Fusion */}
         <button
           type="button"
           onClick={() => handleNavClick('transactions')}
-          title="Suivi des Transactions GeniusPay en Temps Réel"
+          title="Suivi des Transactions Money Fusion en Temps Réel"
           className={`w-full flex items-center ${isCollapsed ? 'justify-center p-2.5 relative' : 'justify-between px-2.5 py-2'} rounded-xl text-xs font-bold transition-all cursor-pointer group ${
             activeTab === 'transactions'
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25'
@@ -230,15 +230,15 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <div className={`w-7.5 h-7.5 rounded-lg flex items-center justify-center shrink-0 transition-all relative ${
               activeTab === 'transactions'
                 ? 'bg-white/20 text-white'
-                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm shadow-emerald-500/10 group-hover:bg-emerald-500/20'
+                : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-sm shadow-blue-500/10 group-hover:bg-blue-500/20'
             }`}>
-              <Zap className="w-4 h-4 text-emerald-400" />
+              <Zap className="w-4 h-4 text-blue-400" />
             </div>
             {!isCollapsed && (
               <div className="flex flex-col text-left min-w-0">
                 <span className="truncate text-xs">Transactions</span>
-                <span className="text-[9px] text-emerald-400 font-semibold truncate">
-                  GeniusPay Direct
+                <span className="text-[9px] text-blue-400 font-semibold truncate">
+                  Money Fusion Direct
                 </span>
               </div>
             )}

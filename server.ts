@@ -2371,138 +2371,11 @@ app.post('/api/payment/verify', async (req, res) => {
 });
 
 // =========================================================================
-// GENIUSPAY & MANUAL PAYMENTS SYSTEM (METHOD 1 & METHOD 2)
+// MONEY FUSION & MANUAL PAYMENTS SYSTEM (EXCLUSIVE ONLINE GATEWAY)
 // =========================================================================
 
 // Store persistant en mémoire pour les paiements manuels
 const manualPaymentsStore: any[] = [];
-
-/**
- * 1. Initialisation du Checkout GeniusPay (Paiement Automatique)
- * POST /api/geniuspay/checkout
- */
-app.post('/api/geniuspay/checkout', async (req, res) => {
-  try {
-    const {
-      amount = 5000,
-      email,
-      userEmail,
-      userId,
-      affiliateId,
-      referredBy,
-      currency = 'XOF',
-      description = 'Abonnement Pass VIP - DOKYA',
-      customer = {},
-      success_url,
-      error_url,
-      metadata = {}
-    } = req.body || {};
-
-    const publicKey = process.env.GENIUSPAY_PUBLIC_KEY;
-    const secretKey = process.env.GENIUSPAY_SECRET_KEY;
-
-    const targetAmount = Math.max(100, Math.round(Number(amount) || 5000));
-    const targetEmail = (email || userEmail || customer.email || 'client@dokya.com').trim();
-    const targetName = (customer.name || 'Client Dokya').trim();
-    const targetPhone = (customer.phone || '+221770000000').trim();
-    const targetUserId = (userId || metadata.userId || 'anonymous').trim();
-    const targetAffiliateId = (affiliateId || referredBy || metadata.affiliateId || metadata.referredBy || '').trim();
-
-    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
-    const finalRedirectUrl = req.body.redirect_url || success_url || `${appBaseUrl}/dashboard?payment=success`;
-    const finalCancelUrl = req.body.cancel_url || error_url || `${appBaseUrl}/dashboard?payment=cancelled`;
-
-    if (!publicKey || !secretKey) {
-      console.warn('[GeniusPay Checkout] Clés API non configurées (GENIUSPAY_PUBLIC_KEY / GENIUSPAY_SECRET_KEY). Mode simulation démo actif.');
-      const simulatedUrl = `${finalRedirectUrl}${finalRedirectUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=GP_SIM_${Date.now()}`;
-      return res.json({
-        success: true,
-        url: simulatedUrl,
-        checkout_url: simulatedUrl,
-        checkoutUrl: simulatedUrl,
-        simulated: true,
-        message: "Mode test GeniusPay actif (Configurez GENIUSPAY_PUBLIC_KEY et GENIUSPAY_SECRET_KEY dans vos paramètres pour la production)"
-      });
-    }
-
-    // Important : sans spécifier de payment_method, GeniusPay héberge sa page multi-opérateurs
-    const payload = {
-      amount: targetAmount,
-      currency: currency || 'XOF',
-      description: description || 'Abonnement Pass VIP - DOKYA',
-      customer: {
-        name: targetName,
-        email: targetEmail,
-        phone: targetPhone
-      },
-      redirect_url: finalRedirectUrl,
-      cancel_url: finalCancelUrl,
-      success_url: finalRedirectUrl,
-      error_url: finalCancelUrl,
-      return_url: finalRedirectUrl,
-      callback_url: `${appBaseUrl}/api/webhooks/geniuspay`,
-      metadata: {
-        userId: targetUserId,
-        userEmail: targetEmail,
-        affiliateId: targetAffiliateId,
-        referredBy: targetAffiliateId,
-        planType: metadata.planType || 'PASS_VIP',
-        source: 'dokya_checkout'
-      }
-    };
-
-    console.log('[GeniusPay Checkout] Création de session vers https://geniuspay.ci/api/v1/merchant/payments...', {
-      amount: payload.amount,
-      customerEmail: payload.customer.email,
-      metadata: payload.metadata
-    });
-
-    const gpResponse = await fetch('https://geniuspay.ci/api/v1/merchant/payments', {
-      method: 'POST',
-      headers: {
-        'X-API-Key': publicKey,
-        'X-API-Secret': secretKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const gpData: any = await gpResponse.json().catch(() => ({}));
-
-    if (!gpResponse.ok) {
-      console.error('[GeniusPay Checkout API Error]:', gpData);
-      return res.status(gpResponse.status).json({
-        error: gpData.message || gpData.error || 'Erreur lors de la création de la session GeniusPay',
-        details: gpData
-      });
-    }
-
-    const checkoutUrl = gpData?.data?.checkout_url || gpData?.checkout_url || gpData?.data?.url || gpData?.url;
-
-    if (!checkoutUrl) {
-      return res.status(502).json({
-        error: 'URL de redirection manquante dans la réponse de GeniusPay',
-        response: gpData
-      });
-    }
-
-    console.log('[GeniusPay Checkout Success] Session générée:', checkoutUrl);
-
-    return res.json({
-      success: true,
-      url: checkoutUrl,
-      checkout_url: checkoutUrl,
-      checkoutUrl,
-      paymentId: gpData?.data?.id || gpData?.id || null
-    });
-  } catch (error: any) {
-    console.error('[GeniusPay Checkout Exception]:', error);
-    return res.status(500).json({
-      error: error.message || 'Erreur interne du serveur lors du checkout GeniusPay'
-    });
-  }
-});
 
 /**
  * 1.B. Initialisation du Checkout Money Fusion (Passerelle 2 : Mobile Money & QR Code)
@@ -2624,170 +2497,205 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
 /**
  * 1.C. Webhook Money Fusion
  * POST /api/webhooks/moneyfusion
+ * Gère automatiquement les 3 cas d'usage :
+ * A. Déblocage de Document (docId présent) : { isUnlocked: true, status: "UNLOCKED", paymentGateway: "Money Fusion" }
+ * B. Activation / Renouvellement d'Abonnement (planId / userEmail / userId) : { isVip: true, subscriptionStatus: "ACTIVE", plan: planId, updatedAt: new Date() }
+ * C. Rechargement du Wallet / Solde Dokya (amount / userId) : solde = solde + amount
  */
 app.post('/api/webhooks/moneyfusion', async (req, res) => {
   try {
     const payload = req.body || {};
-    console.log('[Money Fusion Webhook] Événement reçu:', payload);
+    console.log('[Money Fusion Webhook] Notification reçue:', payload);
 
-    const isSuccess = payload.status === 'success' || payload.status === 'paid' || payload.event === 'payment.success' || payload.paymentStatus === 'completed';
-    if (!isSuccess) {
-      return res.status(200).json({ received: true, ignored: true, status: payload.status });
+    const statusVal = String(payload.statut ?? payload.status ?? payload.event ?? '').toLowerCase();
+    const isSuccess = statusVal === 'true' || statusVal === 'success' || statusVal === 'paid' || statusVal === 'completed' || statusVal === 'approved' || payload.statut === true;
+
+    if (!isSuccess && statusVal !== '') {
+      return res.status(200).json({ received: true, ignored: true, status: statusVal });
     }
 
-    const customData = payload.customData || payload.metadata || {};
-    const userId = customData.userId || payload.userId;
-    const docId = customData.docId || payload.docId;
-    const planType = customData.planType || 'single';
-    const amount = Number(payload.totalPrice || payload.amount || 1000);
-    const txId = payload.orderId || payload.token || `MF-${Date.now()}`;
+    const personalInfo = Array.isArray(payload.personal_Info) ? payload.personal_Info[0] : (payload.personal_Info || {});
+    const metadata = payload.metadata || payload.customData || {};
+
+    const docId = String(personalInfo.docId || metadata.docId || payload.docId || '').trim();
+    const userId = String(personalInfo.userId || metadata.userId || payload.userId || '').trim();
+    const planId = String(personalInfo.planId || metadata.planId || payload.planId || '').trim();
+    const userEmail = String(personalInfo.email || metadata.userEmail || payload.clientEmail || payload.email || '').trim();
+    const amount = Number(payload.totalPrice || payload.amount || personalInfo.amount || 3000);
+    const txId = payload.token || payload.orderId || payload.id || `MF-${Date.now()}`;
     const now = new Date();
 
-    if (userId) {
-      const userIndex = adminStore.users.findIndex(u => u.uid === userId || (payload.clientEmail && u.email.toLowerCase() === payload.clientEmail.toLowerCase()));
+    const isDocumentUnlock = Boolean(docId);
+    const isSubscription = Boolean(planId) || (!isDocumentUnlock && (amount === 3499 || amount === 39999 || amount === 5000 || planId === 'PASS_VIP' || planId === 'monthly' || planId === 'annual' || planId === 'weekly'));
+    const isWalletRecharge = !isDocumentUnlock && !isSubscription && Boolean(userId);
+
+    const transactionType = isDocumentUnlock ? 'DOCUMENT_UNLOCK' : (isSubscription ? 'SUBSCRIPTION_PURCHASE' : 'WALLET_RECHARGE');
+    const transactionTypeLabel = isDocumentUnlock ? 'Document' : (isSubscription ? 'Abonnement VIP' : 'Rechargement Wallet');
+
+    // --- MISE À JOUR STORE LOCAL (adminStore) ---
+    const userIndex = adminStore.users.findIndex(u => (userId && u.uid === userId) || (userEmail && u.email.toLowerCase() === userEmail.toLowerCase()));
+
+    // CAS A : Déblocage de Document
+    if (isDocumentUnlock) {
       if (userIndex !== -1) {
-        if (planType === 'vip_career' || planType === 'business') {
-          adminStore.users[userIndex].subscriptionStatus = 'unlimited';
-          (adminStore.users[userIndex] as any).subscription = {
-            planId: planType,
-            status: 'ACTIVE',
-            activatedAt: now.toISOString(),
-            expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            pricePaid: amount,
-            paymentMethod: 'moneyfusion'
-          };
-        } else {
-          adminStore.users[userIndex].unlockedDocsCount = (adminStore.users[userIndex].unlockedDocsCount || 0) + 1;
+        adminStore.users[userIndex].unlockedDocsCount = (adminStore.users[userIndex].unlockedDocsCount || 0) + 1;
+        const currentPurchased = (adminStore.users[userIndex] as any).purchasedDocIds || [];
+        if (!currentPurchased.includes(docId)) {
+          (adminStore.users[userIndex] as any).purchasedDocIds = [...currentPurchased, docId];
         }
       }
-    }
-
-    const completedTx = {
-      id: txId,
-      transactionId: txId,
-      userId: userId || 'anonymous',
-      userName: payload.clientName || 'Client Dokya',
-      userEmail: payload.clientEmail || '',
-      type: planType === 'single' ? 'DOCUMENT_UNLOCK' : 'SUBSCRIPTION_PURCHASE',
-      planId: planType,
-      amount,
-      expectedAmount: amount,
-      currency: payload.currency || 'XOF',
-      paymentMethod: 'moneyfusion',
-      operator: 'moneyfusion_mobile_qr',
-      description: payload.description || `Paiement Money Fusion - ${docId || planType}`,
-      status: 'COMPLETED',
-      completedAt: now.toISOString(),
-      createdAt: now.toISOString()
-    };
-    adminStore.transactions.unshift(completedTx);
-
-    return res.json({ received: true, status: 'PROCESSED', userId, docId });
-  } catch (error: any) {
-    console.error('[Money Fusion Webhook Error]:', error);
-    return res.status(500).json({ error: error.message || 'Erreur serveur du webhook Money Fusion' });
-  }
-});
-
-/**
- * 2. Webhook GeniusPay (Notification instantanée)
- * POST /api/webhooks/geniuspay
- */
-app.post('/api/webhooks/geniuspay', async (req, res) => {
-  try {
-    const signature = req.headers['x-webhook-signature'] as string;
-    const timestamp = req.headers['x-webhook-timestamp'] as string;
-    const webhookSecret = process.env.GENIUSPAY_WEBHOOK_SECRET;
-    const payload = req.body || {};
-
-    if (webhookSecret && signature) {
-      const rawString = JSON.stringify(payload);
-      const payloadToSign = timestamp ? `${timestamp}.${rawString}` : rawString;
-      const expected = crypto.createHmac('sha256', webhookSecret).update(payloadToSign).digest('hex');
-      const altExpected = timestamp ? crypto.createHmac('sha256', webhookSecret).update(`${timestamp}${rawString}`).digest('hex') : expected;
-
-      if (signature !== expected && signature !== altExpected) {
-        console.error('[GeniusPay Webhook] Signature HMAC invalide');
-        return res.status(403).json({ error: 'Signature invalide' });
+      const existingDoc = adminStore.documents?.find(d => d.id === docId);
+      if (existingDoc) {
+        existingDoc.isUnlocked = true;
+        existingDoc.status = 'UNLOCKED';
+        existingDoc.paymentGateway = 'Money Fusion';
+        existingDoc.unlocked = true;
+        existingDoc.isPaid = true;
       }
     }
 
-    console.log('[GeniusPay Webhook] Événement reçu:', payload.event, payload.data?.status || payload.status);
+    // CAS B : Activation / Renouvellement d'Abonnement
+    if (isSubscription) {
+      const resolvedPlan = planId || 'PASS_VIP';
+      const durationDays = resolvedPlan === 'annual' || amount >= 15000 ? 365 : (resolvedPlan === 'weekly' ? 7 : 30);
+      const expiresDate = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-    const event = payload.event || payload.type;
-    const paymentData = payload.data || payload;
-    const paymentStatus = (paymentData.status || '').toLowerCase();
-    const isSuccess = (event === 'payment.success') || (event === 'transaction.successful') || (paymentStatus === 'completed') || (paymentStatus === 'success') || (paymentStatus === 'paid');
-
-    if (!isSuccess) {
-      return res.status(200).json({ received: true, ignored: true, status: paymentStatus });
-    }
-
-    const metadata = paymentData.metadata || {};
-    const userId = metadata.userId;
-    const planType = metadata.planType || 'PASS_VIP';
-    const referredBy = metadata.referredBy;
-    const amount = Number(paymentData.amount || 5000);
-    const txId = paymentData.id || `GP-${Date.now()}`;
-    const now = new Date();
-
-    let durationDays = 30;
-    if (planType === 'annual') durationDays = 365;
-    else if (planType === 'weekly') durationDays = 7;
-    const expiresDate = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-
-    // Mise à jour de l'utilisateur dans le store admin
-    if (userId) {
-      const userIndex = adminStore.users.findIndex(u => u.uid === userId || u.email.toLowerCase() === (paymentData.customer?.email || '').toLowerCase());
       if (userIndex !== -1) {
-        adminStore.users[userIndex].subscriptionStatus = 'unlimited';
+        adminStore.users[userIndex].isVip = true;
+        adminStore.users[userIndex].subscriptionStatus = 'ACTIVE';
+        (adminStore.users[userIndex] as any).plan = resolvedPlan;
         (adminStore.users[userIndex] as any).subscription = {
-          planId: planType,
+          planId: resolvedPlan,
           status: 'ACTIVE',
           activatedAt: now.toISOString(),
           expiresAt: expiresDate.toISOString(),
           pricePaid: amount,
-          paymentMethod: 'geniuspay'
+          paymentMethod: 'Money Fusion',
+          paymentGateway: 'Money Fusion'
         };
+        (adminStore.users[userIndex] as any).updatedAt = now.toISOString();
       }
     }
 
-    // Gestion de la commission d'affiliation de 20%
-    if (referredBy) {
-      const commission = Math.round(amount * 0.20);
-      const refIndex = adminStore.users.findIndex(u => u.uid === referredBy || (u as any).referralCode === referredBy);
-      if (refIndex !== -1) {
-        adminStore.users[refIndex].balance = (adminStore.users[refIndex].balance || 0) + commission;
-        (adminStore.users[refIndex] as any).affiliateBalance = ((adminStore.users[refIndex] as any).affiliateBalance || 0) + commission;
-        console.log(`[GeniusPay Webhook] Commission de 20% (${commission} XOF) créditée au parrain ${adminStore.users[refIndex].email}`);
+    // CAS C : Rechargement du Wallet / Solde Dokya
+    if (isWalletRecharge) {
+      if (userIndex !== -1) {
+        adminStore.users[userIndex].balance = (adminStore.users[userIndex].balance || 0) + amount;
+        adminStore.users[userIndex].walletBalance = (adminStore.users[userIndex].walletBalance || 0) + amount;
+        (adminStore.users[userIndex] as any).solde = ((adminStore.users[userIndex] as any).solde || 0) + amount;
+        (adminStore.users[userIndex] as any).updatedAt = now.toISOString();
       }
     }
 
-    // Enregistrement de la transaction complétée
+    // Enregistrement de la transaction dans adminStore
     const completedTx = {
       id: txId,
       transactionId: txId,
       userId: userId || 'anonymous',
-      userName: paymentData.customer?.name || 'Client Dokya',
-      userEmail: paymentData.customer?.email || '',
-      type: 'SUBSCRIPTION_PURCHASE',
-      planId: planType,
+      userName: personalInfo.nom || metadata.userName || payload.clientName || 'Client Dokya',
+      userEmail: userEmail || payload.clientEmail || '',
+      userPhone: payload.numeroSend || personalInfo.telephone || '',
+      type: transactionType,
+      typeLabel: transactionTypeLabel,
+      planId: planId || (isSubscription ? 'PASS_VIP' : ''),
+      targetDocId: docId || '',
       amount,
       expectedAmount: amount,
-      currency: paymentData.currency || 'XOF',
-      paymentMethod: 'geniuspay',
-      operator: paymentData.payment_method || 'geniuspay_multi',
-      description: paymentData.description || `Abonnement ${planType} - GeniusPay`,
+      currency: payload.currency || 'XOF',
+      paymentMethod: 'moneyfusion',
+      paymentGateway: 'Money Fusion',
+      operator: 'moneyfusion_mobile_qr',
+      description: isDocumentUnlock ? `Déblocage Document (${docId}) - Money Fusion` : (isSubscription ? `Abonnement VIP (${planId || 'Pass'}) - Money Fusion` : `Rechargement Wallet (${amount} XOF) - Money Fusion`),
       status: 'COMPLETED',
       completedAt: now.toISOString(),
       createdAt: now.toISOString()
     };
     adminStore.transactions.unshift(completedTx);
 
-    return res.json({ received: true, status: 'PROCESSED', userId, activatedPlan: planType });
+    // --- SYNCHRONISATION FIRESTORE (API REST) ---
+    const FIRESTORE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0865957742';
+    const FIRESTORE_DATABASE_ID = process.env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-gnrateurdecvlett-49cc73ad-7657-4218-be85-c050974ca976';
+    const FIRESTORE_API_KEY = process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDrIGI9XiDRwq8Q7WDEHcbmhQGzy38skc4';
+
+    // Sync Cas A vers Firestore
+    if (isDocumentUnlock && docId) {
+      const docUrl = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents/user_documents/${encodeURIComponent(docId)}?key=${FIRESTORE_API_KEY}`;
+      const docFields = {
+        isUnlocked: { booleanValue: true },
+        status: { stringValue: 'UNLOCKED' },
+        paymentGateway: { stringValue: 'Money Fusion' },
+        unlocked: { booleanValue: true },
+        isPaid: { booleanValue: true },
+        paidAt: { timestampValue: now.toISOString() },
+        updatedAt: { timestampValue: now.toISOString() }
+      };
+      const docMasks = Object.keys(docFields).map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+      fetch(`${docUrl}&${docMasks}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: docFields })
+      }).catch(err => console.warn('[Money Fusion server.ts] Firestore doc update warn:', err.message));
+    }
+
+    // Sync Cas B vers Firestore
+    if (isSubscription && userId && userId !== 'guest') {
+      const resolvedPlan = planId || 'PASS_VIP';
+      const durationDays = resolvedPlan === 'annual' || amount >= 15000 ? 365 : (resolvedPlan === 'weekly' ? 7 : 30);
+      const userUrl = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents/users/${encodeURIComponent(userId)}?key=${FIRESTORE_API_KEY}`;
+      const userFields = {
+        isVip: { booleanValue: true },
+        subscriptionStatus: { stringValue: 'ACTIVE' },
+        plan: { stringValue: resolvedPlan },
+        updatedAt: { timestampValue: now.toISOString() },
+        lastPaymentAt: { timestampValue: now.toISOString() },
+        lastPaymentProvider: { stringValue: 'Money Fusion' }
+      };
+      const uMasks = Object.keys(userFields).map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+      fetch(`${userUrl}&${uMasks}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: userFields })
+      }).catch(err => console.warn('[Money Fusion server.ts] Firestore user sub update warn:', err.message));
+    }
+
+    // Sync Cas C vers Firestore
+    if (isWalletRecharge && userId && userId !== 'guest') {
+      const userUrl = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents/users/${encodeURIComponent(userId)}?key=${FIRESTORE_API_KEY}`;
+      fetch(userUrl).then(async (res) => {
+        if (res.ok) {
+          const uData = await res.json();
+          const currentBal = Number(uData?.fields?.balance?.integerValue || uData?.fields?.walletBalance?.integerValue || 0);
+          const newBal = currentBal + amount;
+          const uFields = {
+            balance: { integerValue: String(newBal) },
+            walletBalance: { integerValue: String(newBal) },
+            solde: { integerValue: String(newBal) },
+            updatedAt: { timestampValue: now.toISOString() },
+            lastPaymentAt: { timestampValue: now.toISOString() },
+            lastPaymentProvider: { stringValue: 'Money Fusion' }
+          };
+          const masks = Object.keys(uFields).map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+          return fetch(`${userUrl}&${masks}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields: uFields })
+          });
+        }
+      }).catch(err => console.warn('[Money Fusion server.ts] Firestore wallet credit warn:', err.message));
+    }
+
+    return res.json({
+      received: true,
+      status: 'PROCESSED',
+      type: transactionType,
+      typeLabel: transactionTypeLabel,
+      docId: docId || null,
+      userId: userId || null,
+      amount
+    });
   } catch (error: any) {
-    console.error('[GeniusPay Webhook Error]:', error);
-    return res.status(500).json({ error: error.message || 'Erreur serveur du webhook' });
+    console.error('[Money Fusion Webhook Error]:', error);
+    return res.status(500).json({ error: error.message || 'Erreur serveur du webhook Money Fusion' });
   }
 });
 
@@ -3036,7 +2944,9 @@ export interface ServerAdminUserRecord {
   city?: string;
   targetJob?: string;
   balance: number;
+  walletBalance?: number;
   credits: number;
+  isVip?: boolean;
   role: 'admin' | 'candidate' | 'recruiter' | string;
   subscriptionStatus: 'free' | 'pro' | 'unlimited' | string;
   subscription?: any;

@@ -133,7 +133,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [selectedCurrency, setSelectedCurrency] = useState<'XOF' | 'EUR' | 'USD'>('XOF');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
-  // États checkout GeniusPay direct
+  // États checkout Money Fusion direct
   const [processingPlanId, setProcessingPlanId] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
@@ -167,54 +167,41 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
-  // Déclenchement automatisé du paiement GeniusPay direct
-  const handleGeniusPayPlanCheckout = async (plan: PricingPlan) => {
+  // Déclenchement automatisé du paiement Money Fusion direct
+  const handleMoneyFusionPlanCheckout = async (plan: PricingPlan) => {
     setProcessingPlanId(plan.id);
     setCheckoutError(null);
 
     try {
       const currentUid = currentUser?.uid || `guest_${Date.now()}`;
-      const currentUserEmail = (currentUser?.email || 'client@dokya.com').trim();
       const currentUserName = (currentUser?.displayName || 'Client Dokya').trim();
 
-      const response = await fetch('/api/geniuspay/checkout', {
+      const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: plan.amount,
-          currency: 'XOF',
-          description: `Souscription ${plan.title} - Dokya Platform`,
-          customer: {
-            name: currentUserName,
-            email: currentUserEmail,
-            phone: '+221770000000'
-          },
-          redirect_url: `${window.location.origin}/dashboard?payment=success&plan=${plan.id}`,
-          success_url: `${window.location.origin}/dashboard?payment=success&plan=${plan.id}`,
-          cancel_url: `${window.location.origin}/#tarifs`,
-          error_url: `${window.location.origin}/#tarifs?payment=error`,
-          metadata: {
-            userId: currentUid,
-            planType: plan.id,
-            source: 'landing_pricing_card'
-          }
+          planId: plan.id,
+          type: 'subscription',
+          userId: currentUid,
+          userPhone: (currentUser as any)?.phoneNumber || '',
+          userName: currentUserName
         })
       });
 
       const data = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de l\'initialisation de la session GeniusPay.');
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Erreur lors de l\'initialisation de la session Money Fusion.');
       }
 
-      const checkoutUrl = data.checkout_url || data.checkoutUrl;
-      if (checkoutUrl) {
-        window.location.href = checkoutUrl;
+      if (data.url) {
+        window.location.href = data.url;
       } else {
-        throw new Error('Lien de paiement GeniusPay indisponible.');
+        throw new Error('Lien de paiement Money Fusion indisponible.');
       }
     } catch (err: any) {
-      console.error('[Landing GeniusPay Error]:', err);
+      console.error('[Landing Money Fusion Error]:', err);
       setCheckoutError(err.message || 'Impossible d\'ouvrir la passerelle de paiement sécurisée. Veuillez réessayer.');
     } finally {
       setProcessingPlanId(null);
@@ -231,8 +218,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       a: "Nos modèles utilisent une structure de balisage sémantique vectorielle sans tableaux imbriqués opaques ni éléments graphiques non parsables. Ils sont testés et validés auprès des principaux moteurs de filtrage (Workday, Taleo, Greenhouse, BambooHR) pour assurer une extraction exacte de vos compétences et expériences."
     },
     {
-      q: "Comment s'effectue le paiement instantané via GeniusPay ?",
-      a: "Le paiement est 100% automatisé et sans délai : dès que vous cliquez sur le bouton de paiement, vous êtes redirigé vers la passerelle sécurisée GeniusPay. Vous pouvez régler directement via Wave Sénégal, Orange Money, MTN Moov ou Carte Bancaire (Visa/Mastercard). Dès validation, votre document ou abonnement est activé immédiatement sans envoi de capture d'écran."
+      q: "Comment s'effectue le paiement instantané via Money Fusion ?",
+      a: "Le paiement est 100% automatisé et sans délai : dès que vous cliquez sur le bouton de paiement, vous êtes redirigé vers la passerelle sécurisée Money Fusion. Vous pouvez régler directement via Wave Sénégal, Orange Money, MTN Moov ou par QR Code Express. Dès validation, votre document ou abonnement est activé immédiatement sans envoi de capture d'écran."
     },
     {
       q: "Les factures et devis sont-ils conformes aux normes fiscales OHADA / UEMOA ?",
@@ -887,7 +874,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <LandingTestimonials />
 
       {/* ========================================================================= */}
-      {/* 6. SECTION TARIFICATION 3D DIRECTE (3 OFFRES + GENIUSPAY 1-CLIC)           */}
+      {/* 6. SECTION TARIFICATION 3D DIRECTE (3 OFFRES + MONEY FUSION 1-CLIC)        */}
       {/* ========================================================================= */}
       <section id="tarifs" className="py-16 sm:py-24 bg-slate-900/30 border-b border-slate-800/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
@@ -901,7 +888,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Choisissez votre Formule &amp; Payez en 1-Clic
             </h2>
             <p className="text-sm text-slate-400">
-              Règlement instantané sécurisé par Wave, Orange Money, MTN ou Carte Bancaire via GeniusPay.
+              Règlement instantané sécurisé par Wave, Orange Money, MTN ou QR Code via Money Fusion.
             </p>
 
             {/* Sélecteur de Devise Interactif */}
@@ -1011,22 +998,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       </ul>
                     </div>
 
-                    {/* Bouton de déclenchement direct GeniusPay */}
+                    {/* Bouton de déclenchement direct Money Fusion */}
                     <div className="space-y-2.5 pt-2">
                       <button
                         type="button"
-                        onClick={() => handleGeniusPayPlanCheckout(plan)}
+                        onClick={() => handleMoneyFusionPlanCheckout(plan)}
                         disabled={isProcessing}
                         className={`w-full py-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                           plan.popular
-                            ? 'bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:opacity-95 text-white shadow-indigo-600/30'
+                            ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-95 text-white shadow-blue-600/30'
                             : 'bg-slate-800 hover:bg-slate-700 text-white'
                         }`}
                       >
                         {isProcessing ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin text-white" />
-                            <span>Connexion GeniusPay...</span>
+                            <span>Connexion Money Fusion...</span>
                           </>
                         ) : (
                           <>
@@ -1038,7 +1025,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                       <p className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1">
                         <Lock className="w-3 h-3 text-emerald-400" />
-                        <span>GeniusPay : Wave, OM, MTN, Carte</span>
+                        <span>Money Fusion : Wave, OM, MTN, QR Code</span>
                       </p>
                     </div>
 
@@ -1144,7 +1131,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="flex items-center gap-4 text-[11px]">
             <span>Dakar, Sénégal (Zone UEMOA) &amp; International</span>
             <span>•</span>
-            <span>Paiements Sécurisés GeniusPay (Wave, OM, Cartes)</span>
+            <span>Paiements Sécurisés Money Fusion (Wave, OM, QR Code)</span>
           </div>
         </div>
       </footer>

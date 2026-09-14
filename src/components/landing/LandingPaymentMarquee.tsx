@@ -187,9 +187,9 @@ export const LandingPaymentMarquee: React.FC = () => {
     <div className="w-full py-10 relative overflow-hidden">
       {/* En-tête officiel requis */}
       <div className="text-center space-y-2 mb-8 px-4">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/25 text-[11px] font-black uppercase tracking-wider text-cyan-300 shadow-sm">
-          <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Passerelle Certifiée GeniusPay &amp; Stripe</span>
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/25 text-[11px] font-black uppercase tracking-wider text-blue-300 shadow-sm">
+          <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+          <span>Passerelle Certifiée Money Fusion</span>
         </div>
         
         <h3 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight">

@@ -22,6 +22,8 @@ export async function POST(req) {
     const {
       amount = 3000,
       docId = '',
+      planId = '',
+      type = '',
       userId = '',
       userPhone = '',
       userName = '',
@@ -30,12 +32,13 @@ export async function POST(req) {
 
     const targetAmount = Math.max(100, Math.round(Number(amount) || 3000));
     const targetDocId = String(docId || '').trim();
+    const targetPlanId = String(planId || '').trim();
     const targetUserId = String(userId || 'guest').trim() || 'guest';
     const targetPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
     const targetName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
 
     const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
-    const returnUrl = `${appBaseUrl}/dashboard?payment=success&docId=${targetDocId}`;
+    const returnUrl = `${appBaseUrl}/dashboard?payment=success${targetDocId ? `&docId=${targetDocId}` : ''}${targetPlanId ? `&plan=${targetPlanId}` : ''}`;
     const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
     const apiKey = process.env.MONEYFUSION_API_KEY;
@@ -46,11 +49,20 @@ export async function POST(req) {
       targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
     }
 
+    const articleLabel = targetDocId
+      ? "Déblocage Document Dokya"
+      : (targetPlanId ? `Abonnement Dokya ${targetPlanId}` : "Rechargement Wallet Dokya");
+
     // Structure du payload JSON requise par Money Fusion
     const payload = {
       totalPrice: Number(targetAmount),
-      article: [{ "Déblocage Document Dokya": Number(targetAmount) }],
-      personal_Info: [{ userId: targetUserId, docId: targetDocId }],
+      article: [{ [articleLabel]: Number(targetAmount) }],
+      personal_Info: [{
+        userId: targetUserId,
+        docId: targetDocId,
+        planId: targetPlanId,
+        type: type || (targetDocId ? 'document' : (targetPlanId ? 'subscription' : 'wallet'))
+      }],
       numeroSend: targetPhone,
       nomclient: targetName,
       return_url: returnUrl,

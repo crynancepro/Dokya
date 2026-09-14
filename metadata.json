@@ -1,6 +1,6 @@
 {
   "name": "Dokya",
-  "description": "Dokya - CV ATS Internationaux & Factures Pro pilotés par l'IA avec paiements 100% sécurisés via GeniusPay (Wave, Orange, MTN, Cartes Bancaires).",
+  "description": "Dokya - CV ATS Internationaux & Factures Pro pilotés par l'IA avec paiements 100% sécurisés via Money Fusion (Wave, Orange, MTN, Moov, QR Code, Cartes Bancaires).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

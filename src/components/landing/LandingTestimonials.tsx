@@ -114,7 +114,7 @@ const TESTIMONIALS_DATA: TestimonialItem[] = [
     rating: 5,
     date: 'Il y a 3 jours',
     headline: 'Je recommande Dokya à tous mes étudiants et confrères',
-    content: 'Une suite bureautique pensée sur-mesure pour notre zone économique et alignée sur les standards mondiaux. La passerelle GeniusPay avec Wave et Orange Money est d\'une fluidité exemplaire.',
+    content: 'Une suite bureautique pensée sur-mesure pour notre zone économique et alignée sur les standards mondiaux. La passerelle Money Fusion avec Wave et Orange Money est d\'une fluidité exemplaire.',
     verifiedDoc: 'Pass Business Annuel',
     outcomeBadge: 'Recommandé 100%'
   }

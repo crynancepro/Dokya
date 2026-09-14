@@ -48,7 +48,7 @@ const COMPARISON_ROWS = [
     criterion: 'Règlement Mobile Money Direct (Wave, Orange, MTN)',
     subtext: 'Paiement sans carte bancaire avec activation immédiate en 3 secondes',
     dokya: true,
-    dokyaNote: 'GeniusPay 100% instantané',
+    dokyaNote: 'Money Fusion 100% instantané',
     word: false,
     wordNote: 'Abonnement carte obligatoire',
     canva: false,

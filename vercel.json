@@ -32,14 +32,6 @@
       "destination": "/api/admin/users"
     },
     {
-      "source": "/api/geniuspay/checkout",
-      "destination": "/api/geniuspay/checkout"
-    },
-    {
-      "source": "/api/webhooks/geniuspay",
-      "destination": "/api/webhooks/geniuspay"
-    },
-    {
       "source": "/api/moneyfusion/checkout",
       "destination": "/api/moneyfusion/checkout"
     },

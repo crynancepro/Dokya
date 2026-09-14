@@ -199,8 +199,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
   // Stepper state: 1 = Choix du mode & Récapitulatif, 2 = Transfert & Saisie, 3 = Scanner IA & Validation
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
-  const [selectedMethod, setSelectedMethod] = useState<'geniuspay' | 'moneyfusion' | 'wave' | 'orange_money' | 'wallet'>('geniuspay');
-  const [isGeniusPayLoading, setIsGeniusPayLoading] = useState<boolean>(false);
+  const [selectedMethod, setSelectedMethod] = useState<'moneyfusion' | 'wallet'>('moneyfusion');
+  const [isPaymentLoading, setIsPaymentLoading] = useState<boolean>(false);
   
   // Locale and Regional Preferences
   const { userCountry, setUserCountry, userCurrency, formatPrice, isInternational } = useLocale();
@@ -583,65 +583,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     }
   };
 
-  // Paiement Automatique via GeniusPay Checkout (Multi-opérateurs Wave, OM, MTN, Moov, Carte)
-  const handlePayWithGeniusPay = async () => {
-    setIsGeniusPayLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch('/api/geniuspay/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: payablePrice,
-          currency: 'XOF',
-          description: activeMode === 'subscription' ? `Abonnement Pass VIP - ${planTitle}` : `Achat document - ${documentTitle || 'Dokya'}`,
-          customer: {
-            name: userName || 'Client Dokya',
-            email: userEmail || 'client@dokya.com',
-            phone: senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : '+221770000000'
-          },
-          redirect_url: `${window.location.origin}/dashboard?payment=success`,
-          cancel_url: `${window.location.origin}/dashboard?payment=cancelled`,
-          success_url: `${window.location.origin}/dashboard?payment=success`,
-          error_url: `${window.location.origin}/dashboard?payment=cancelled`,
-          return_url: `${window.location.origin}/dashboard?payment=success`,
-          metadata: {
-            userId: userId || 'anonymous',
-            planType: planId || 'PASS_VIP',
-            documentId: targetDocId || '',
-            country: selectedCountry.code,
-            countryName: selectedCountry.name,
-            currency: userCurrency,
-            preferredPaymentChannel: isLocalMobileMoney ? 'mobile_money' : 'card_apple_pay',
-            source: 'dokya_payment_modal'
-          }
-        })
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de la création de la session de paiement GeniusPay.');
-      }
-
-      const checkoutUrl = data.checkoutUrl || data.checkout_url;
-      if (checkoutUrl) {
-        window.location.href = checkoutUrl;
-      } else {
-        throw new Error("L'URL de paiement retournée par GeniusPay est indisponible.");
-      }
-    } catch (err: any) {
-      console.error('[GeniusPay Checkout Modal Error]:', err);
-      setErrorMessage(err.message || 'Impossible de se connecter au service de paiement GeniusPay.');
-    } finally {
-      setIsGeniusPayLoading(false);
-    }
-  };
-
-  // Paiement Alternatif via Money Fusion Checkout (Mobile Money & QR Code)
+  // Paiement Automatique Exclusif via Money Fusion Checkout (Wave, Orange Money, MTN, Moov, QR Code)
   const handlePayWithMoneyFusion = async () => {
-    setIsGeniusPayLoading(true);
+    setIsPaymentLoading(true);
     setErrorMessage(null);
 
     try {
@@ -652,9 +596,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         body: JSON.stringify({
           amount: payablePrice || 3000,
           docId: targetDocId || '',
-          userId: user?.uid || userId || '',
-          userPhone: (user as any)?.phoneNumber || '',
-          userName: user?.displayName || userName || ''
+          userId: user?.uid || userId || 'guest',
+          userPhone: senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : ((user as any)?.phoneNumber || ''),
+          userName: user?.displayName || userName || 'Client Dokya'
         })
       });
 
@@ -673,7 +617,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       console.error('[Money Fusion Checkout Modal Error]:', err);
       setErrorMessage(err.message || 'Impossible de joindre le service de paiement Money Fusion.');
     } finally {
-      setIsGeniusPayLoading(false);
+      setIsPaymentLoading(false);
     }
   };
 
@@ -1361,77 +1305,15 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-                      Mode de paiement recommandé :
+                      Passerelle de paiement en ligne :
                     </label>
-                    <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
-                      {isLocalMobileMoney ? '⚡ Priorité Mobile Money' : '💳 Priorité Carte & Apple Pay'}
+                    <span className="text-[11px] font-bold text-blue-400 flex items-center gap-1">
+                      ⚡ 100% Automatisé
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 gap-3">
-                    {/* 0. GeniusPay Checkout (Adapté dynamiquement au pays) */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMethod('geniuspay')}
-                      className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${
-                        selectedMethod === 'geniuspay'
-                          ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-lg ring-1 ring-emerald-500'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                        {isLocalMobileMoney ? (
-                          <Zap className="w-5 h-5 text-emerald-400" />
-                        ) : (
-                          <CreditCard className="w-5 h-5 text-emerald-400" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-1">
-                          <p className="text-sm font-black text-white flex items-center gap-2">
-                            <span>
-                              {isLocalMobileMoney 
-                                ? 'GeniusPay • Mobile Money Local' 
-                                : 'GeniusPay • Carte Bancaire & Apple Pay'
-                              }
-                            </span>
-                            <span className="text-[10px] bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
-                              {isLocalMobileMoney ? '⚡ Recommandé Afrique' : '🌍 Recommandé Diaspora'}
-                            </span>
-                          </p>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">
-                          {isLocalMobileMoney ? (
-                            <>
-                              Paiement instantané en FCFA via <strong className="text-slate-200">Wave, Orange Money, Moov, MTN</strong> ou <strong className="text-slate-200">Carte Bancaire</strong>.
-                            </>
-                          ) : (
-                            <>
-                              Paiement international sécurisé 3D-Secure en <strong className="text-slate-200">{userCurrency} ({formatPrice(payablePrice)})</strong> par <strong className="text-slate-200">Carte Bancaire (Visa / Mastercard)</strong> ou <strong className="text-slate-200">Apple Pay</strong>.
-                            </>
-                          )}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                          {isLocalMobileMoney ? (
-                            <>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">🌊 Wave (0% frais)</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN / Moov</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">💳 Carte Bancaire</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">💳 Carte Visa / Mastercard</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-900 text-slate-200 border border-slate-700">🍏 Apple Pay</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">🔒 3D-Secure International</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-950/60 text-purple-300 border border-purple-800/60">⚡ Déblocage Immédiat</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-
-                    {/* 0.B. Money Fusion Checkout (Passerelle 2 : Mobile Money & QR Code) */}
+                    {/* Money Fusion Checkout (Passerelle Unique Mobile Money & QR Code) */}
                     <button
                       type="button"
                       onClick={() => setSelectedMethod('moneyfusion')}
@@ -1447,25 +1329,25 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-1">
                           <p className="text-sm font-black text-white flex items-center gap-2">
-                            <span>Money Fusion • Mobile Money & QR</span>
+                            <span>Money Fusion • Mobile Money & QR Code</span>
                             <span className="text-[10px] bg-blue-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
-                              ⚡ Passerelle 2
+                              ⚡ Paiement Direct
                             </span>
                           </p>
                         </div>
                         <p className="text-xs text-slate-400 mt-1">
-                          Paiement rapide par scan QR Code ou compte Mobile Money (<strong className="text-slate-200">Wave, Orange Money, MTN, Moov</strong>).
+                          Paiement instantané par Mobile Money (<strong className="text-slate-200">Wave, Orange Money, MTN, Moov</strong>) ou scan de <strong className="text-slate-200">QR Code</strong>. Déblocage automatique en temps réel.
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">📱 QR Code Instantané</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">Wave</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">Orange</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">MTN / Moov</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">🌊 Wave</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN / Moov</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">📱 QR Code</span>
                         </div>
                       </div>
                     </button>
 
-                    {/* 1. Solde Dokya Wallet (if not recharging) */}
+                    {/* Solde Dokya Wallet (if not recharging) */}
                     {activeMode !== 'recharge' && (
                       <button
                         type="button"
@@ -1495,46 +1377,16 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                     )}
                   </div>
 
-                  {/* Action Button: GeniusPay Direct Pay, Money Fusion or Wallet Direct Pay */}
+                  {/* Action Button: Money Fusion or Wallet Direct Pay */}
                   <div className="pt-2">
-                    {selectedMethod === 'geniuspay' ? (
+                    {selectedMethod === 'moneyfusion' ? (
                       <button
                         type="button"
-                        disabled={isGeniusPayLoading}
-                        onClick={handlePayWithGeniusPay}
-                        className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        {isGeniusPayLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Connexion sécurisée GeniusPay...</span>
-                          </>
-                        ) : isLocalMobileMoney ? (
-                          <>
-                            <Zap className="w-4 h-4" />
-                            <span>
-                              Payer via GeniusPay ({payablePrice.toLocaleString('fr-FR')} FCFA{userCurrency !== 'XOF' ? ` ≈ ${formatPrice(payablePrice)}` : ''})
-                            </span>
-                            <ArrowRight className="w-4 h-4" />
-                          </>
-                        ) : (
-                          <>
-                            <CreditCard className="w-4 h-4" />
-                            <span>
-                              Payer par Carte / Apple Pay ({formatPrice(payablePrice)} • {payablePrice.toLocaleString('fr-FR')} FCFA)
-                            </span>
-                            <ArrowRight className="w-4 h-4" />
-                          </>
-                        )}
-                      </button>
-                    ) : selectedMethod === 'moneyfusion' ? (
-                      <button
-                        type="button"
-                        disabled={isGeniusPayLoading}
+                        disabled={isPaymentLoading}
                         onClick={handlePayWithMoneyFusion}
                         className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        {isGeniusPayLoading ? (
+                        {isPaymentLoading ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
                             <span>Connexion sécurisée Money Fusion...</span>
