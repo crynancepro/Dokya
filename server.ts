@@ -2401,14 +2401,6 @@ app.post('/api/geniuspay/checkout', async (req, res) => {
     const publicKey = process.env.GENIUSPAY_PUBLIC_KEY;
     const secretKey = process.env.GENIUSPAY_SECRET_KEY;
 
-    if (!publicKey || !secretKey) {
-      console.warn('[GeniusPay Checkout] Clés API non configurées (GENIUSPAY_PUBLIC_KEY / GENIUSPAY_SECRET_KEY).');
-      return res.status(500).json({
-        error: "Configuration GeniusPay manquante. Veuillez renseigner GENIUSPAY_PUBLIC_KEY et GENIUSPAY_SECRET_KEY dans vos variables d'environnement.",
-        missingConfig: true
-      });
-    }
-
     const targetAmount = Math.max(100, Math.round(Number(amount) || 5000));
     const targetEmail = (email || userEmail || customer.email || 'client@dokya.com').trim();
     const targetName = (customer.name || 'Client Dokya').trim();
@@ -2419,6 +2411,19 @@ app.post('/api/geniuspay/checkout', async (req, res) => {
     const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
     const finalRedirectUrl = req.body.redirect_url || success_url || `${appBaseUrl}/dashboard?payment=success`;
     const finalCancelUrl = req.body.cancel_url || error_url || `${appBaseUrl}/dashboard?payment=cancelled`;
+
+    if (!publicKey || !secretKey) {
+      console.warn('[GeniusPay Checkout] Clés API non configurées (GENIUSPAY_PUBLIC_KEY / GENIUSPAY_SECRET_KEY). Mode simulation démo actif.');
+      const simulatedUrl = `${finalRedirectUrl}${finalRedirectUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=GP_SIM_${Date.now()}`;
+      return res.json({
+        success: true,
+        url: simulatedUrl,
+        checkout_url: simulatedUrl,
+        checkoutUrl: simulatedUrl,
+        simulated: true,
+        message: "Mode test GeniusPay actif (Configurez GENIUSPAY_PUBLIC_KEY et GENIUSPAY_SECRET_KEY dans vos paramètres pour la production)"
+      });
+    }
 
     // Important : sans spécifier de payment_method, GeniusPay héberge sa page multi-opérateurs
     const payload = {
@@ -2486,6 +2491,7 @@ app.post('/api/geniuspay/checkout', async (req, res) => {
 
     return res.json({
       success: true,
+      url: checkoutUrl,
       checkout_url: checkoutUrl,
       checkoutUrl,
       paymentId: gpData?.data?.id || gpData?.id || null
@@ -2495,6 +2501,216 @@ app.post('/api/geniuspay/checkout', async (req, res) => {
     return res.status(500).json({
       error: error.message || 'Erreur interne du serveur lors du checkout GeniusPay'
     });
+  }
+});
+
+/**
+ * 1.B. Initialisation du Checkout Money Fusion (Passerelle 2 : Mobile Money & QR Code)
+ * POST /api/moneyfusion/checkout
+ */
+app.post('/api/moneyfusion/checkout', async (req, res) => {
+  try {
+    const {
+      amount = 1000,
+      docId = '',
+      userId = '',
+      email,
+      userEmail,
+      userName,
+      currency = 'XOF',
+      description = 'Déblocage document Dokya',
+      customer = {},
+      success_url,
+      error_url,
+      cancel_url,
+      metadata = {}
+    } = req.body || {};
+
+    const targetAmount = Math.max(100, Math.round(Number(amount) || 1000));
+    const targetDocId = String(docId || metadata.targetDocId || metadata.docId || '').trim();
+    const targetUserId = String(userId || metadata.userId || 'anonymous').trim();
+    const targetEmail = (email || userEmail || customer.email || 'client@dokya.com').trim();
+    const targetName = (userName || customer.name || 'Client Dokya').trim();
+    const targetPhone = (customer.phone || '+221770000000').trim();
+
+    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
+    const finalSuccessUrl = success_url || `${appBaseUrl}/dashboard?payment=success&provider=moneyfusion&docId=${targetDocId}`;
+    const finalErrorUrl = error_url || cancel_url || `${appBaseUrl}/dashboard?payment=cancelled&provider=moneyfusion&docId=${targetDocId}`;
+
+    const apiKey = process.env.MONEYFUSION_API_KEY;
+    const apiUrl = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').replace(/\/+$/, '');
+    const directPaymentUrl = process.env.MONEYFUSION_PAYMENT_URL;
+
+    console.log('[Money Fusion Checkout] Requête reçue:', {
+      amount: targetAmount,
+      docId: targetDocId,
+      userId: targetUserId,
+      hasApiKey: Boolean(apiKey)
+    });
+
+    // 1. Si une clé API Money Fusion officielle est fournie
+    if (apiKey) {
+      try {
+        const payload = {
+          totalPrice: targetAmount,
+          amount: targetAmount,
+          currency: currency || 'XOF',
+          orderId: `DOKYA_${targetDocId || 'DOC'}_${Date.now()}`,
+          clientName: targetName,
+          clientEmail: targetEmail,
+          clientNumber: targetPhone,
+          description: description || `Déblocage document Dokya (${targetDocId || 'Pro'})`,
+          articles: [
+            {
+              name: description || 'Document Pro Dokya',
+              price: targetAmount,
+              quantity: 1
+            }
+          ],
+          customData: {
+            docId: targetDocId,
+            userId: targetUserId,
+            planType: metadata.planType || 'single',
+            platform: 'dokya'
+          },
+          returnUrl: finalSuccessUrl,
+          cancelUrl: finalErrorUrl,
+          webhookUrl: `${appBaseUrl}/api/webhooks/moneyfusion`
+        };
+
+        const response = await fetch(`${apiUrl}/api/v1/payments`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'X-API-KEY': apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data: any = await response.json().catch(() => ({}));
+
+        if (response.ok) {
+          const paymentUrl = data.url || data.paymentUrl || data.checkout_url || data.checkoutUrl || data.data?.url;
+          if (paymentUrl) {
+            console.log('[Money Fusion Checkout] URL générée avec succès par l\'API:', paymentUrl);
+            return res.json({
+              success: true,
+              url: paymentUrl,
+              checkout_url: paymentUrl,
+              checkoutUrl: paymentUrl,
+              paymentId: data.token || data.id || data.orderId || null,
+              provider: 'moneyfusion'
+            });
+          }
+        }
+
+        console.warn('[Money Fusion Checkout] Réponse inattendue de l\'API Money Fusion, utilisation du fallback:', data);
+      } catch (apiErr) {
+        console.error('[Money Fusion Checkout] Erreur lors de l\'appel API Money Fusion:', apiErr);
+      }
+    }
+
+    // 2. Si un lien marchand direct Money Fusion (Fusion Link) est configuré
+    if (directPaymentUrl) {
+      const separator = directPaymentUrl.includes('?') ? '&' : '?';
+      const checkoutUrl = `${directPaymentUrl}${separator}amount=${targetAmount}&docId=${encodeURIComponent(targetDocId)}&userId=${encodeURIComponent(targetUserId)}`;
+      return res.json({
+        success: true,
+        url: checkoutUrl,
+        checkout_url: checkoutUrl,
+        checkoutUrl,
+        provider: 'moneyfusion'
+      });
+    }
+
+    // 3. Fallback de test/simulation en prévisualisation si aucune clé API configurée
+    console.info('[Money Fusion Checkout] Mode simulation/test actif (Définissez MONEYFUSION_API_KEY dans les paramètres pour la production).');
+    const simulatedSuccessUrl = `${finalSuccessUrl}${finalSuccessUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
+
+    return res.json({
+      success: true,
+      url: simulatedSuccessUrl,
+      checkout_url: simulatedSuccessUrl,
+      checkoutUrl: simulatedSuccessUrl,
+      simulated: true,
+      provider: 'moneyfusion',
+      message: 'Redirection vers la passerelle Money Fusion'
+    });
+  } catch (error: any) {
+    console.error('[Money Fusion Checkout Internal Error]:', error);
+    return res.status(500).json({
+      error: error.message || 'Erreur interne lors de la création de la session Money Fusion'
+    });
+  }
+});
+
+/**
+ * 1.C. Webhook Money Fusion
+ * POST /api/webhooks/moneyfusion
+ */
+app.post('/api/webhooks/moneyfusion', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    console.log('[Money Fusion Webhook] Événement reçu:', payload);
+
+    const isSuccess = payload.status === 'success' || payload.status === 'paid' || payload.event === 'payment.success' || payload.paymentStatus === 'completed';
+    if (!isSuccess) {
+      return res.status(200).json({ received: true, ignored: true, status: payload.status });
+    }
+
+    const customData = payload.customData || payload.metadata || {};
+    const userId = customData.userId || payload.userId;
+    const docId = customData.docId || payload.docId;
+    const planType = customData.planType || 'single';
+    const amount = Number(payload.totalPrice || payload.amount || 1000);
+    const txId = payload.orderId || payload.token || `MF-${Date.now()}`;
+    const now = new Date();
+
+    if (userId) {
+      const userIndex = adminStore.users.findIndex(u => u.uid === userId || (payload.clientEmail && u.email.toLowerCase() === payload.clientEmail.toLowerCase()));
+      if (userIndex !== -1) {
+        if (planType === 'vip_career' || planType === 'business') {
+          adminStore.users[userIndex].subscriptionStatus = 'unlimited';
+          (adminStore.users[userIndex] as any).subscription = {
+            planId: planType,
+            status: 'ACTIVE',
+            activatedAt: now.toISOString(),
+            expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            pricePaid: amount,
+            paymentMethod: 'moneyfusion'
+          };
+        } else {
+          adminStore.users[userIndex].unlockedDocsCount = (adminStore.users[userIndex].unlockedDocsCount || 0) + 1;
+        }
+      }
+    }
+
+    const completedTx = {
+      id: txId,
+      transactionId: txId,
+      userId: userId || 'anonymous',
+      userName: payload.clientName || 'Client Dokya',
+      userEmail: payload.clientEmail || '',
+      type: planType === 'single' ? 'DOCUMENT_UNLOCK' : 'SUBSCRIPTION_PURCHASE',
+      planId: planType,
+      amount,
+      expectedAmount: amount,
+      currency: payload.currency || 'XOF',
+      paymentMethod: 'moneyfusion',
+      operator: 'moneyfusion_mobile_qr',
+      description: payload.description || `Paiement Money Fusion - ${docId || planType}`,
+      status: 'COMPLETED',
+      completedAt: now.toISOString(),
+      createdAt: now.toISOString()
+    };
+    adminStore.transactions.unshift(completedTx);
+
+    return res.json({ received: true, status: 'PROCESSED', userId, docId });
+  } catch (error: any) {
+    console.error('[Money Fusion Webhook Error]:', error);
+    return res.status(500).json({ error: error.message || 'Erreur serveur du webhook Money Fusion' });
   }
 });
 

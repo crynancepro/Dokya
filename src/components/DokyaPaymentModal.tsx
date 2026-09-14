@@ -199,7 +199,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
   // Stepper state: 1 = Choix du mode & Récapitulatif, 2 = Transfert & Saisie, 3 = Scanner IA & Validation
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
-  const [selectedMethod, setSelectedMethod] = useState<'geniuspay' | 'wave' | 'orange_money' | 'wallet'>('geniuspay');
+  const [selectedMethod, setSelectedMethod] = useState<'geniuspay' | 'moneyfusion' | 'wave' | 'orange_money' | 'wallet'>('geniuspay');
   const [isGeniusPayLoading, setIsGeniusPayLoading] = useState<boolean>(false);
   
   // Locale and Regional Preferences
@@ -634,6 +634,54 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     } catch (err: any) {
       console.error('[GeniusPay Checkout Modal Error]:', err);
       setErrorMessage(err.message || 'Impossible de se connecter au service de paiement GeniusPay.');
+    } finally {
+      setIsGeniusPayLoading(false);
+    }
+  };
+
+  // Paiement Alternatif via Money Fusion Checkout (Mobile Money & QR Code)
+  const handlePayWithMoneyFusion = async () => {
+    setIsGeniusPayLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch('/api/moneyfusion/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: payablePrice,
+          docId: targetDocId || '',
+          userId: userId || auth.currentUser?.uid || 'anonymous',
+          email: userEmail || 'client@dokya.com',
+          userName: userName || 'Client Dokya',
+          currency: 'XOF',
+          description: activeMode === 'subscription' ? `Abonnement Pass VIP - ${planTitle}` : `Achat document - ${documentTitle || 'Dokya'}`,
+          success_url: `${window.location.origin}/dashboard?payment=success&provider=moneyfusion&docId=${targetDocId || ''}`,
+          cancel_url: `${window.location.origin}/dashboard?payment=cancelled&provider=moneyfusion&docId=${targetDocId || ''}`,
+          metadata: {
+            userId: userId || 'anonymous',
+            planType: planId || 'PASS_VIP',
+            documentId: targetDocId || '',
+            source: 'dokya_payment_modal'
+          }
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erreur lors de la création de la session de paiement Money Fusion.');
+      }
+
+      const checkoutUrl = data.url || data.checkout_url || data.checkoutUrl;
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl;
+      } else {
+        throw new Error("L'URL de paiement retournée par Money Fusion est indisponible.");
+      }
+    } catch (err: any) {
+      console.error('[Money Fusion Checkout Modal Error]:', err);
+      setErrorMessage(err.message || 'Impossible de joindre le service de paiement Money Fusion.');
     } finally {
       setIsGeniusPayLoading(false);
     }
@@ -1393,6 +1441,40 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       </div>
                     </button>
 
+                    {/* 0.B. Money Fusion Checkout (Passerelle 2 : Mobile Money & QR Code) */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMethod('moneyfusion')}
+                      className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${
+                        selectedMethod === 'moneyfusion'
+                          ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg ring-1 ring-blue-500'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <QrCode className="w-5 h-5 text-blue-400" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <p className="text-sm font-black text-white flex items-center gap-2">
+                            <span>Money Fusion • Mobile Money & QR</span>
+                            <span className="text-[10px] bg-blue-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
+                              ⚡ Passerelle 2
+                            </span>
+                          </p>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Paiement rapide par scan QR Code ou compte Mobile Money (<strong className="text-slate-200">Wave, Orange Money, MTN, Moov</strong>).
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">📱 QR Code Instantané</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">Wave</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">Orange</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">MTN / Moov</span>
+                        </div>
+                      </div>
+                    </button>
+
                     {/* 1. Solde Dokya Wallet (if not recharging) */}
                     {activeMode !== 'recharge' && (
                       <button
@@ -1423,7 +1505,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                     )}
                   </div>
 
-                  {/* Action Button: GeniusPay Direct Pay or Wallet Direct Pay */}
+                  {/* Action Button: GeniusPay Direct Pay, Money Fusion or Wallet Direct Pay */}
                   <div className="pt-2">
                     {selectedMethod === 'geniuspay' ? (
                       <button
@@ -1450,6 +1532,28 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                             <CreditCard className="w-4 h-4" />
                             <span>
                               Payer par Carte / Apple Pay ({formatPrice(payablePrice)} • {payablePrice.toLocaleString('fr-FR')} FCFA)
+                            </span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    ) : selectedMethod === 'moneyfusion' ? (
+                      <button
+                        type="button"
+                        disabled={isGeniusPayLoading}
+                        onClick={handlePayWithMoneyFusion}
+                        className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {isGeniusPayLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Connexion sécurisée Money Fusion...</span>
+                          </>
+                        ) : (
+                          <>
+                            <QrCode className="w-4 h-4" />
+                            <span>
+                              Payer via Money Fusion ({payablePrice.toLocaleString('fr-FR')} FCFA{userCurrency !== 'XOF' ? ` ≈ ${formatPrice(payablePrice)}` : ''})
                             </span>
                             <ArrowRight className="w-4 h-4" />
                           </>
