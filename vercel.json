@@ -40,6 +40,14 @@
       "destination": "/api/webhooks/geniuspay"
     },
     {
+      "source": "/api/moneyfusion/checkout",
+      "destination": "/api/moneyfusion/checkout"
+    },
+    {
+      "source": "/api/webhooks/moneyfusion",
+      "destination": "/api/webhooks/moneyfusion"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },

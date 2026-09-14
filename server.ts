@@ -2514,9 +2514,10 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       amount = 1000,
       docId = '',
       userId = '',
+      userPhone = '',
+      userName = '',
       email,
       userEmail,
-      userName,
       currency = 'XOF',
       description = 'Déblocage document Dokya',
       customer = {},
@@ -2528,14 +2529,13 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
 
     const targetAmount = Math.max(100, Math.round(Number(amount) || 1000));
     const targetDocId = String(docId || metadata.targetDocId || metadata.docId || '').trim();
-    const targetUserId = String(userId || metadata.userId || 'anonymous').trim();
-    const targetEmail = (email || userEmail || customer.email || 'client@dokya.com').trim();
-    const targetName = (userName || customer.name || 'Client Dokya').trim();
-    const targetPhone = (customer.phone || '+221770000000').trim();
+    const targetUserId = String(userId || metadata.userId || 'guest').trim() || 'guest';
+    const targetPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
+    const targetName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
 
     const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
-    const finalSuccessUrl = success_url || `${appBaseUrl}/dashboard?payment=success&provider=moneyfusion&docId=${targetDocId}`;
-    const finalErrorUrl = error_url || cancel_url || `${appBaseUrl}/dashboard?payment=cancelled&provider=moneyfusion&docId=${targetDocId}`;
+    const returnUrl = `${appBaseUrl}/dashboard?payment=success&docId=${targetDocId}`;
+    const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
     const apiKey = process.env.MONEYFUSION_API_KEY;
     const directPaymentUrl = process.env.MONEYFUSION_PAYMENT_URL;
@@ -2551,33 +2551,21 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       amount: targetAmount,
       docId: targetDocId,
       userId: targetUserId,
+      userPhone: targetPhone,
+      userName: targetName,
       hasApiKey: Boolean(apiKey),
       endpoint: targetEndpoint
     });
 
-    // Structure JSON requise par Money Fusion (totalPrice, article, personal_Info, return_url, webhook_url)
+    // Structure JSON requise par Money Fusion
     const moneyFusionPayload = {
-      totalPrice: targetAmount,
-      article: [
-        {
-          name: description || `Document Pro Dokya (${targetDocId || 'Pro'})`,
-          price: targetAmount,
-          quantity: 1
-        }
-      ],
-      personal_Info: [
-        {
-          userId: targetUserId,
-          docId: targetDocId,
-          nom: targetName,
-          prenom: '',
-          email: targetEmail,
-          telephone: targetPhone
-        }
-      ],
-      return_url: finalSuccessUrl,
-      cancel_url: finalErrorUrl,
-      webhook_url: `${appBaseUrl}/api/webhooks/moneyfusion`
+      totalPrice: Number(targetAmount),
+      article: [{ "Déblocage Document Dokya": Number(targetAmount) }],
+      personal_Info: [{ userId: targetUserId, docId: targetDocId }],
+      numeroSend: targetPhone,
+      nomclient: targetName,
+      return_url: returnUrl,
+      webhook_url: webhookUrl
     };
 
     // 1. Si une clé API Money Fusion officielle ou une URL d'API est configurée
@@ -2631,7 +2619,7 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
 
     // 3. Fallback de test/simulation en prévisualisation si aucune clé API configurée
     console.info('[Money Fusion Checkout] Mode simulation/test actif (Définissez MONEYFUSION_API_KEY dans les paramètres pour la production).');
-    const simulatedSuccessUrl = `${finalSuccessUrl}${finalSuccessUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
+    const simulatedSuccessUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
 
     return res.json({
       success: true,
