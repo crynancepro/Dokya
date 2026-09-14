@@ -4,8 +4,13 @@ import { NextResponse } from 'next/server';
  * Route API Next.js App Router : Initialisation du Checkout Money Fusion
  * POST /api/moneyfusion/checkout
  * 
- * Paramètres reçus : { amount, docId, userId, customer, description, ... }
- * Retourne : { success: true, url: string, ... }
+ * Reçoit les demandes de paiement de la modale frontend et transmet la requête
+ * à process.env.MONEYFUSION_API_URL avec la structure JSON requise par Money Fusion :
+ * - totalPrice
+ * - article
+ * - personal_Info
+ * - return_url
+ * - webhook_url
  */
 export async function POST(req) {
   try {
@@ -17,7 +22,6 @@ export async function POST(req) {
       email,
       userEmail,
       userName,
-      currency = 'XOF',
       description = 'Déblocage document Dokya',
       customer = {},
       success_url,
@@ -33,78 +37,85 @@ export async function POST(req) {
     const targetName = (userName || customer.name || 'Client Dokya').trim();
     const targetPhone = (customer.phone || '+221770000000').trim();
 
-    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app';
+    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
     const finalSuccessUrl = success_url || `${appBaseUrl}/dashboard?payment=success&provider=moneyfusion&docId=${targetDocId}`;
-    const finalErrorUrl = error_url || cancel_url || `${appBaseUrl}/dashboard?payment=cancelled&provider=moneyfusion&docId=${targetDocId}`;
+    const finalCancelUrl = error_url || cancel_url || `${appBaseUrl}/dashboard?payment=cancelled&provider=moneyfusion&docId=${targetDocId}`;
+    const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
     const apiKey = process.env.MONEYFUSION_API_KEY;
-    const apiUrl = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').replace(/\/+$/, '');
     const directPaymentUrl = process.env.MONEYFUSION_PAYMENT_URL;
+
+    // Détermination de l'endpoint API Money Fusion
+    let apiUrl = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
+    let targetEndpoint = apiUrl;
+    if (!targetEndpoint.includes('/api/')) {
+      targetEndpoint = `${targetEndpoint.replace(/\/+$/, '')}/api/v1/payments`;
+    }
 
     console.log('[Money Fusion Checkout] Requête reçue:', {
       amount: targetAmount,
       docId: targetDocId,
       userId: targetUserId,
-      hasApiKey: Boolean(apiKey)
+      hasApiKey: Boolean(apiKey),
+      endpoint: targetEndpoint
     });
 
-    // 1. Si une clé API Money Fusion officielle est fournie, appelons le service
-    if (apiKey) {
-      try {
-        const payload = {
-          totalPrice: targetAmount,
-          amount: targetAmount,
-          currency: currency || 'XOF',
-          orderId: `DOKYA_${targetDocId || 'DOC'}_${Date.now()}`,
-          clientName: targetName,
-          clientEmail: targetEmail,
-          clientNumber: targetPhone,
-          description: description || `Déblocage document Dokya (${targetDocId || 'Pro'})`,
-          articles: [
-            {
-              name: description || 'Document Pro Dokya',
-              price: targetAmount,
-              quantity: 1
-            }
-          ],
-          customData: {
-            docId: targetDocId,
-            userId: targetUserId,
-            platform: 'dokya'
-          },
-          returnUrl: finalSuccessUrl,
-          cancelUrl: finalErrorUrl,
-          webhookUrl: `${appBaseUrl}/api/webhooks/moneyfusion`
-        };
+    // Structure JSON requise par Money Fusion (totalPrice, article, personal_Info, return_url, webhook_url)
+    const moneyFusionPayload = {
+      totalPrice: targetAmount,
+      article: [
+        {
+          name: description || `Document Pro Dokya (${targetDocId || 'Pro'})`,
+          price: targetAmount,
+          quantity: 1
+        }
+      ],
+      personal_Info: [
+        {
+          userId: targetUserId,
+          docId: targetDocId,
+          nom: targetName,
+          prenom: '',
+          email: targetEmail,
+          telephone: targetPhone
+        }
+      ],
+      return_url: finalSuccessUrl,
+      cancel_url: finalCancelUrl,
+      webhook_url: webhookUrl
+    };
 
-        const response = await fetch(`${apiUrl}/api/v1/payments`, {
+    // 1. Si une clé API Money Fusion officielle ou une URL d'API est configurée, appel du service
+    if (apiKey || process.env.MONEYFUSION_API_URL) {
+      try {
+        const response = await fetch(targetEndpoint, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'X-API-KEY': apiKey,
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            ...(apiKey ? { 'Authorization': `Bearer ${apiKey}`, 'X-API-KEY': apiKey } : {})
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(moneyFusionPayload)
         });
 
         const data = await response.json().catch(() => ({}));
 
         if (response.ok) {
-          const paymentUrl = data.url || data.paymentUrl || data.checkout_url || data.checkoutUrl || data.data?.url;
+          const paymentUrl = data.url || data.paymentUrl || data.checkout_url || data.checkoutUrl || data.data?.url || (data.token ? `https://pay.moneyfusion.net/pay/${data.token}` : null);
           if (paymentUrl) {
-            console.log('[Money Fusion Checkout] URL générée avec succès par l\'API:', paymentUrl);
+            console.log('[Money Fusion Checkout] URL générée avec succès par l\'API Money Fusion:', paymentUrl);
             return NextResponse.json({
               success: true,
               url: paymentUrl,
               checkout_url: paymentUrl,
+              checkoutUrl: paymentUrl,
               paymentId: data.token || data.id || data.orderId || null,
               provider: 'moneyfusion'
             });
           }
         }
 
-        console.warn('[Money Fusion Checkout] Réponse inattendue de l\'API Money Fusion, utilisation du lien direct ou de secours:', data);
+        console.warn('[Money Fusion Checkout] Réponse de l\'API Money Fusion sans URL directe:', data);
       } catch (apiErr) {
         console.error('[Money Fusion Checkout] Erreur lors de l\'appel API Money Fusion:', apiErr);
       }
@@ -118,18 +129,20 @@ export async function POST(req) {
         success: true,
         url: checkoutUrl,
         checkout_url: checkoutUrl,
+        checkoutUrl,
         provider: 'moneyfusion'
       });
     }
 
-    // 3. Fallback élégant en environnement de prévisualisation / test si les clés ne sont pas encore définies
-    console.info('[Money Fusion Checkout] Mode simulation/test actif (Définissez MONEYFUSION_API_KEY dans les paramètres pour la passerelle en direct).');
-    const simulatedSuccessUrl = `${finalSuccessUrl}&status=approved&unlocked=true&ref=MF_${Date.now()}`;
+    // 3. Fallback de test / simulation pour le preview si aucune clé n'est encore configurée
+    console.info('[Money Fusion Checkout] Mode simulation/test actif (Renseignez MONEYFUSION_API_KEY dans les paramètres pour la production).');
+    const simulatedSuccessUrl = `${finalSuccessUrl}${finalSuccessUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
 
     return NextResponse.json({
       success: true,
       url: simulatedSuccessUrl,
       checkout_url: simulatedSuccessUrl,
+      checkoutUrl: simulatedSuccessUrl,
       simulated: true,
       provider: 'moneyfusion',
       message: 'Redirection vers la passerelle Money Fusion'
