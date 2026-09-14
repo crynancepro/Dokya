@@ -125,6 +125,7 @@ export async function POST(req) {
 
     return NextResponse.json({
       success: true,
+      url: checkoutUrl,
       checkout_url: checkoutUrl,
       checkoutUrl,
       paymentId: data?.data?.id || data?.id || null
