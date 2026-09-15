@@ -14,7 +14,7 @@ import {
   Customer, BusinessInvoice, UserBusiness, BusinessDocData, BusinessDocItem, Product,
   AffiliateCommission, AffiliatePayoutRequest,
   SupportMessage, SupportConversation, SupportConversationStatus, SupportSenderType,
-  UserReferralItem
+  UserReferralItem, DokyaNotification
 } from '../types';
 import { getStoredReferralCode, clearStoredReferralCode } from './referralTracking';
 
@@ -71,6 +71,8 @@ export interface FirebaseUserProfile {
   affiliateBalance?: number;
   totalAffiliateEarnings?: number;
   totalReferred?: number;
+  purchasedDocIds?: string[];
+  isVip?: boolean;
 }
 
 export interface OrderRecord {
@@ -156,15 +158,30 @@ export async function fetchUserOrders(userId: string): Promise<OrderRecord[]> {
   }
 }
 
-export function generateUserReferralCode(email: string, displayName?: string): string {
-  if (email.toLowerCase().startsWith('peter25')) return 'PETER25';
-  const cleanBase = (displayName || email.split('@')[0] || 'DOKYA')
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .toUpperCase()
-    .slice(0, 6);
-  const prefix = cleanBase.length >= 3 ? cleanBase : 'DOKYA';
-  const randNum = Math.floor(10 + Math.random() * 90);
-  return `${prefix}${randNum}`;
+export function generateUserReferralCode(email: string, displayName?: string, firstName?: string): string {
+  let cleanName = '';
+  if (firstName && firstName.trim()) {
+    cleanName = firstName.trim();
+  } else if (displayName && displayName.trim()) {
+    cleanName = displayName.trim().split(' ')[0];
+  } else if (email) {
+    const local = email.split('@')[0];
+    const lettersOnly = local.match(/^[a-zA-Z]+/);
+    cleanName = lettersOnly && lettersOnly[0] ? lettersOnly[0] : local;
+  }
+
+  // Normalize: remove accents and non-alphanumeric chars
+  cleanName = cleanName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+
+  if (cleanName.startsWith('PETER')) return 'PETER';
+  if (!cleanName || cleanName === 'DOKYA') {
+    return 'VIP';
+  }
+  return cleanName;
 }
 
 export async function saveTransactionRecord(tx: TransactionRecord): Promise<boolean> {
@@ -395,6 +412,9 @@ export function subscribeToUserProfile(
   userId: string,
   onUpdate: (userDoc: FirebaseUserProfile) => void
 ): Unsubscribe {
+  if (!userId || userId === 'guest' || userId.startsWith('guest') || userId === 'guest-user') {
+    return () => {};
+  }
   const userRef = doc(db, 'users', userId);
   return onSnapshot(userRef, async (snapshot) => {
     if (snapshot.exists()) {
@@ -442,6 +462,8 @@ export function subscribeToUserProfile(
         },
         createdAt: data.createdAt || new Date().toISOString(),
         updatedAt: data.updatedAt || new Date().toISOString(),
+        purchasedDocIds: Array.isArray(data.purchasedDocIds) ? data.purchasedDocIds : [],
+        isVip: Boolean(data.isVip || calculatedStatus === 'ACTIVE'),
         personalInfo: data.personalInfo || undefined,
         role: data.role || (data.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate')
       };
@@ -2679,6 +2701,15 @@ export async function saveBusinessProduct(
       userId: currentUid,
       updatedAt: serverTimestamp()
     }), { merge: true }).catch(() => {});
+
+    // Enregistrement dans la collection 'inventory' (requis pour le déstockage et la gestion globale)
+    const inventoryRef = doc(db, 'inventory', productId);
+    await setDoc(inventoryRef, cleanFirestorePayload({
+      ...product,
+      userId: currentUid,
+      businessId: bId,
+      updatedAt: serverTimestamp()
+    }), { merge: true }).catch(() => {});
   } catch (error) {
     console.warn(`Erreur saveBusinessProduct (${productId}):`, error);
   }
@@ -2708,6 +2739,8 @@ export async function deleteBusinessProduct(businessId: string, productId: strin
     await deleteDoc(docRef);
     const rootRef = doc(db, 'products', productId);
     await deleteDoc(rootRef).catch(() => {});
+    const invRef = doc(db, 'inventory', productId);
+    await deleteDoc(invRef).catch(() => {});
     return true;
   } catch (error) {
     console.warn(`Erreur deleteBusinessProduct (${productId}):`, error);
@@ -2745,13 +2778,25 @@ export async function updateProductQuantity(
     }
   } catch (e) {}
 
-  // 2. Firestore update
+  // 2. Firestore update (businesses + inventory + products)
   try {
     const docRef = doc(db, 'businesses', bId, 'products', productId);
     await updateDoc(docRef, {
       quantity: newQty,
       updatedAt: serverTimestamp()
-    });
+    }).catch(() => {});
+
+    const invRef = doc(db, 'inventory', productId);
+    await setDoc(invRef, {
+      quantity: newQty,
+      updatedAt: serverTimestamp()
+    }, { merge: true }).catch(() => {});
+
+    const prodRef = doc(db, 'products', productId);
+    await setDoc(prodRef, {
+      quantity: newQty,
+      updatedAt: serverTimestamp()
+    }, { merge: true }).catch(() => {});
   } catch (error) {
     console.warn(`Erreur updateProductQuantity (${productId}):`, error);
   }
@@ -2760,14 +2805,17 @@ export async function updateProductQuantity(
 }
 
 /**
- * Déduit automatiquement la quantité vendue des articles lors de la validation/paiement d'une facture
+ * Déduit automatiquement la quantité vendue des articles lors de la validation d'un devis ou l'émission d'une facture
+ * Met à jour la collection 'inventory' (ex: si stock initial = 10 et quantité facturée = 3, le nouveau stock devient 7).
  */
 export async function deductStockForInvoice(
   businessId: string, 
-  items: BusinessDocItem[]
+  items: BusinessDocItem[],
+  invoiceDocNumber?: string
 ): Promise<boolean> {
   if (!items || items.length === 0) return true;
   const bId = businessId || 'default';
+  const currentUid = auth.currentUser?.uid;
 
   try {
     const products = await fetchBusinessProducts(bId);
@@ -2796,10 +2844,53 @@ export async function deductStockForInvoice(
       }
 
       if (targetProduct) {
-        const currentQty = targetProduct.quantity || 0;
+        const currentQty = targetProduct.quantity ?? 0;
+        // Calcul du nouveau stock (ex: 10 - 3 = 7)
         const finalQty = Math.max(0, currentQty - qtyToDeduct);
         targetProduct.quantity = finalQty;
+        
+        // Mise à jour de l'inventaire dans la collection 'inventory' et 'businesses'
         await updateProductQuantity(bId, targetProduct.id, { exact: finalQty });
+
+        try {
+          const invDocRef = doc(db, 'inventory', targetProduct.id);
+          await setDoc(invDocRef, cleanFirestorePayload({
+            id: targetProduct.id,
+            name: targetProduct.name,
+            sku: targetProduct.sku || '',
+            quantity: finalQty,
+            sellingPrice: targetProduct.sellingPrice,
+            purchasePrice: targetProduct.purchasePrice,
+            lowStockThreshold: targetProduct.lowStockThreshold || 2,
+            businessId: bId,
+            userId: currentUid,
+            updatedAt: serverTimestamp()
+          }), { merge: true });
+        } catch (e) {
+          console.warn("Erreur synchronisation collection 'inventory':", e);
+        }
+
+        // Émission d'une notification Firestore
+        if (currentUid) {
+          await createNotification(currentUid, {
+            title: 'Déstockage automatique effectué',
+            message: `${qtyToDeduct}x "${targetProduct.name}" déduit(s)${invoiceDocNumber ? ` pour ${invoiceDocNumber}` : ''}. Nouveau stock en inventaire : ${finalQty} (précédent: ${currentQty}).`,
+            type: 'stock',
+            read: false,
+            tabTarget: 'business'
+          }).catch(() => {});
+
+          const lowThreshold = targetProduct.lowStockThreshold ?? 2;
+          if (finalQty <= lowThreshold) {
+            await createNotification(currentUid, {
+              title: '⚠️ Alerte Stock Faible',
+              message: `Le produit "${targetProduct.name}" atteint un seuil critique : ${finalQty} unité(s) restante(s).`,
+              type: 'warning',
+              read: false,
+              tabTarget: 'business'
+            }).catch(() => {});
+          }
+        }
       }
     }
     return true;
@@ -3253,6 +3344,25 @@ export async function updateQuoteStatus(
     console.warn("Erreur updateQuoteStatus Firestore:", e);
   }
 
+  // 4. Déstockage automatique lors de la validation d'un devis
+  if (quoteStatus === 'ACCEPTE') {
+    try {
+      const raw = localStorage.getItem(getLocalInvoicesKey(currentUid));
+      if (raw) {
+        const list: BusinessInvoice[] = JSON.parse(raw);
+        const target = list.find(i => i.id === quoteId || i.docNumber === quoteId);
+        if (target && !target.stockDeducted && target.businessDocData?.items) {
+          const bId = target.businessId || target.businessDocData.businessId || 'default';
+          await deductStockForInvoice(bId, target.businessDocData.items, target.docNumber);
+          target.stockDeducted = true;
+          localStorage.setItem(getLocalInvoicesKey(currentUid), JSON.stringify(list));
+        }
+      }
+    } catch (e) {
+      console.warn("Erreur déstockage devis validé:", e);
+    }
+  }
+
   return true;
 }
 
@@ -3372,6 +3482,19 @@ export async function convertQuoteToInvoice(userId: string, quoteId: string): Pr
     await syncCustomerFinancials(currentUid, newInvoice.customerId);
   }
 
+  // Déstockage automatique pour la facture créée
+  try {
+    const items = clonedDocData.items || [];
+    if (items.length > 0) {
+      const bId = quote.businessId || clonedDocData.businessId || 'default';
+      await deductStockForInvoice(bId, items, newDocNumber);
+      newInvoice.stockDeducted = true;
+      clonedDocData.stockDeducted = true;
+    }
+  } catch (e) {
+    console.warn("Erreur déstockage convertQuoteToInvoice:", e);
+  }
+
   return newInvoice;
 }
 
@@ -3460,17 +3583,22 @@ export async function saveOrUpdateBusinessDocument(
     await syncCustomerFinancials(currentUid, docData.customerId);
   }
 
-  // 5. Déduction automatique du stock si facture immédiatement payée
-  const isInvoicePaid = invoice.status === 'PAID';
-  if (docData.type === 'facture' && isInvoicePaid && !invoice.stockDeducted) {
+  // 5. Déduction automatique du stock lors de l'émission d'une facture ou validation d'un devis
+  const isInvoice = docData.type === 'facture';
+  const isQuoteValidated = docData.type === 'devis' && docData.quoteStatus === 'ACCEPTE';
+  if ((isInvoice || isQuoteValidated) && !invoice.stockDeducted) {
     try {
       const bId = invoice.businessId || docData.businessId || (docData.issuer as any)?.businessId || 'default';
       const items = docData.items || [];
-      await deductStockForInvoice(bId, items);
-      invoice.stockDeducted = true;
-      savedUserDoc.businessDocData!.stockDeducted = true;
+      if (items.length > 0) {
+        await deductStockForInvoice(bId, items, docData.docNumber);
+        invoice.stockDeducted = true;
+        if (savedUserDoc.businessDocData) {
+          savedUserDoc.businessDocData.stockDeducted = true;
+        }
+      }
     } catch (e) {
-      console.warn("Erreur déduction stock initiale:", e);
+      console.warn("Erreur déduction stock automatique:", e);
     }
   }
 
@@ -4041,6 +4169,7 @@ export function subscribeToSupportConversation(
   chatId: string, 
   onUpdate: (conv: SupportConversation | null) => void
 ): Unsubscribe {
+  if (!chatId) return () => {};
   const convRef = doc(db, 'support_chats', chatId);
   return onSnapshot(convRef, (docSnap) => {
     if (docSnap.exists()) {
@@ -4058,6 +4187,7 @@ export function subscribeToSupportMessages(
   chatId: string, 
   onUpdate: (messages: SupportMessage[]) => void
 ): Unsubscribe {
+  if (!chatId) return () => {};
   const messagesCol = collection(db, 'support_chats', chatId, 'messages');
   // Order by createdAt descending with limit(20) to only fetch the latest 20 messages in real-time
   const q = query(messagesCol, orderBy('createdAt', 'desc'), limit(20));
@@ -4145,6 +4275,9 @@ export function subscribeToSupportMessages(
       });
       msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
       onUpdate(msgs);
+    }, (fallbackErr) => {
+      console.warn('[Support Chat fallback error]:', fallbackErr);
+      onUpdate([]);
     });
     return fallbackUnsub;
   });
@@ -4805,5 +4938,232 @@ export function subscribeToRealtimeAdminDashboardMetrics(
       try { unsub(); } catch (_e) {}
     });
   };
+}
+
+// =========================================================================
+// MODULE DE NOTIFICATIONS FIRESTORE (COLLECTION 'notifications')
+// =========================================================================
+
+/**
+ * Abonne l'utilisateur en temps réel aux notifications de la collection 'notifications'
+ */
+export function subscribeToUserNotifications(
+  userId: string,
+  callback: (notifications: DokyaNotification[]) => void
+): () => void {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) {
+    callback([]);
+    return () => {};
+  }
+
+  const localKey = `dokya_notifications_${currentUid}`;
+  try {
+    const raw = localStorage.getItem(localKey);
+    if (raw) {
+      callback(JSON.parse(raw));
+    }
+  } catch (e) {}
+
+  try {
+    const notifsCol = collection(db, 'notifications');
+    const q = query(
+      notifsCol,
+      where('userId', '==', currentUid),
+      orderBy('createdAt', 'desc'),
+      limit(30)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      const list: DokyaNotification[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          userId: data.userId,
+          title: data.title || 'Notification',
+          message: data.message || '',
+          type: data.type || 'info',
+          read: !!data.read,
+          link: data.link,
+          tabTarget: data.tabTarget,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString()),
+          metadata: data.metadata
+        });
+      });
+      try {
+        localStorage.setItem(localKey, JSON.stringify(list));
+      } catch (e) {}
+      callback(list);
+    }, (err) => {
+      // Fallback query if index is absent
+      console.warn('[Firestore notifications query warning, using fallback]:', err);
+      const fallbackQuery = query(notifsCol, where('userId', '==', currentUid), limit(30));
+      onSnapshot(fallbackQuery, (fallbackSnap) => {
+        const list: DokyaNotification[] = [];
+        fallbackSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          list.push({
+            id: docSnap.id,
+            userId: data.userId,
+            title: data.title || 'Notification',
+            message: data.message || '',
+            type: data.type || 'info',
+            read: !!data.read,
+            link: data.link,
+            tabTarget: data.tabTarget,
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString()),
+            metadata: data.metadata
+          });
+        });
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        try {
+          localStorage.setItem(localKey, JSON.stringify(list));
+        } catch (e) {}
+        callback(list);
+      }, (e2) => {
+        console.warn('[Firestore notifications fallback warning]:', e2);
+      });
+    });
+
+    return unsub;
+  } catch (e) {
+    console.warn('[subscribeToUserNotifications error]:', e);
+    return () => {};
+  }
+}
+
+/**
+ * Crée une notification pour un utilisateur dans la collection Firestore 'notifications'
+ */
+export async function createNotification(
+  userId: string,
+  notif: Omit<DokyaNotification, 'id' | 'createdAt'>
+): Promise<DokyaNotification> {
+  const currentUid = userId || auth.currentUser?.uid || 'guest';
+  const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const nowIso = new Date().toISOString();
+
+  const newNotif: DokyaNotification = {
+    id: notifId,
+    userId: currentUid,
+    title: notif.title,
+    message: notif.message,
+    type: notif.type || 'info',
+    read: false,
+    link: notif.link,
+    tabTarget: notif.tabTarget,
+    createdAt: nowIso,
+    metadata: notif.metadata
+  };
+
+  // Cache local
+  try {
+    const localKey = `dokya_notifications_${currentUid}`;
+    const raw = localStorage.getItem(localKey);
+    const list: DokyaNotification[] = raw ? JSON.parse(raw) : [];
+    list.unshift(newNotif);
+    localStorage.setItem(localKey, JSON.stringify(list.slice(0, 50)));
+  } catch (e) {}
+
+  // Enregistrement Firestore
+  try {
+    const docRef = doc(db, 'notifications', notifId);
+    await setDoc(docRef, cleanFirestorePayload({
+      ...newNotif,
+      createdAt: serverTimestamp()
+    }));
+  } catch (e) {
+    console.warn('[createNotification firestore error]:', e);
+  }
+
+  return newNotif;
+}
+
+/**
+ * Marque une notification comme lue
+ */
+export async function markNotificationAsRead(notifId: string, userId?: string): Promise<void> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    try {
+      const localKey = `dokya_notifications_${currentUid}`;
+      const raw = localStorage.getItem(localKey);
+      if (raw) {
+        const list: DokyaNotification[] = JSON.parse(raw);
+        const target = list.find(n => n.id === notifId);
+        if (target) {
+          target.read = true;
+          localStorage.setItem(localKey, JSON.stringify(list));
+        }
+      }
+    } catch (e) {}
+  }
+
+  try {
+    const docRef = doc(db, 'notifications', notifId);
+    await updateDoc(docRef, {
+      read: true,
+      updatedAt: serverTimestamp()
+    });
+  } catch (e) {
+    console.warn('[markNotificationAsRead error]:', e);
+  }
+}
+
+/**
+ * Marque toutes les notifications comme lues
+ */
+export async function markAllNotificationsAsRead(userId: string): Promise<void> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (!currentUid) return;
+
+  try {
+    const localKey = `dokya_notifications_${currentUid}`;
+    const raw = localStorage.getItem(localKey);
+    if (raw) {
+      const list: DokyaNotification[] = JSON.parse(raw);
+      list.forEach(n => { n.read = true; });
+      localStorage.setItem(localKey, JSON.stringify(list));
+    }
+  } catch (e) {}
+
+  try {
+    const notifsCol = collection(db, 'notifications');
+    const q = query(notifsCol, where('userId', '==', currentUid), where('read', '==', false));
+    const snap = await getDocs(q);
+    const batch = writeBatch(db);
+    snap.forEach((d) => {
+      batch.update(d.ref, { read: true, updatedAt: serverTimestamp() });
+    });
+    await batch.commit();
+  } catch (e) {
+    console.warn('[markAllNotificationsAsRead error]:', e);
+  }
+}
+
+/**
+ * Supprime une notification
+ */
+export async function deleteNotification(notifId: string, userId?: string): Promise<void> {
+  const currentUid = userId || auth.currentUser?.uid;
+  if (currentUid) {
+    try {
+      const localKey = `dokya_notifications_${currentUid}`;
+      const raw = localStorage.getItem(localKey);
+      if (raw) {
+        const list: DokyaNotification[] = JSON.parse(raw);
+        const filtered = list.filter(n => n.id !== notifId);
+        localStorage.setItem(localKey, JSON.stringify(filtered));
+      }
+    } catch (e) {}
+  }
+
+  try {
+    const docRef = doc(db, 'notifications', notifId);
+    await deleteDoc(docRef);
+  } catch (e) {
+    console.warn('[deleteNotification error]:', e);
+  }
 }
 

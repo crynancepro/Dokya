@@ -381,15 +381,19 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     }
   };
 
-  // Handle return from SenePay Hosted Checkout return URL
+  // Traitement du retour après paiement Money Fusion (Return URL)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     try {
       const searchParams = new URLSearchParams(window.location.search);
-      let status = searchParams.get('status');
-      let reference = searchParams.get('reference') || searchParams.get('orderReference');
+      let status = searchParams.get('status') || '';
+      let paymentParam = searchParams.get('payment') || '';
+      let reference = searchParams.get('reference') || searchParams.get('orderReference') || searchParams.get('ref') || '';
       let amountParam = Number(searchParams.get('amount') || 0);
+      let returnDocId = searchParams.get('docId') || '';
+      let returnPlan = searchParams.get('plan') || '';
+      let returnType = searchParams.get('type') || '';
 
       // Traitement et détection automatique du code de parrainage (?ref=CODE)
       const detectedAffiliateCode = initAffiliateTracking();
@@ -399,31 +403,31 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         setTimeout(() => setSuccessMessage(null), 5000);
       }
 
-      if (!status && window.location.hash.includes('?')) {
+      if (!status && !paymentParam && window.location.hash.includes('?')) {
         const hashQuery = window.location.hash.substring(window.location.hash.indexOf('?') + 1);
         const hashParams = new URLSearchParams(hashQuery);
         status = hashParams.get('status') || status;
-        reference = hashParams.get('reference') || hashParams.get('orderReference') || reference;
+        paymentParam = hashParams.get('payment') || paymentParam;
+        reference = hashParams.get('reference') || hashParams.get('orderReference') || hashParams.get('ref') || reference;
         amountParam = Number(hashParams.get('amount') || amountParam);
+        returnDocId = hashParams.get('docId') || returnDocId;
+        returnPlan = hashParams.get('plan') || returnPlan;
+        returnType = hashParams.get('type') || returnType;
       }
 
-      if (status === 'success' || (reference && status !== 'cancel')) {
+      const isPaymentSuccess = paymentParam === 'success' || status === 'success' || status === 'approved' || searchParams.get('unlocked') === 'true' || (reference && status !== 'cancel');
+
+      if (isPaymentSuccess) {
         setIsCurrentDocPaid(true);
 
-        if (reference?.startsWith('RECHARGE-') && amountParam > 0) {
-          setUserBalance(prev => {
-            const nextBal = prev + amountParam;
-            try {
-              const uKey = getLocalProfileKey(auth.currentUser?.uid);
-              const profile = JSON.parse(localStorage.getItem(uKey) || '{}');
-              profile.balance = nextBal;
-              localStorage.setItem(uKey, JSON.stringify(profile));
-            } catch (_e) {}
-            return nextBal;
-          });
-          setSuccessMessage(`Recharge de ${(amountParam).toLocaleString('fr-FR')} FCFA validée avec succès ! Votre solde est à jour.`);
+        if (returnType === 'wallet' || reference?.includes('WALLET') || reference?.includes('RECHARGE')) {
+          setSuccessMessage(`💰 Recharge de solde validée avec succès via Money Fusion ! Votre portefeuille est immédiatement crédité.`);
+        } else if (returnPlan) {
+          setSuccessMessage(`👑 Abonnement VIP Dokya activé avec succès via Money Fusion ! Vous bénéficiez désormais de tous les accès.`);
+        } else if (returnDocId) {
+          setSuccessMessage('🎉 Paiement Money Fusion validé ! Votre document est débloqué et prêt au téléchargement.');
         } else {
-          setSuccessMessage('Paiement sécurisé validé avec succès ! Votre document est débloqué.');
+          setSuccessMessage('✅ Paiement Money Fusion validé avec succès ! Vos accès sont activés.');
         }
 
         setTimeout(() => setSuccessMessage(null), 6000);
@@ -431,7 +435,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         const cleanUrl = window.location.pathname + (window.location.hash.split('?')[0] || '');
         window.history.replaceState({}, document.title, cleanUrl);
       } else if (status === 'cancel') {
-        setErrorMessage('Le paiement a été annulé. Vous pouvez réessayer ou utiliser votre solde.');
+        setErrorMessage('Le paiement Money Fusion a été interrompu ou annulé. Vous pouvez réessayer à tout moment.');
         setTimeout(() => setErrorMessage(null), 5000);
       }
     } catch (_e) {}

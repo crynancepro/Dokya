@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CVFormData, Experience, Education, Language, CoverLetterType, GenerationMode, TemplateStyle } from '../types';
+import { CVFormData, Experience, Education, Language, CoverLetterType, GenerationMode, TemplateStyle, CandidateProfile } from '../types';
 import { ALL_CV_TEMPLATES } from '../data/cvTemplatesList';
 import { 
   User, Briefcase, GraduationCap, Award, Sparkles, 
@@ -7,8 +7,10 @@ import {
   Settings, Globe, FileText, Mail, Building2, 
   UserCheck, RotateCcw, Target, Send,
   Upload, Camera, X, MapPin, Phone, Linkedin, 
-  Wand2, Info, ArrowRight, ArrowLeft, Star, Heart
+  Wand2, Info, ArrowRight, ArrowLeft, Star, Heart,
+  RefreshCw, UserCircle2, CheckCircle2, AlertCircle
 } from 'lucide-react';
+import { auth, fetchUserProfile } from '../lib/firebase';
 import { AIFormValidationBanner } from './AIFormValidationBanner';
 import { validateCVForm, validateLetterForm } from '../lib/formValidationUtils';
 import { 
@@ -93,6 +95,109 @@ export const StepForm: React.FC<StepFormProps> = ({
       education: enrichedEducation,
       hobbies: smartHobbies
     });
+  };
+
+  // State for importing profile data
+  const [isImportingProfile, setIsImportingProfile] = useState(false);
+  const [profileImportStatus, setProfileImportStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+
+  // Remplissage automatique du CV depuis le Profil Firestore de l'utilisateur
+  const handleImportProfileData = async () => {
+    setIsImportingProfile(true);
+    setProfileImportStatus(null);
+    try {
+      const currentUser = auth.currentUser;
+      let profile: CandidateProfile | null = null;
+
+      if (currentUser?.uid) {
+        profile = await fetchUserProfile(currentUser.uid);
+      }
+
+      // Si non connecté ou profil non trouvé, tenter depuis le cache local du profil
+      if (!profile) {
+        try {
+          const keys = Object.keys(localStorage).filter(k => k.startsWith('candidate_profile_') || k.startsWith('dokya_profile_'));
+          for (const k of keys) {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              profile = JSON.parse(raw);
+              break;
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (!profile) {
+        setProfileImportStatus({
+          type: 'info',
+          message: 'Aucun profil enregistré trouvé. Veuillez vous connecter ou renseigner votre Profil Candidat.'
+        });
+        setTimeout(() => setProfileImportStatus(null), 4000);
+        return;
+      }
+
+      const pInfo = profile.personalInfo || {
+        firstName: profile.displayName?.split(' ')[0] || '',
+        lastName: profile.displayName?.split(' ').slice(1).join(' ') || '',
+        email: profile.email || '',
+        phone: (profile as any).phone || '',
+        address: '',
+        city: 'Dakar',
+        country: 'Sénégal',
+        targetJob: '',
+        linkedin: '',
+        portfolio: '',
+        photoUrl: (profile as any).photoURL || ''
+      };
+
+      const updatedFormData: CVFormData = {
+        ...formData,
+        personalInfo: {
+          firstName: pInfo.firstName || formData.personalInfo?.firstName || '',
+          lastName: pInfo.lastName || formData.personalInfo?.lastName || '',
+          email: pInfo.email || formData.personalInfo?.email || '',
+          phone: pInfo.phone || formData.personalInfo?.phone || '',
+          address: pInfo.address || formData.personalInfo?.address || '',
+          city: pInfo.city || formData.personalInfo?.city || 'Dakar',
+          country: pInfo.country || formData.personalInfo?.country || 'Sénégal',
+          targetJob: pInfo.targetJob || formData.personalInfo?.targetJob || '',
+          linkedin: pInfo.linkedin || formData.personalInfo?.linkedin || '',
+          portfolio: pInfo.portfolio || formData.personalInfo?.portfolio || '',
+          photoUrl: pInfo.photoUrl || formData.personalInfo?.photoUrl || ''
+        },
+        experiences: (profile.experiences && profile.experiences.length > 0)
+          ? profile.experiences
+          : formData.experiences,
+        education: (profile.education && profile.education.length > 0)
+          ? profile.education
+          : formData.education,
+        skills: (profile.skills && profile.skills.length > 0)
+          ? profile.skills
+          : formData.skills,
+        languages: (profile.languages && profile.languages.length > 0)
+          ? profile.languages
+          : formData.languages,
+        hobbies: ((profile as any).hobbies && (profile as any).hobbies.length > 0)
+          ? (profile as any).hobbies
+          : formData.hobbies
+      };
+
+      onChange(updatedFormData);
+      setProfileImportStatus({
+        type: 'success',
+        message: 'Données du Profil importées avec succès (nom, coordonnées, expériences, formations, compétences) !'
+      });
+      setTimeout(() => setProfileImportStatus(null), 4000);
+    } catch (err: any) {
+      console.warn("Erreur import données profil:", err);
+      setProfileImportStatus({
+        type: 'error',
+        message: 'Erreur lors du chargement du profil utilisateur.'
+      });
+      setTimeout(() => setProfileImportStatus(null), 4000);
+    } finally {
+      setIsImportingProfile(false);
+    }
   };
 
   // Find active template metadata
@@ -910,7 +1015,22 @@ export const StepForm: React.FC<StepFormProps> = ({
               </div>
 
               {currentStep === 1 && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleImportProfileData}
+                    disabled={isImportingProfile}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                    title="Pré-remplir automatiquement le CV avec votre nom, prénom, contact, expériences, formations et compétences depuis votre profil"
+                  >
+                    {isImportingProfile ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <UserCircle2 className="w-3.5 h-3.5 text-violet-200" />
+                    )}
+                    <span>Importer mes données Profil</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleFillSample}
@@ -932,12 +1052,61 @@ export const StepForm: React.FC<StepFormProps> = ({
               )}
             </div>
 
+            {/* Profile Import Status Notification */}
+            {profileImportStatus && (
+              <div className={`mb-6 p-3.5 rounded-2xl border flex items-center gap-3 animate-in fade-in text-xs font-medium ${
+                profileImportStatus.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : profileImportStatus.type === 'error'
+                  ? 'bg-rose-50 border-rose-200 text-rose-800'
+                  : 'bg-indigo-50 border-indigo-200 text-indigo-800'
+              }`}>
+                {profileImportStatus.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-indigo-600 shrink-0" />
+                )}
+                <span>{profileImportStatus.message}</span>
+              </div>
+            )}
+
             {/* ========================================================= */}
             {/* STEP 1: INFOS PERSONNELLES (REDESIGNED MODERN SAAS STYLE) */}
             {/* ========================================================= */}
             {currentStep === 1 && (
               <div className="space-y-6 animate-in fade-in">
                 
+                {/* Bandeau d'import rapide depuis le profil */}
+                <div className="bg-gradient-to-r from-violet-500/10 via-indigo-500/10 to-purple-500/10 border border-indigo-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-indigo-600/30">
+                      <UserCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900">
+                        Vous avez déjà un compte ou un profil candidat ?
+                      </h4>
+                      <p className="text-[11px] text-slate-600">
+                        Gagnez du temps : importez en 1 clic vos informations personnelles, expériences, diplômes et compétences.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleImportProfileData}
+                    disabled={isImportingProfile}
+                    className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
+                  >
+                    {isImportingProfile ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    )}
+                    <span>Importer mes données Profil</span>
+                  </button>
+                </div>
+
                 {/* 1. Identité Principale */}
                 <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-xs space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">

@@ -42,15 +42,41 @@ export const DokyaAffiliateView: React.FC<DokyaAffiliateViewProps> = ({ profile 
   // Filter state for commissions table
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
 
-  // Referral Code & Link derivation
-  const referralCode = profile.referralCode || (profile.email?.toLowerCase().startsWith('peter25') ? 'PETER25' : 'DOKYA');
-  
-  const referralLink = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin;
-      return `${origin}?ref=${encodeURIComponent(referralCode)}`;
+  // Referral Code derivation strictly based on user's first name (ex: PRENOM, PRENOM-5K, PETER)
+  const userFirstName = useMemo(() => {
+    if (profile.personalInfo?.firstName && profile.personalInfo.firstName.trim()) {
+      return profile.personalInfo.firstName.trim();
     }
-    return `https://dokya.ai?ref=${referralCode}`;
+    if (profile.displayName && profile.displayName.trim()) {
+      return profile.displayName.trim().split(' ')[0];
+    }
+    if (profile.email) {
+      const local = profile.email.split('@')[0];
+      const alpha = local.match(/^[a-zA-Z]+/);
+      return alpha && alpha[0] ? alpha[0] : local;
+    }
+    return 'VIP';
+  }, [profile]);
+
+  const cleanFirstName = useMemo(() => {
+    const norm = userFirstName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toUpperCase();
+    return norm || 'VIP';
+  }, [userFirstName]);
+
+  const referralCode = useMemo(() => {
+    if (profile.referralCode && !profile.referralCode.toUpperCase().includes('DOKYA')) {
+      return profile.referralCode;
+    }
+    return cleanFirstName;
+  }, [profile.referralCode, cleanFirstName]);
+  
+  // Format exact demandé : https://dokya.com/signup?ref=PRENOM
+  const referralLink = useMemo(() => {
+    return `https://dokya.com/signup?ref=${encodeURIComponent(referralCode)}`;
   }, [referralCode]);
 
   // Real-time subscriptions to commissions & payout requests

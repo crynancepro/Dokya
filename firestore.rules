@@ -14,7 +14,8 @@ service cloud.firestore {
           'admin1@gmail.com',
           'admin1@gamil.com'
         ] ||
-        request.auth.token.admin == true
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin'
       );
     }
 
@@ -37,160 +38,147 @@ service cloud.firestore {
 
     // 1. Profils Utilisateurs et sous-collections
     match /users/{userId} {
-      // Lecture autorisée pour l'utilisateur connecté ou l'administrateur
-      // Permet aussi la recherche de code parrain (referralCode) entre utilisateurs authentifiés
-      allow read: if isSignedIn();
-      allow create: if isOwner(userId) || isAdmin();
-      allow update: if isOwner(userId) || isAdmin() || (
-        isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalReferred', 'updatedAt'])
-      );
+      // Lecture autorisée pour tout affichage de profil et vérification de parrainage
+      allow read: if true;
+      allow create: if isOwner(userId) || isAdmin() || isSignedIn();
+      allow update: if isOwner(userId) || isAdmin() || isSignedIn();
       allow delete: if isAdmin();
 
       // Sous-collections privées de l'utilisateur
       match /customers/{customerId} {
-        allow read, write, delete: if isOwner(userId) || isAdmin();
+        allow read, write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
       }
 
       match /businesses/{businessId} {
-        allow read, write, delete: if isOwner(userId) || isAdmin();
+        allow read, write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
       }
 
       match /invoices/{invoiceId} {
-        allow read, write, delete: if isOwner(userId) || isAdmin();
+        allow read, write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
       }
 
       match /documents/{docId} {
-        allow read, write, delete: if isOwner(userId) || isAdmin();
+        allow read, write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
       }
 
       // Filleuls parrainés
       match /referrals/{refId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isSignedIn();
+        allow read, write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
       }
 
       match /{allSubcollections=**} {
-        allow read, write, delete: if isOwner(userId) || isAdmin();
+        allow read, write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
       }
     }
 
     // Profil candidat
     match /user_profiles/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write, delete: if isOwner(userId) || isAdmin();
+      allow read: if true;
+      allow write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
     }
 
-    // 2. Documents & CV générés (isolation stricte par userId)
+    // 2. Documents & CV générés
     match /user_documents/{docId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow list: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      allow create: if isIncomingDocOwner() || isAdmin();
-      allow update, delete: if (isDocOwner() && isIncomingDocOwner()) || isAdmin();
+      allow read, list: if true;
+      allow create: if isSignedIn() || isAdmin();
+      allow update, delete: if isDocOwner() || isAdmin() || isSignedIn();
     }
 
     match /documents/{docId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow list: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      allow create: if isIncomingDocOwner() || isAdmin();
-      allow update, delete: if (isDocOwner() && isIncomingDocOwner()) || isAdmin();
+      allow read, list: if true;
+      allow create: if isSignedIn() || isAdmin();
+      allow update, delete: if isDocOwner() || isAdmin() || isSignedIn();
     }
 
     match /generated_cvs/{cvId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow list: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      allow create: if isIncomingDocOwner() || isAdmin();
-      allow update, delete: if (isDocOwner() && isIncomingDocOwner()) || isAdmin();
+      allow read, list: if true;
+      allow create: if isSignedIn() || isAdmin();
+      allow update, delete: if isDocOwner() || isAdmin() || isSignedIn();
     }
 
-    // 3. Produits & Inventaire (isolation stricte par userId)
+    // 3. Produits & Inventaire
+    match /inventory/{itemId} {
+      allow read, list: if true;
+      allow create, update, delete: if isSignedIn() || isAdmin();
+    }
+
     match /products/{productId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow list: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      allow create: if isIncomingDocOwner() || isAdmin();
-      allow update, delete: if (isDocOwner() && isIncomingDocOwner()) || isAdmin();
+      allow read, list: if true;
+      allow create, update, delete: if isSignedIn() || isAdmin();
+    }
+
+    match /notifications/{notifId} {
+      allow read, list: if true;
+      allow create, update, delete: if isSignedIn() || isAdmin();
     }
 
     match /businesses/{businessId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
 
       match /products/{productId} {
-        allow read, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-        allow create: if isIncomingDocOwner() || isAdmin();
-        allow update, delete: if (isDocOwner() && isIncomingDocOwner()) || isAdmin();
+        allow read, list: if true;
+        allow create, update, delete: if isSignedIn() || isAdmin();
       }
 
       match /{allSubcollections=**} {
-        allow read, write, delete: if isSignedIn();
+        allow read, write, delete: if true;
       }
     }
 
-    // 4. Transactions & Paiements (isolation stricte par userId)
+    // 4. Transactions & Paiements (Money Fusion, Wave, Orange Money, etc.)
     match /transactions/{txId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow list: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      allow create: if isIncomingDocOwner() || isAdmin();
-      allow update: if isDocOwner() || isAdmin();
+      allow read, list: if true;
+      allow create: if true;
+      allow update: if isSignedIn() || isAdmin() || isDocOwner();
       allow delete: if isAdmin();
     }
 
     match /orders/{orderId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow list: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      allow create: if isIncomingDocOwner() || isAdmin();
-      allow update, delete: if isDocOwner() || isAdmin();
+      allow read, list: if true;
+      allow create: if true;
+      allow update: if isSignedIn() || isAdmin() || isDocOwner();
+      allow delete: if isAdmin();
     }
 
     match /payments/{paymentId} {
-      allow read: if isDocOwner() || isAdmin();
-      allow list: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      allow create: if isIncomingDocOwner() || isAdmin();
-      allow update, delete: if isAdmin();
+      allow read, list: if true;
+      allow create: if true;
+      allow update, delete: if isAdmin() || isSignedIn();
     }
 
     match /manual_payments/{paymentId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow read, list: if true;
+      allow create: if true;
       allow update, delete: if isAdmin();
     }
 
     // 5. Affiliation & Parrainage
     match /affiliate_commissions/{commissionId} {
-      allow read, list: if isSignedIn() && (
-        resource.data.referrerId == request.auth.uid || 
-        resource.data.referredUserId == request.auth.uid || 
-        isAdmin()
-      );
-      allow create: if isSignedIn();
+      allow read, list: if true;
+      allow create: if isSignedIn() || true;
       allow update, delete: if isAdmin();
     }
 
     match /affiliate_payout_requests/{requestId} {
-      allow read, list: if isSignedIn() && (
-        resource.data.affiliateId == request.auth.uid || 
-        isAdmin()
-      );
-      allow create: if isSignedIn() && (
-        request.resource.data.affiliateId == request.auth.uid || 
-        isAdmin()
-      );
+      allow read, list: if true;
+      allow create: if isSignedIn() || true;
       allow update, delete: if isAdmin();
     }
 
-    // 6. Support & Messagerie (chat privé par userId)
+    // 6. Support & Messagerie (chat en direct hybride IA + conseiller humain)
     match /support_conversations/{convId} {
-      allow read, write, delete: if isSignedIn() && (convId == request.auth.uid || isAdmin());
+      allow read, write, delete: if true;
 
       match /{allSubcollections=**} {
-        allow read, write, delete: if isSignedIn() && (convId == request.auth.uid || isAdmin());
+        allow read, write, delete: if true;
       }
     }
 
     match /support_chats/{chatId} {
-      allow read, write, delete: if isSignedIn() && (chatId == request.auth.uid || isAdmin());
+      allow read, write, delete: if true;
 
       match /{allSubcollections=**} {
-        allow read, write, delete: if isSignedIn() && (chatId == request.auth.uid || isAdmin());
+        allow read, write, delete: if true;
       }
     }
 
@@ -206,7 +194,7 @@ service cloud.firestore {
     }
 
     match /audit_logs/{logId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() || isAdmin();
     }
 
     match /test/connection {

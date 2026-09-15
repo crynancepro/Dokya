@@ -8,8 +8,8 @@ import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail } from '../lib/adminAuth';
 import { DokyaLogo } from './DokyaLogo';
-import { CurrencyCountrySelector } from './CurrencyCountrySelector';
 import { useLocale } from '../contexts/LocaleContext';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   currentView?: string;
@@ -208,8 +208,15 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Sélecteur de Devise & Pays International */}
-            <CurrencyCountrySelector compact showRates />
+            {/* Notification Bell */}
+            {user && (
+              <NotificationBell 
+                userId={user.uid}
+                onNavigateTab={(tab) => {
+                  if (onOpenDashboard) onOpenDashboard();
+                }}
+              />
+            )}
 
             {/* Espace Candidat Button with Balance */}
             {onOpenDashboard && (

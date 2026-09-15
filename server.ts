@@ -2389,6 +2389,8 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       userId = '',
       userPhone = '',
       userName = '',
+      planId = '',
+      type = '',
       email,
       userEmail,
       currency = 'XOF',
@@ -2402,12 +2404,14 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
 
     const targetAmount = Math.max(100, Math.round(Number(amount) || 1000));
     const targetDocId = String(docId || metadata.targetDocId || metadata.docId || '').trim();
+    const targetPlanId = String(planId || metadata.planId || '').trim();
+    const targetType = String(type || metadata.type || (targetDocId ? 'document' : (targetPlanId ? 'subscription' : 'wallet'))).trim();
     const targetUserId = String(userId || metadata.userId || 'guest').trim() || 'guest';
     const targetPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
     const targetName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
 
     const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
-    const returnUrl = `${appBaseUrl}/dashboard?payment=success&docId=${targetDocId}`;
+    const returnUrl = `${appBaseUrl}/dashboard?payment=success${targetDocId ? `&docId=${targetDocId}` : ''}${targetPlanId ? `&plan=${targetPlanId}` : ''}${targetType === 'wallet' ? '&type=wallet' : ''}`;
     const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
     const apiKey = process.env.MONEYFUSION_API_KEY;
@@ -2418,9 +2422,15 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
     }
 
+    const articleLabel = targetDocId
+      ? "Déblocage Document Dokya"
+      : (targetPlanId ? `Abonnement Dokya ${targetPlanId}` : "Rechargement Wallet Dokya");
+
     console.log('[Money Fusion Checkout] Requête reçue:', {
       amount: targetAmount,
       docId: targetDocId,
+      planId: targetPlanId,
+      type: targetType,
       userId: targetUserId,
       userPhone: targetPhone,
       userName: targetName,
@@ -2431,8 +2441,13 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
     // Structure JSON requise par Money Fusion
     const moneyFusionPayload = {
       totalPrice: Number(targetAmount),
-      article: [{ "Déblocage Document Dokya": Number(targetAmount) }],
-      personal_Info: [{ userId: targetUserId, docId: targetDocId }],
+      article: [{ [articleLabel]: Number(targetAmount) }],
+      personal_Info: [{
+        userId: targetUserId,
+        docId: targetDocId,
+        planId: targetPlanId,
+        type: targetType
+      }],
       numeroSend: targetPhone,
       nomclient: targetName,
       return_url: returnUrl,
@@ -2684,6 +2699,39 @@ app.post('/api/webhooks/moneyfusion', async (req, res) => {
       }).catch(err => console.warn('[Money Fusion server.ts] Firestore wallet credit warn:', err.message));
     }
 
+    // Sauvegarde immédiate dans la collection 'transactions' de Firestore pour affichage temps réel dans le Panneau Admin
+    try {
+      const txUrl = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents/transactions?documentId=${encodeURIComponent(txId)}&key=${FIRESTORE_API_KEY}`;
+      const txFields = {
+        id: { stringValue: txId },
+        transactionId: { stringValue: txId },
+        userId: { stringValue: userId || 'anonymous' },
+        userEmail: { stringValue: userEmail || payload.clientEmail || '' },
+        userName: { stringValue: personalInfo.nom || metadata.userName || payload.clientName || 'Client Dokya' },
+        userPhone: { stringValue: payload.numeroSend || personalInfo.telephone || '' },
+        amount: { integerValue: String(amount) },
+        expectedAmount: { integerValue: String(amount) },
+        currency: { stringValue: payload.currency || 'XOF' },
+        type: { stringValue: transactionType },
+        typeLabel: { stringValue: transactionTypeLabel },
+        status: { stringValue: 'COMPLETED' },
+        paymentGateway: { stringValue: 'Money Fusion' },
+        paymentMethod: { stringValue: 'moneyfusion' },
+        operator: { stringValue: 'moneyfusion_mobile_qr' },
+        targetDocId: { stringValue: docId || '' },
+        planId: { stringValue: planId || (isSubscription ? 'PASS_VIP' : '') },
+        description: { stringValue: isDocumentUnlock ? `Déblocage Document (${docId}) - Money Fusion` : (isSubscription ? `Abonnement VIP (${planId || 'Pass'}) - Money Fusion` : `Rechargement Wallet (${amount} XOF) - Money Fusion`) },
+        createdAt: { timestampValue: now.toISOString() },
+        completedAt: { timestampValue: now.toISOString() }
+      };
+
+      fetch(txUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: txFields })
+      }).catch(err => console.warn('[Money Fusion server.ts] Firestore transaction log warn:', err.message));
+    } catch (_tErr) {}
+
     return res.json({
       received: true,
       status: 'PROCESSED',
@@ -2696,6 +2744,91 @@ app.post('/api/webhooks/moneyfusion', async (req, res) => {
   } catch (error: any) {
     console.error('[Money Fusion Webhook Error]:', error);
     return res.status(500).json({ error: error.message || 'Erreur serveur du webhook Money Fusion' });
+  }
+});
+
+/**
+ * 1.D. Vérification de Statut de Transaction Money Fusion
+ * GET /api/moneyfusion/status/:token
+ */
+app.get('/api/moneyfusion/status/:token', async (req, res) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    if (!token) {
+      return res.status(400).json({ error: 'Token manquant' });
+    }
+
+    // A. Vérifier dans la mémoire locale adminStore
+    const existingTx = adminStore.transactions.find(t => t.id === token || t.transactionId === token || (t as any).token === token);
+    if (existingTx && existingTx.status === 'COMPLETED') {
+      return res.json({
+        paid: true,
+        status: 'COMPLETED',
+        transaction: existingTx
+      });
+    }
+
+    // B. Si une clé API Money Fusion est configurée, interroger l'API Money Fusion
+    const apiKey = process.env.MONEYFUSION_API_KEY;
+    if (apiKey) {
+      try {
+        const targetEndpoint = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim().replace(/\/$/, '');
+        const checkUrl = `${targetEndpoint}/api/v1/payments/${token}`;
+        const mfRes = await fetch(checkUrl, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        if (mfRes.ok) {
+          const mfData: any = await mfRes.json();
+          const status = String(mfData.statut ?? mfData.status ?? '').toLowerCase();
+          const isSuccess = status === 'true' || status === 'success' || status === 'paid' || status === 'completed' || status === 'approved';
+
+          if (isSuccess) {
+            // Déclencher le webhook interne pour créditer / débloquer
+            const webhookUrl = `http://localhost:${PORT || 3000}/api/webhooks/moneyfusion`;
+            fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...mfData, token, statut: true })
+            }).catch(() => {});
+
+            return res.json({
+              paid: true,
+              status: 'COMPLETED',
+              data: mfData
+            });
+          }
+
+          return res.json({
+            paid: false,
+            status: status || 'PENDING',
+            data: mfData
+          });
+        }
+      } catch (checkErr: any) {
+        console.warn('[Money Fusion Status Check Warn]:', checkErr.message);
+      }
+    }
+
+    // C. Si en mode simulation
+    if (token.startsWith('MF_') || token.startsWith('MF-')) {
+      return res.json({
+        paid: true,
+        status: 'COMPLETED',
+        simulated: true
+      });
+    }
+
+    return res.json({
+      paid: false,
+      status: 'PENDING'
+    });
+  } catch (err: any) {
+    console.error('[Money Fusion Status Error]:', err);
+    return res.status(500).json({ error: err.message || 'Erreur lors de la vérification de transaction' });
   }
 });
 

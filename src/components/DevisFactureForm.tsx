@@ -402,9 +402,16 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
       const currentUid = auth.currentUser?.uid || 'guest';
       const docId = data.id || data.docNumber || `DOC-${Date.now()}`;
       const updatedDoc = { ...data, id: docId };
-      await saveOrUpdateBusinessDocument(currentUid, docId, updatedDoc);
+      const result = await saveOrUpdateBusinessDocument(currentUid, docId, updatedDoc);
       onChange(updatedDoc);
-      setDocSaveSuccessMsg(`Document ${data.docNumber || docId} enregistré dans Firestore !`);
+      const isInvoice = data.type === 'facture';
+      const isQuoteAccepted = data.type === 'devis' && (data.quoteStatus === 'accepted' || data.quoteStatus === 'ACCEPTE');
+      const hasItems = (data.items || []).length > 0;
+      if ((isInvoice || isQuoteAccepted) && hasItems) {
+        setDocSaveSuccessMsg(`Document ${data.docNumber || docId} enregistré & stock inventaire mis à jour automatiquement !`);
+      } else {
+        setDocSaveSuccessMsg(`Document ${data.docNumber || docId} enregistré avec succès !`);
+      }
       setTimeout(() => setDocSaveSuccessMsg(null), 4000);
     } catch (err) {
       console.error("Erreur sauvegarde document:", err);

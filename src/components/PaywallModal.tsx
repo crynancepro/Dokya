@@ -142,8 +142,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
   // Listen to profile updates (e.g. if user is credited or unlocked in background)
   useEffect(() => {
-    const currentUid = (userId && userId !== 'guest') ? userId : auth.currentUser?.uid;
-    if (!isOpen || !currentUid || currentUid === 'guest') return;
+    const currentUid = (userId && !userId.startsWith('guest')) ? userId : auth.currentUser?.uid;
+    if (!isOpen || !currentUid || currentUid.startsWith('guest')) return;
 
     userProfileUnsubRef.current = subscribeToUserProfile(currentUid, (profileData) => {
       const subStatus = (profileData.subscription?.status || (profileData as any).subscriptionStatus || '').toUpperCase();
@@ -237,12 +237,19 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
       const user = auth.currentUser;
 
       // Requête POST vers le backend local /api/moneyfusion/checkout
+      const isSubFormula = selectedFormula.id === 'vip_career' || selectedFormula.id === 'business';
+      const checkoutType = isSubFormula ? 'subscription' : 'document';
+      const checkoutPlanId = selectedFormula.id === 'vip_career' ? 'PASS_VIP' : (selectedFormula.id === 'business' ? 'PASS_BUSINESS' : '');
+      const checkoutDocId = selectedFormula.id === 'single' ? (targetDocId || '') : '';
+
       const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: selectedFormula.price || 3000,
-          docId: targetDocId || '',
+          docId: checkoutDocId,
+          planId: checkoutPlanId,
+          type: checkoutType,
           userId: user?.uid || currentUid,
           userPhone: (user as any)?.phoneNumber || '',
           userName: user?.displayName || currentUserName

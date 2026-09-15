@@ -230,6 +230,70 @@
         }
       },
       "required": ["companyName"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification for alerts, stock deductions, commissions, and messages",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "link": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["userId", "title", "message", "read"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Product or stock record in inventory",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sku": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "number"
+        },
+        "sellingPrice": {
+          "type": "number"
+        },
+        "purchasePrice": {
+          "type": "number"
+        },
+        "lowStockThreshold": {
+          "type": "number"
+        },
+        "businessId": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "quantity"]
     }
   },
   "firestore": {
@@ -268,6 +332,18 @@
         "$ref": "#/entities/Order"
       },
       "description": "Collection of payment orders and generation attempts"
+    },
+    "/notifications/{notifId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "Collection of notifications for users"
+    },
+    "/inventory/{itemId}": {
+      "schema": {
+        "$ref": "#/entities/InventoryItem"
+      },
+      "description": "Collection of inventory stock records"
     }
   }
 }

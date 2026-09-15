@@ -142,8 +142,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       setCurrentUserIsVip(true);
       return;
     }
-    const currentUid = (userId && userId !== 'guest') ? userId : auth.currentUser?.uid;
-    if (!currentUid || currentUid === 'guest') return;
+    const currentUid = (userId && !userId.startsWith('guest')) ? userId : auth.currentUser?.uid;
+    if (!currentUid || currentUid.startsWith('guest')) return;
 
     const unsub = subscribeToUserProfile(currentUid, (p) => {
       const vip = isUserVipActive(p.subscription) || (p as any).subscriptionStatus === 'unlimited';
@@ -590,12 +590,15 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
     try {
       const user = auth.currentUser;
+      const checkoutType = mode === 'recharge' ? 'wallet' : (mode === 'subscription' ? 'subscription' : 'document');
       const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: payablePrice || 3000,
-          docId: targetDocId || '',
+          docId: mode === 'document' ? (targetDocId || '') : '',
+          planId: mode === 'subscription' ? (planId || 'monthly') : '',
+          type: checkoutType,
           userId: user?.uid || userId || 'guest',
           userPhone: senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : ((user as any)?.phoneNumber || ''),
           userName: user?.displayName || userName || 'Client Dokya'
@@ -1268,41 +1271,6 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
               ) : (
                 /* Payment Methods Grid */
                 <div className="space-y-3">
-                  {/* Détection Régionale & Sélecteur Rapide de Pays/Devise */}
-                  <div className="p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Globe className="w-4 h-4 text-indigo-400 shrink-0" />
-                      <div className="text-xs truncate">
-                        <span className="text-slate-400">Région :</span>{' '}
-                        <span className="text-white font-bold">{selectedCountry.flag} {selectedCountry.name}</span>
-                        {userCurrency !== 'XOF' && (
-                          <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold">
-                            {userCurrency}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <select
-                      value={selectedCountry.code}
-                      onChange={(e) => {
-                        const target = COUNTRIES.find(c => c.code === e.target.value);
-                        if (target) {
-                          setSelectedCountry(target);
-                          setUserCountry(target);
-                        }
-                      }}
-                      className="bg-slate-950 border border-slate-700 text-[11px] text-slate-200 rounded-xl px-2 py-1 focus:border-indigo-500 focus:outline-hidden cursor-pointer shrink-0"
-                      title="Changer de pays pour adapter les modes de paiement"
-                    >
-                      {COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code} className="bg-slate-900 text-white">
-                          {c.flag} {c.name} ({c.currency})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
                       Passerelle de paiement en ligne :

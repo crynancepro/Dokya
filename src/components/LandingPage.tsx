@@ -40,7 +40,6 @@ import { LandingAtsSimulator } from './landing/LandingAtsSimulator';
 import { LandingComparison } from './landing/LandingComparison';
 import { LandingTestimonials } from './landing/LandingTestimonials';
 import { LandingFloatingCta } from './landing/LandingFloatingCta';
-import { CurrencyCountrySelector } from './CurrencyCountrySelector';
 import { useLocale } from '../contexts/LocaleContext';
 
 interface LandingPageProps {
@@ -241,99 +240,68 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* ========================================================================= */}
       {/* 1. TOP NAVBAR                                                             */}
       {/* ========================================================================= */}
-      <header className="sticky top-0 z-40 bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           
-          {/* Logo */}
+          {/* Logo compact */}
           <DokyaLogo 
-            size="md"
-            subtitle="Suite Bureautique & Recrutement IA"
+            size="sm"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           />
 
-          {/* Nav items */}
-          <nav className="hidden lg:flex items-center gap-5 text-xs font-bold text-slate-300">
-            <a 
-              href="#hero-section" 
-              className="hover:text-white transition-colors cursor-pointer"
-            >
-              Accueil
-            </a>
+          {/* Nav items compact & streamlined */}
+          <nav className="hidden lg:flex items-center gap-4 xl:gap-6 text-xs font-semibold text-slate-300">
             <a 
               href="#carrousels-section" 
-              className="hover:text-cyan-400 transition-colors cursor-pointer flex items-center gap-1"
+              className="hover:text-cyan-400 transition-colors cursor-pointer whitespace-nowrap"
             >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Modèles Réels 3D</span>
-            </a>
-            <a 
-              href="#comment-ca-marche" 
-              className="hover:text-white transition-colors cursor-pointer"
-            >
-              Comment ça marche
+              Modèles 3D
             </a>
             <a 
               href="#simulateur-ats" 
-              className="hover:text-indigo-400 transition-colors cursor-pointer flex items-center gap-1"
+              className="hover:text-indigo-400 transition-colors cursor-pointer whitespace-nowrap"
             >
-              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Simulateur IA</span>
-            </a>
-            <a 
-              href="#comparatif" 
-              className="hover:text-white transition-colors cursor-pointer"
-            >
-              Comparatif
+              Simulateur IA
             </a>
             <a 
               href="#tarifs" 
-              className="hover:text-emerald-400 transition-colors cursor-pointer flex items-center gap-1"
+              className="hover:text-emerald-400 transition-colors cursor-pointer whitespace-nowrap"
             >
-              <Zap className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Tarifs (Dès 1 000 F)</span>
-            </a>
-            <a 
-              href="#avis" 
-              className="hover:text-amber-300 transition-colors cursor-pointer"
-            >
-              Avis Clients
+              Tarifs
             </a>
             <a 
               href="#faq" 
-              className="hover:text-white transition-colors cursor-pointer"
+              className="hover:text-white transition-colors cursor-pointer whitespace-nowrap"
             >
               FAQ
             </a>
           </nav>
 
           {/* Action CTAs */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Global Currency / Country Selector */}
-            <CurrencyCountrySelector compact showRates />
-
+          <div className="flex items-center gap-2 shrink-0">
             {currentUser ? (
               <button
                 type="button"
                 onClick={onGoToDashboard}
-                className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer hover:scale-102"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all cursor-pointer hover:scale-102 whitespace-nowrap"
               >
-                <LayoutDashboard className="w-4 h-4 text-indigo-200" />
-                <span className="hidden xs:inline">Mon Espace</span>
+                <LayoutDashboard className="w-3.5 h-3.5 text-indigo-200" />
+                <span>Mon Espace</span>
               </button>
             ) : (
               <>
                 <button
                   type="button"
                   onClick={() => onGoToAuth('login')}
-                  className="hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/80 text-xs font-bold transition-all cursor-pointer"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/80 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
                 >
-                  <LogIn className="w-4 h-4 text-indigo-400" />
+                  <LogIn className="w-3.5 h-3.5 text-indigo-400" />
                   <span>Se connecter</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => onGoToAuth('signup')}
-                  className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer hover:scale-102"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:opacity-95 text-white text-xs font-bold shadow-md shadow-indigo-600/25 transition-all cursor-pointer hover:scale-102 whitespace-nowrap"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                   <span>Créer un compte</span>
@@ -345,7 +313,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ml-1"
+              className="lg:hidden p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ml-1"
               aria-label="Ouvrir le menu de navigation"
             >
               {mobileMenuOpen ? <X className="w-5 h-5 text-rose-400" /> : <Menu className="w-5 h-5 text-indigo-400" />}
@@ -464,7 +432,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* ========================================================================= */}
       {/* 2. HERO SECTION AVEC VITRINE 3D SPATIALE                                  */}
       {/* ========================================================================= */}
-      <section id="hero-section" className="relative overflow-hidden pt-12 pb-16 sm:pt-16 sm:pb-20 border-b border-slate-800/70">
+      <section id="hero-section" className="relative overflow-hidden pt-7 pb-12 sm:pt-10 sm:pb-16 border-b border-slate-800/70">
         
         {/* Glows d'ambiance volumétriques */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-gradient-to-tr from-indigo-600/20 via-cyan-600/15 to-emerald-500/10 blur-3xl pointer-events-none rounded-full" />
@@ -890,49 +858,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <p className="text-sm text-slate-400">
               Règlement instantané sécurisé par Wave, Orange Money, MTN ou QR Code via Money Fusion.
             </p>
-
-            {/* Sélecteur de Devise Interactif */}
-            <div className="pt-2 flex items-center justify-center gap-1.5">
-              <span className="text-xs text-slate-400 font-bold mr-1 flex items-center gap-1">
-                <Coins className="w-3.5 h-3.5 text-amber-400" />
-                <span>Affichage :</span>
-              </span>
-              <div className="inline-flex p-1 rounded-2xl bg-slate-900 border border-slate-800 shadow-inner">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCurrency('XOF')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                    selectedCurrency === 'XOF'
-                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  FCFA (XOF)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCurrency('EUR')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                    selectedCurrency === 'EUR'
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  EUR (€)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCurrency('USD')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                    selectedCurrency === 'USD'
-                      ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  USD ($)
-                </button>
-              </div>
-            </div>
           </div>
 
           {/* Erreur de paiement le cas échéant */}

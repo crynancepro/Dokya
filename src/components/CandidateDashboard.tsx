@@ -42,6 +42,7 @@ import { isAdminEmail } from '../lib/adminAuth';
 import { DokyaBusinessView } from './DokyaBusinessView';
 import { DokyaAffiliateView } from './DokyaAffiliateView';
 import { DokyaSupportChat } from './DokyaSupportChat';
+import { NotificationBell } from './NotificationBell';
 
 interface CandidateDashboardProps {
   onLoadDocumentToEditor: (formData: CVFormData, aiData: any) => void;
@@ -912,6 +913,12 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 + Recharger
               </span>
             </div>
+
+            {/* Notification Bell */}
+            <NotificationBell 
+              userId={profile.uid || user?.uid} 
+              onNavigateTab={(tab) => handleSelectTab(tab as SidebarTab)} 
+            />
 
             {/* Logout button */}
             <button

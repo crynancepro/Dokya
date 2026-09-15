@@ -630,6 +630,19 @@ export interface CandidateProfile {
   updatedAt: string;
 }
 
+export interface DokyaNotification {
+  id: string;
+  userId?: string;
+  title: string;
+  message: string;
+  type?: 'info' | 'success' | 'warning' | 'stock' | 'invoice' | 'commission' | 'order' | 'system';
+  read: boolean;
+  link?: string;
+  tabTarget?: string;
+  createdAt: string;
+  metadata?: Record<string, any>;
+}
+
 export interface SavedUserDocument {
   id: string;
   userId: string;
