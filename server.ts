@@ -2391,6 +2391,7 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       userName = '',
       planId = '',
       type = '',
+      promoCode = '',
       email,
       userEmail,
       currency = 'XOF',
@@ -2406,6 +2407,7 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
     const targetDocId = String(docId || metadata.targetDocId || metadata.docId || '').trim();
     const targetPlanId = String(planId || metadata.planId || '').trim();
     const targetType = String(type || metadata.type || (targetDocId ? 'document' : (targetPlanId ? 'subscription' : 'wallet'))).trim();
+    const targetPromoCode = String(promoCode || metadata.promoCode || '').trim().toUpperCase();
     const targetUserId = String(userId || metadata.userId || 'guest').trim() || 'guest';
     const targetPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
     const targetName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
@@ -2446,7 +2448,8 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
         userId: targetUserId,
         docId: targetDocId,
         planId: targetPlanId,
-        type: targetType
+        type: targetType,
+        promoCode: targetPromoCode
       }],
       numeroSend: targetPhone,
       nomclient: targetName,
@@ -2535,6 +2538,7 @@ app.post('/api/webhooks/moneyfusion', async (req, res) => {
     const docId = String(personalInfo.docId || metadata.docId || payload.docId || '').trim();
     const userId = String(personalInfo.userId || metadata.userId || payload.userId || '').trim();
     const planId = String(personalInfo.planId || metadata.planId || payload.planId || '').trim();
+    const promoCode = String(personalInfo.promoCode || metadata.promoCode || payload.promoCode || '').trim().toUpperCase();
     const userEmail = String(personalInfo.email || metadata.userEmail || payload.clientEmail || payload.email || '').trim();
     const amount = Number(payload.totalPrice || payload.amount || personalInfo.amount || 3000);
     const txId = payload.token || payload.orderId || payload.id || `MF-${Date.now()}`;
@@ -2602,6 +2606,14 @@ app.post('/api/webhooks/moneyfusion', async (req, res) => {
       }
     }
 
+    // Incrémentation de l'utilisation du code promo si présent
+    if (promoCode) {
+      const pIndex = adminStore.promoCodes.findIndex(p => p.code === promoCode);
+      if (pIndex !== -1) {
+        adminStore.promoCodes[pIndex].currentUsageCount = (adminStore.promoCodes[pIndex].currentUsageCount || 0) + 1;
+      }
+    }
+
     // Enregistrement de la transaction dans adminStore
     const completedTx = {
       id: txId,
@@ -2617,10 +2629,15 @@ app.post('/api/webhooks/moneyfusion', async (req, res) => {
       amount,
       expectedAmount: amount,
       currency: payload.currency || 'XOF',
+      promoCode: promoCode || undefined,
       paymentMethod: 'moneyfusion',
       paymentGateway: 'Money Fusion',
       operator: 'moneyfusion_mobile_qr',
-      description: isDocumentUnlock ? `Déblocage Document (${docId}) - Money Fusion` : (isSubscription ? `Abonnement VIP (${planId || 'Pass'}) - Money Fusion` : `Rechargement Wallet (${amount} XOF) - Money Fusion`),
+      description: isDocumentUnlock 
+        ? `Déblocage Document (${docId})${promoCode ? ` [Code: ${promoCode}]` : ''} - Money Fusion` 
+        : (isSubscription 
+          ? `Abonnement VIP (${planId || 'Pass'})${promoCode ? ` [Code: ${promoCode}]` : ''} - Money Fusion` 
+          : `Rechargement Wallet (${amount} XOF) - Money Fusion`),
       status: 'COMPLETED',
       completedAt: now.toISOString(),
       createdAt: now.toISOString()

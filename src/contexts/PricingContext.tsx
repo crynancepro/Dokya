@@ -38,6 +38,11 @@ interface PricingContextType {
   deletePromoCode: (id: string, code: string, adminEmail?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   togglePromoCode: (id: string, code: string, currentActive: boolean, adminEmail?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   formatPrice: (amount: number, currency?: string) => string;
+  appliedGlobalPromo: PromoValidationResult | null;
+  setAppliedGlobalPromo: (promo: PromoValidationResult | null) => void;
+  applyGlobalPromo: (code: string, amount?: number, documentTitle?: string) => Promise<PromoValidationResult>;
+  clearGlobalPromo: () => void;
+  calculateDiscount: (basePrice: number) => { finalPrice: number; discountAmount: number; isFree: boolean; discountLabel: string };
 }
 
 const PricingContext = createContext<PricingContextType | undefined>(undefined);
@@ -45,6 +50,7 @@ const PricingContext = createContext<PricingContextType | undefined>(undefined);
 // Initial fallback storage key
 const PRICING_STORAGE_KEY = 'senegal_cv_platform_pricing';
 const PROMOS_STORAGE_KEY = 'senegal_cv_platform_promos';
+const GLOBAL_PROMO_STORAGE_KEY = 'senegal_cv_platform_active_promo';
 
 export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // 1. Initial State from LocalStorage or Default
@@ -67,6 +73,27 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (_e) {}
     return DEFAULT_PROMO_CODES;
   });
+
+  const [appliedGlobalPromo, setAppliedGlobalPromoState] = useState<PromoValidationResult | null>(() => {
+    try {
+      const saved = sessionStorage.getItem(GLOBAL_PROMO_STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (_e) {}
+    return null;
+  });
+
+  const setAppliedGlobalPromo = (promo: PromoValidationResult | null) => {
+    setAppliedGlobalPromoState(promo);
+    try {
+      if (promo) {
+        sessionStorage.setItem(GLOBAL_PROMO_STORAGE_KEY, JSON.stringify(promo));
+      } else {
+        sessionStorage.removeItem(GLOBAL_PROMO_STORAGE_KEY);
+      }
+    } catch (_e) {}
+  };
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -543,6 +570,40 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     return `${num.toLocaleString('fr-FR')} ${currency}`;
   };
 
+  // 9. Global Promo Application & Calculation
+  const applyGlobalPromo = async (code: string, amount: number = 1000, documentTitle?: string): Promise<PromoValidationResult> => {
+    const result = await validatePromoCode(code, amount, documentTitle);
+    if (result.valid) {
+      setAppliedGlobalPromo(result);
+    }
+    return result;
+  };
+
+  const clearGlobalPromo = () => {
+    setAppliedGlobalPromo(null);
+  };
+
+  const calculateDiscount = (basePrice: number): { finalPrice: number; discountAmount: number; isFree: boolean; discountLabel: string } => {
+    if (!appliedGlobalPromo || !appliedGlobalPromo.valid) {
+      return { finalPrice: basePrice, discountAmount: 0, isFree: false, discountLabel: '' };
+    }
+    let discountAmount = 0;
+    if (appliedGlobalPromo.discountType === 'percentage') {
+      discountAmount = appliedGlobalPromo.discountValue >= 100
+        ? basePrice
+        : Math.round((basePrice * appliedGlobalPromo.discountValue) / 100);
+    } else {
+      discountAmount = Math.min(basePrice, appliedGlobalPromo.discountValue);
+    }
+    const finalPrice = Math.max(0, basePrice - discountAmount);
+    return {
+      finalPrice,
+      discountAmount,
+      isFree: finalPrice === 0,
+      discountLabel: appliedGlobalPromo.discountLabel
+    };
+  };
+
   return (
     <PricingContext.Provider
       value={{
@@ -554,7 +615,12 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         savePromoCode,
         deletePromoCode,
         togglePromoCode,
-        formatPrice
+        formatPrice,
+        appliedGlobalPromo,
+        setAppliedGlobalPromo,
+        applyGlobalPromo,
+        clearGlobalPromo,
+        calculateDiscount
       }}
     >
       {children}

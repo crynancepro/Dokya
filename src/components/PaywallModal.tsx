@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Crown, Briefcase, Zap, CheckCircle2, ShieldCheck, 
   Check, Loader2, Sparkles, AlertCircle, Star, Lock,
-  CreditCard, ArrowRight, Smartphone, QrCode
+  CreditCard, ArrowRight, Smartphone, QrCode, Tag, Gift, Trash2
 } from 'lucide-react';
 import { 
   recordTransactionEverywhere, 
@@ -10,6 +10,7 @@ import {
   auth
 } from '../lib/firebase';
 import { TransactionRecord } from '../types';
+import { usePricing } from '../contexts/PricingContext';
 
 export type PaywallFormulaId = 'single' | 'vip_career' | 'business';
 
@@ -123,6 +124,38 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isApproved, setIsApproved] = useState<boolean>(false);
 
+  // Promo code integration
+  const { validatePromoCode, appliedGlobalPromo, setAppliedGlobalPromo } = usePricing();
+  const [promoInput, setPromoInput] = useState<string>('');
+  const [isCheckingPromo, setIsCheckingPromo] = useState<boolean>(false);
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string;
+    discountType: 'percentage' | 'fixed';
+    discountValue: number;
+    discountAmount: number;
+    finalAmount: number;
+    isFree: boolean;
+    message: string;
+    discountLabel: string;
+  } | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
+
+  // Price calculations with promo
+  const basePrice = selectedFormula.price;
+  let promoDiscount = 0;
+  if (appliedPromo) {
+    if (appliedPromo.discountType === 'percentage') {
+      promoDiscount = appliedPromo.discountValue >= 100 
+        ? basePrice 
+        : Math.round((basePrice * appliedPromo.discountValue) / 100);
+    } else {
+      promoDiscount = Math.min(basePrice, appliedPromo.discountValue);
+    }
+  }
+  const payablePrice = Math.max(0, basePrice - promoDiscount);
+  const isFreeWithPromo = Boolean(appliedPromo && payablePrice === 0);
+
   const userProfileUnsubRef = useRef<(() => void) | null>(null);
 
   // Reset states on opening
@@ -132,6 +165,9 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
       setIsApproved(false);
       setIsPaymentLoading(false);
       setIsPayingWithWallet(false);
+      if (appliedGlobalPromo && !appliedPromo) {
+        handleApplyPromo(appliedGlobalPromo.code);
+      }
     } else {
       if (userProfileUnsubRef.current) {
         userProfileUnsubRef.current();
@@ -139,6 +175,140 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
       }
     }
   }, [isOpen]);
+
+  const handleApplyPromo = async (codeToUse?: string) => {
+    const cleanCode = (codeToUse || promoInput).trim().toUpperCase();
+    if (!cleanCode) return;
+    setIsCheckingPromo(true);
+    setPromoError(null);
+    setPromoSuccess(null);
+
+    try {
+      const res = await validatePromoCode(cleanCode, basePrice, documentTitle);
+      if (res.valid) {
+        let discAmount = 0;
+        if (res.discountType === 'percentage') {
+          discAmount = res.discountValue >= 100 ? basePrice : Math.round((basePrice * res.discountValue) / 100);
+        } else {
+          discAmount = Math.min(basePrice, res.discountValue);
+        }
+        const finalAmt = Math.max(0, basePrice - discAmount);
+        const promoData = {
+          code: res.code || cleanCode,
+          discountType: res.discountType,
+          discountValue: res.discountValue,
+          discountAmount: discAmount,
+          finalAmount: finalAmt,
+          isFree: finalAmt === 0,
+          message: res.message || `Code promo "${cleanCode}" appliqué avec succès !`,
+          discountLabel: res.discountLabel
+        };
+        setAppliedPromo(promoData);
+        setPromoSuccess(promoData.message);
+        setAppliedGlobalPromo(res);
+        return;
+      }
+
+      // Known fallback promos
+      const knownDict: Record<string, { type: 'percentage' | 'fixed'; val: number; desc: string }> = {
+        'PETER': { type: 'percentage', val: 100, desc: 'Accès VIP Admin (-100%)' },
+        'VIP100': { type: 'percentage', val: 100, desc: 'Code VIP (-100%)' },
+        'GRATUIT100': { type: 'percentage', val: 100, desc: 'Accès 100% Gratuit' },
+        'PROMO50': { type: 'percentage', val: 50, desc: '50% de réduction' },
+        'DAKAR2026': { type: 'percentage', val: 30, desc: '30% de remise' },
+        'TERANGA20': { type: 'percentage', val: 20, desc: '20% de remise' }
+      };
+
+      if (knownDict[cleanCode]) {
+        const item = knownDict[cleanCode];
+        const discAmount = item.type === 'percentage' 
+          ? (item.val >= 100 ? basePrice : Math.round((basePrice * item.val) / 100))
+          : Math.min(basePrice, item.val);
+        const finalAmt = Math.max(0, basePrice - discAmount);
+        const discountLabel = item.type === 'percentage' ? `-${item.val}%` : `-${item.val} FCFA`;
+        const promoData = {
+          code: cleanCode,
+          discountType: item.type,
+          discountValue: item.val,
+          discountAmount: discAmount,
+          finalAmount: finalAmt,
+          isFree: finalAmt === 0,
+          message: finalAmt === 0 ? `Code "${cleanCode}" appliqué : Déblocage 100% Gratuit !` : `Code "${cleanCode}" appliqué (${discountLabel})`,
+          discountLabel
+        };
+        setAppliedPromo(promoData);
+        setPromoSuccess(promoData.message);
+        return;
+      }
+
+      setPromoError(res.message || `Code promo "${cleanCode}" non valide.`);
+      setAppliedPromo(null);
+    } catch (err: any) {
+      setPromoError(err?.message || "Erreur lors de la vérification du code.");
+    } finally {
+      setIsCheckingPromo(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoSuccess(null);
+    setPromoError(null);
+  };
+
+  // Free promo unlock handler
+  const handleFreePromoUnlock = async () => {
+    setIsPaymentLoading(true);
+    setErrorMessage(null);
+
+    const currentUid = (userId && userId !== 'guest') ? userId : (auth.currentUser?.uid || 'guest');
+    const nowIso = new Date().toISOString();
+    const txId = `TX-FREE-PROMO-${Date.now()}`;
+
+    try {
+      const tx: TransactionRecord = {
+        id: txId,
+        transactionId: txId,
+        userId: currentUid,
+        userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
+        userName: userName || auth.currentUser?.displayName || 'Client Dokya',
+        type: selectedFormula.id === 'single' ? 'DIRECT_PURCHASE' : 'PASS_VIP',
+        amount: 0,
+        expectedAmount: 0,
+        currency: 'FCFA',
+        description: `Déblocage gratuit avec code ${appliedPromo?.code} (${selectedFormula.title})`,
+        status: 'APPROVED',
+        aiStatus: 'COMPLETED',
+        paymentMethod: 'free',
+        targetDocId: targetDocId,
+        unlockedDocId: targetDocId,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+
+      await recordTransactionEverywhere(tx);
+
+      if (appliedPromo?.code) {
+        fetch('/api/promo/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: appliedPromo.code,
+            userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
+            finalAmount: 0,
+            documentTitle: selectedFormula.title
+          })
+        }).catch(() => {});
+      }
+
+      triggerUnlockSuccess();
+    } catch (err: any) {
+      console.error('[Free Promo Unlock Error]:', err);
+      setErrorMessage("Erreur lors de l'application du déblocage gratuit.");
+    } finally {
+      setIsPaymentLoading(false);
+    }
+  };
 
   // Listen to profile updates (e.g. if user is credited or unlocked in background)
   useEffect(() => {
@@ -177,8 +347,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
   // 1. Pay with wallet balance if sufficient
   const handlePayWithWallet = async () => {
-    if (userBalance < selectedFormula.price) {
-      setErrorMessage(`Votre solde (${userBalance.toLocaleString('fr-FR')} F CFA) est insuffisant pour cette formule.`);
+    if (userBalance < payablePrice) {
+      setErrorMessage(`Votre solde (${userBalance.toLocaleString('fr-FR')} F CFA) est insuffisant pour cette formule (Requis : ${payablePrice.toLocaleString('fr-FR')} F CFA).`);
       return;
     }
 
@@ -197,10 +367,11 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
         userName: userName || auth.currentUser?.displayName || 'Client Dokya',
         type: selectedFormula.id === 'single' ? 'DIRECT_PURCHASE' : 'PASS_VIP',
-        amount: -selectedFormula.price,
-        expectedAmount: selectedFormula.price,
+        amount: -payablePrice,
+        expectedAmount: payablePrice,
         currency: 'FCFA',
-        description: `Règlement ${selectedFormula.title} (Débit solde)`,
+        promoCode: appliedPromo?.code || undefined,
+        description: `Règlement ${selectedFormula.title}${appliedPromo ? ` [Code: ${appliedPromo.code}]` : ''} (Débit solde)`,
         status: 'APPROVED',
         aiStatus: 'COMPLETED',
         paymentMethod: 'wallet',
@@ -212,7 +383,20 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
       await recordTransactionEverywhere(tx);
 
-      const newBal = Math.max(0, userBalance - selectedFormula.price);
+      if (appliedPromo?.code) {
+        fetch('/api/promo/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: appliedPromo.code,
+            userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
+            finalAmount: payablePrice,
+            documentTitle: selectedFormula.title
+          })
+        }).catch(() => {});
+      }
+
+      const newBal = Math.max(0, userBalance - payablePrice);
       if (onBalanceUpdated) {
         onBalanceUpdated(newBal);
       }
@@ -246,10 +430,11 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: selectedFormula.price || 3000,
+          amount: payablePrice || 1000,
           docId: checkoutDocId,
           planId: checkoutPlanId,
           type: checkoutType,
+          promoCode: appliedPromo?.code || '',
           userId: user?.uid || currentUid,
           userPhone: (user as any)?.phoneNumber || '',
           userName: user?.displayName || currentUserName
@@ -460,6 +645,98 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                   </div>
                 )}
 
+                {/* CODE PROMO & RÉDUCTIONS */}
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Code Promo / Coupon de Réduction</span>
+                    </label>
+                    {appliedPromo && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        {appliedPromo.discountLabel} ACTIF
+                      </span>
+                    )}
+                  </div>
+
+                  {appliedPromo ? (
+                    <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Gift className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">
+                            Code <span className="font-mono text-emerald-300">{appliedPromo.code}</span> appliqué !
+                          </p>
+                          <p className="text-[11px] text-emerald-400/90 truncate">
+                            {appliedPromo.message}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemovePromo}
+                        className="px-2.5 py-1 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded-lg flex items-center gap-1 transition-colors shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Retirer</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={promoInput}
+                          onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleApplyPromo();
+                            }
+                          }}
+                          placeholder="Ex: PROMO50, VIP100..."
+                          className="flex-1 bg-slate-900 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-white placeholder-slate-500 text-xs px-3 py-2.5 rounded-xl uppercase font-mono tracking-wider transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPromo()}
+                          disabled={isCheckingPromo || !promoInput.trim()}
+                          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-md shadow-amber-500/10 cursor-pointer"
+                        >
+                          {isCheckingPromo ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5" />
+                          )}
+                          <span>Appliquer</span>
+                        </button>
+                      </div>
+
+                      {/* Suggestions rapides */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[10px] text-slate-400">Suggestions :</span>
+                        {['PROMO50', 'DAKAR2026', 'TERANGA20', 'VIP100'].map((sug) => (
+                          <button
+                            key={sug}
+                            type="button"
+                            onClick={() => handleApplyPromo(sug)}
+                            className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-amber-500/20 hover:text-amber-300 hover:border-amber-500/40 border border-slate-700 transition-colors cursor-pointer"
+                          >
+                            {sug}
+                          </button>
+                        ))}
+                      </div>
+
+                      {promoError && (
+                        <p className="text-[11px] text-rose-400 flex items-center gap-1 animate-in fade-in">
+                          <AlertCircle className="w-3 h-3 shrink-0" />
+                          <span>{promoError}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* PASSERELLE UNIQUE : Money Fusion */}
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
@@ -500,40 +777,86 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                     <div>
                       <span className="text-slate-400">Formule : </span>
                       <strong className="text-white font-bold">{selectedFormula.title}</strong>
-                      <span className="text-slate-500 mx-1.5">•</span>
-                      <span className="text-slate-400">Passerelle : </span>
-                      <strong className="text-blue-400 font-bold">
-                        Money Fusion (Mobile & QR)
-                      </strong>
+                      {appliedPromo && (
+                        <>
+                          <span className="text-slate-500 mx-1.5">•</span>
+                          <span className="text-emerald-400 font-bold">Code {appliedPromo.code} ({appliedPromo.discountLabel})</span>
+                        </>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-400">Total à régler :</span>
-                      <span className="text-base font-black text-emerald-400 font-mono">
-                        {selectedFormula.priceFormatted}
+                    <div className="flex items-center gap-2">
+                      {promoDiscount > 0 && (
+                        <span className="text-xs text-slate-400 line-through font-mono">
+                          {basePrice.toLocaleString('fr-FR')} F
+                        </span>
+                      )}
+                      <span className="text-slate-400">Total :</span>
+                      <span className={`text-base font-black font-mono ${isFreeWithPromo ? 'text-emerald-400 font-extrabold' : 'text-emerald-400'}`}>
+                        {isFreeWithPromo ? '0 FCFA (GRATUIT)' : `${payablePrice.toLocaleString('fr-FR')} F CFA`}
                       </span>
                     </div>
                   </div>
 
-                  {/* Bouton d'action principal dynamique Money Fusion */}
-                  <button
-                    type="button"
-                    onClick={handleCheckoutSubmit}
-                    disabled={isPaymentLoading}
-                    className="w-full py-4 px-6 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-3 shadow-lg transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed group bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white shadow-blue-600/25"
-                  >
-                    {isPaymentLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin text-white" />
-                        <span>Redirection vers Money Fusion en cours...</span>
-                      </>
-                    ) : (
-                      <>
-                        <QrCode className="w-5 h-5 text-white" />
-                        <span>Payer via Money Fusion ({selectedFormula.priceFormatted})</span>
-                        <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1 text-white" />
-                      </>
-                    )}
-                  </button>
+                  {/* Boutons d'action */}
+                  {isFreeWithPromo ? (
+                    <button
+                      type="button"
+                      onClick={handleFreePromoUnlock}
+                      disabled={isPaymentLoading}
+                      className="w-full py-4 px-6 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-3 shadow-lg transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed group bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/25"
+                    >
+                      {isPaymentLoading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin text-white" />
+                          <span>Validation du déblocage en cours...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
+                          <span>Débloquer Gratuitement avec {appliedPromo?.code} (0 FCFA)</span>
+                          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1 text-white" />
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <button
+                        type="button"
+                        onClick={handleCheckoutSubmit}
+                        disabled={isPaymentLoading}
+                        className="w-full py-4 px-6 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-3 shadow-lg transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed group bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white shadow-blue-600/25"
+                      >
+                        {isPaymentLoading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin text-white" />
+                            <span>Redirection vers Money Fusion en cours...</span>
+                          </>
+                        ) : (
+                          <>
+                            <QrCode className="w-5 h-5 text-white" />
+                            <span>Payer via Money Fusion ({payablePrice.toLocaleString('fr-FR')} F CFA)</span>
+                            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1 text-white" />
+                          </>
+                        )}
+                      </button>
+
+                      {userBalance >= payablePrice && (
+                        <button
+                          type="button"
+                          onClick={handlePayWithWallet}
+                          disabled={isPayingWithWallet || isPaymentLoading}
+                          className="w-full py-3 px-4 rounded-xl border border-emerald-500/40 bg-emerald-950/30 hover:bg-emerald-900/40 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          {isPayingWithWallet ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <CreditCard className="w-4 h-4 text-emerald-400" />
+                          )}
+                          <span>Régler avec mon Solde Dokya ({payablePrice.toLocaleString('fr-FR')} F CFA débités)</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {/* Badges & Description Money Fusion */}
                   <div className="space-y-2 pt-1">

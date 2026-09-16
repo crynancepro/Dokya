@@ -696,6 +696,9 @@ export interface TransactionRecord {
   planId?: string;
   planTitle?: string;
   durationDays?: number;
+  promoCode?: string;
+  discountApplied?: number;
+  originalAmount?: number;
   extractedData?: {
     recipient_phone?: string;
     recipient_name?: string;

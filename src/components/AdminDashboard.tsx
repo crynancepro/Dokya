@@ -9,9 +9,11 @@ import {
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
   Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity,
   MessageSquare, Volume2, VolumeX, BellRing, Menu, Building2, Briefcase,
-  PanelLeftClose, PanelLeftOpen, Zap, Copy, Terminal
+  PanelLeftClose, PanelLeftOpen, Zap, Copy, Terminal, MoreVertical
 } from 'lucide-react';
 import { AdminSidebar, AdminTabType } from './admin/AdminSidebar';
+import { AdminSalesTrendCurve } from './admin/AdminSalesTrendCurve';
+import { MoneyFusionWebhookHealth } from './admin/MoneyFusionWebhookHealth';
 import { 
   auth, 
   savePricingToFirestore, 
@@ -147,6 +149,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [balanceFilter, setBalanceFilter] = useState<'all' | 'positive' | 'zero'>('all');
   const [userPage, setUserPage] = useState<number>(1);
   const usersPerPage = 10;
+  const [openUserMenuId, setOpenUserMenuId] = useState<string | null>(null);
+
+  // Real circulating user balance directly from loaded Firestore profiles
+  const realTotalUserBalance = useMemo(() => {
+    return usersList.reduce((acc, u) => acc + (Number(u.balance) || 0), 0);
+  }, [usersList]);
   
   // Transactions filters
   const [txSearch, setTxSearch] = useState<string>('');
@@ -555,6 +563,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           if (!currentMethod.includes('wave')) return false;
         } else if (target === 'orange_money') {
           if (!currentMethod.includes('orange') && !currentMethod.includes('om')) return false;
+        } else if (target === 'free') {
+          if (!currentMethod.includes('free')) return false;
         } else if (target === 'mtn') {
           if (!currentMethod.includes('mtn')) return false;
         } else if (target === 'moov') {
@@ -1322,11 +1332,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // 9. TRANSACTION OCR ADMIN ACTIONS (MANUAL VALIDATE & REJECT CONFIRMATION)
+  // 9. TRANSACTION ADMIN ACTIONS (VALIDATION D'EXCEPTION & CONTRÔLE DE SECOURS)
   const handleValidateTransaction = async (tx: TransactionRecord, note?: string) => {
     setIsValidatingTx(true);
     setErrorMsg(null);
-    const finalNote = note || manualValidationNote || 'Validation manuelle effectuée par l\'administrateur.';
+    const finalNote = note || manualValidationNote || 'Validation de secours Money Fusion effectuée par l\'administrateur.';
 
     // Dynamic instant local UI update to replace the button with the green badge immediately
     const nowIso = new Date().toISOString();
@@ -1780,10 +1790,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                         {(financialStats.totalRevenue || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-emerald-400">FCFA</span>
                       </div>
-                      <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                        <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-emerald-400 font-semibold">{financialStats.successRate}%</span> validation IA & Mobile Money
-                      </p>
+                      <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-1.5">
+                        <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="text-emerald-400 font-semibold">{financialStats.validatedCount} paiements validés</span>
+                        <span>•</span>
+                        <span className="text-slate-300 font-medium">Money Fusion Direct</span>
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Webhook Actif 🟢</span>
+                      </div>
                     </>
                   )}
                 </div>
@@ -1859,9 +1872,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ) : (
                     <>
                       <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                        {(effectiveKPIs?.totalCirculatingBalance || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-amber-400">FCFA</span>
+                        {(realTotalUserBalance || effectiveKPIs?.totalCirculatingBalance || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-amber-400">FCFA</span>
                       </div>
-                      <p className="text-xs text-slate-400 mt-1">Crédits en circulation chez les candidats</p>
+                      <p className="text-xs text-slate-400 mt-1">Total des soldes réels dans Firestore</p>
                     </>
                   )}
                 </div>
@@ -1878,7 +1891,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span>Statistiques Financières & Encaissements Réels</span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Données vérifiées par l'IA Vision OCR et la passerelle Mobile Money Wave / Orange Money.
+                    Données certifiées en temps réel via Webhook Money Fusion Direct (Wave, Orange Money, Free Money).
                   </p>
                 </div>
                 <button
@@ -1941,6 +1954,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Courbe Visuelle Épurée des Ventes (30 Derniers Jours - Money Fusion Direct) */}
+            <AdminSalesTrendCurve transactions={transactionsList} />
 
             {/* Performance Grid: Services & Trend */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -2055,9 +2071,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-                  <span>Passerelle Mobile Money (Wave / OM OCR) : <strong className="text-emerald-400">Opérationnelle</strong></span>
-                  <span>Taux de succès : <strong className="text-white">{financialStats.successRate}%</strong></span>
+                <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <span>Passerelle : <strong className="text-white font-bold">Money Fusion Direct</strong></span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Webhook Actif 🟢</span>
+                  </div>
+                  <span>Taux de succès global : <strong className="text-emerald-400 font-bold">{financialStats.successRate}%</strong> ({financialStats.validatedCount} réussites)</span>
                 </div>
               </div>
 
@@ -2207,80 +2226,124 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </td>
 
-                            {/* Actions Menu */}
+                            {/* Actions Menu Simplifié : Inspecter, Solde & Accès de Secours Contextuel */}
                             <td className="py-3.5 px-4 sm:px-6 text-right">
-                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              <div className="flex items-center justify-end gap-2 relative">
                                 
-                                {/* 1. IMPERSONATION / INSPECTION (Prise de contrôle) */}
+                                {/* 1. Inspecter / Contrôler (Prise de contrôle principale) */}
                                 <button
                                   onClick={() => setInspectingCandidate(user)}
                                   type="button"
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all hover:scale-105 cursor-pointer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs"
                                   title="Inspecter le profil et prendre le contrôle du compte"
                                 >
-                                  <Eye className="w-3.5 h-3.5 text-amber-400" />
+                                  <Eye className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                                   <span>Inspecter / Contrôler</span>
                                 </button>
 
-                                {/* 2. DÉBLOCAGE FORCÉ DOCUMENTS */}
-                                <button
-                                  onClick={() => handleForceUnlockDocs(user)}
-                                  type="button"
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 border border-teal-500/30 text-xs font-bold transition-all cursor-pointer"
-                                  title="Forcer le déblocage de ses documents générés"
-                                >
-                                  <Unlock className="w-3.5 h-3.5 text-teal-400" />
-                                  <span className="hidden xl:inline">Débloquer Docs</span>
-                                </button>
-
-                                {/* 3. AJUSTER SOLDE */}
+                                {/* 2. Ajuster Solde */}
                                 <button
                                   onClick={() => setSelectedUserForAdjust(user)}
                                   type="button"
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-bold border border-emerald-500/30 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs"
                                   title="Ajuster le solde du portefeuille"
                                 >
-                                  <Sliders className="w-3.5 h-3.5 text-emerald-400" />
-                                  <span>Solde</span>
+                                  <Sliders className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span>Ajuster Solde</span>
                                 </button>
 
-                                {/* 4. MODIFIER PROFIL */}
-                                <button
-                                  onClick={() => openEditModal(user)}
-                                  type="button"
-                                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer border border-slate-700"
-                                  title="Modifier les informations personnelles"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-
-                                {/* 5. SUSPENDRE / RÉACTIVER */}
-                                {!isSuperAdmin && (
+                                {/* 3. Menu Contextuel : Accès de Secours & Outils Avancés */}
+                                <div className="relative">
                                   <button
-                                    onClick={() => setUserToSuspend(user)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenUserMenuId(openUserMenuId === user.uid ? null : user.uid);
+                                    }}
                                     type="button"
-                                    className={`p-1.5 rounded-xl transition-all cursor-pointer border ${
-                                      isSuspended 
-                                        ? 'bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border-emerald-800'
-                                        : 'bg-rose-950/60 hover:bg-rose-900 text-rose-300 border-rose-800/60'
+                                    className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                                      openUserMenuId === user.uid
+                                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg'
+                                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
                                     }`}
-                                    title={isSuspended ? 'Réactiver le compte' : 'Suspendre le compte'}
+                                    title="Accès de secours et options du compte"
                                   >
-                                    <Ban className="w-3.5 h-3.5" />
+                                    <MoreVertical className="w-3.5 h-3.5" />
                                   </button>
-                                )}
 
-                                {/* 6. SUPPRIMER COMPTE */}
-                                {!isSuperAdmin && (
-                                  <button
-                                    onClick={() => setUserToDelete(user)}
-                                    type="button"
-                                    className="p-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900 text-rose-400 hover:text-white transition-all cursor-pointer border border-rose-900/60"
-                                    title="Supprimer définitivement le compte"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
+                                  {openUserMenuId === user.uid && (
+                                    <>
+                                      <div 
+                                        className="fixed inset-0 z-30" 
+                                        onClick={() => setOpenUserMenuId(null)}
+                                      />
+                                      <div className="absolute right-0 top-full mt-2 w-60 rounded-2xl bg-slate-900 border border-slate-700 p-2 shadow-2xl z-40 space-y-1 text-left">
+                                        <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                                          Accès de Secours &amp; Outils
+                                        </div>
+
+                                        {/* Déblocage forcé documents */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setOpenUserMenuId(null);
+                                            handleForceUnlockDocs(user);
+                                          }}
+                                          className="w-full px-2.5 py-2 rounded-xl text-xs font-semibold text-teal-300 hover:bg-teal-500/15 flex items-center gap-2 transition-colors cursor-pointer"
+                                        >
+                                          <Unlock className="w-4 h-4 text-teal-400 shrink-0" />
+                                          <span>Accès de secours : Débloquer Docs</span>
+                                        </button>
+
+                                        {/* Modifier profil */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setOpenUserMenuId(null);
+                                            openEditModal(user);
+                                          }}
+                                          className="w-full px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                        >
+                                          <Edit3 className="w-4 h-4 text-slate-400 shrink-0" />
+                                          <span>Modifier profil &amp; rôle</span>
+                                        </button>
+
+                                        {/* Suspendre / Réactiver */}
+                                        {!isSuperAdmin && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setOpenUserMenuId(null);
+                                              setUserToSuspend(user);
+                                            }}
+                                            className={`w-full px-2.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+                                              isSuspended 
+                                                ? 'text-emerald-300 hover:bg-emerald-500/15'
+                                                : 'text-amber-300 hover:bg-amber-500/15'
+                                            }`}
+                                          >
+                                            <Ban className="w-4 h-4 shrink-0" />
+                                            <span>{isSuspended ? 'Réactiver le compte' : 'Suspendre le compte'}</span>
+                                          </button>
+                                        )}
+
+                                        {/* Supprimer définitivement */}
+                                        {!isSuperAdmin && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setOpenUserMenuId(null);
+                                              setUserToDelete(user);
+                                            }}
+                                            className="w-full px-2.5 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-500/15 flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-800"
+                                          >
+                                            <Trash2 className="w-4 h-4 shrink-0 text-rose-500" />
+                                            <span>Supprimer le compte</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
 
                               </div>
                             </td>
@@ -2336,7 +2399,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div>
                     <h2 className="text-lg font-black text-white">Gestion des Abonnements Pass VIP</h2>
                     <p className="text-xs text-slate-400">
-                      Supervision directe des accès illimités, statut temps réel dans Firestore et surcharges manuelles.
+                      Supervision directe des accès illimités, activation automatique Money Fusion et contrôle d'exception.
                     </p>
                   </div>
                 </div>
@@ -3057,6 +3120,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
+            {/* Indicateur de Santé & Diagnostic du Webhook Money Fusion */}
+            <MoneyFusionWebhookHealth transactions={transactionsList} onRefresh={loadAdminData} />
+
             {/* Cartes Récapitulatives : Total & Répartition claire par Type (Document, Abonnement, Wallet) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Carte 1: Total Revenus Money Fusion */}
@@ -3177,13 +3243,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onChange={(e: any) => setTxMethodFilter(e.target.value)}
                   className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-blue-500 cursor-pointer font-semibold"
                 >
-                  <option value="all" className="bg-slate-900 text-white">Toutes les Méthodes</option>
+                  <option value="all" className="bg-slate-900 text-white">Tous les Modes de Paiement</option>
                   <option value="wave" className="bg-slate-900 text-white">Wave</option>
                   <option value="orange_money" className="bg-slate-900 text-white">Orange Money</option>
+                  <option value="free" className="bg-slate-900 text-white">Free Money</option>
                   <option value="mtn" className="bg-slate-900 text-white">MTN Money</option>
                   <option value="moov" className="bg-slate-900 text-white">Moov Money</option>
                   <option value="card" className="bg-slate-900 text-white">QR Code / Carte</option>
-                  <option value="moneyfusion" className="bg-slate-900 text-white">Passerelle Money Fusion</option>
+                  <option value="moneyfusion" className="bg-slate-900 text-white">Money Fusion Direct</option>
                 </select>
 
                 <button
@@ -3216,10 +3283,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <tr>
                       <th className="py-4 px-4 sm:px-5">Date &amp; Heure</th>
                       <th className="py-4 px-3">Utilisateur</th>
-                      <th className="py-4 px-3">Référence</th>
+                      <th className="py-4 px-3">ID Transaction Money Fusion</th>
                       <th className="py-4 px-3">Type</th>
                       <th className="py-4 px-3">Montant (XOF)</th>
-                      <th className="py-4 px-3">Méthode</th>
+                      <th className="py-4 px-3">Mode de Paiement</th>
                       <th className="py-4 px-3">Statut Webhook</th>
                       <th className="py-4 px-3">Impact / Action</th>
                       <th className="py-4 px-4 sm:px-5 text-right">Détails</th>
@@ -3242,7 +3309,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const isPending = !isApproved && !isRejected;
 
                         const amountXOF = Math.abs(Number(tx.amount || tx.expectedAmount || 0));
-                        const txReference = tx.transactionReference || (tx as any).transactionId || tx.id;
+                        const txReference = tx.transactionReference || (tx as any).moneyFusionId || (tx as any).transactionId || tx.id;
                         const isCopied = copiedTxId === txReference;
 
                         // Type detection
@@ -3271,22 +3338,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         }
 
                         // Identify payment method
-                        const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '')).toLowerCase();
+                        const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '') + ' ' + (tx.network || '')).toLowerCase();
                         let methodBadge = {
-                          label: 'Money Fusion',
+                          label: 'Money Fusion Direct',
                           icon: '⚡',
                           className: 'bg-blue-500/15 text-blue-300 border-blue-500/30'
                         };
                         if (methodStr.includes('wave')) {
-                          methodBadge = { label: 'Wave', icon: '🌊', className: 'bg-sky-500/15 text-sky-300 border-sky-500/30' };
+                          methodBadge = { label: 'Wave', icon: '🌊', className: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
                         } else if (methodStr.includes('orange') || methodStr.includes('om')) {
                           methodBadge = { label: 'Orange Money', icon: '🍊', className: 'bg-orange-500/15 text-orange-300 border-orange-500/30' };
+                        } else if (methodStr.includes('free')) {
+                          methodBadge = { label: 'Free Money', icon: '🟣', className: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30' };
                         } else if (methodStr.includes('mtn')) {
                           methodBadge = { label: 'MTN Money', icon: '💛', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
                         } else if (methodStr.includes('moov')) {
                           methodBadge = { label: 'Moov Money', icon: '🟢', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
                         } else if (methodStr.includes('card') || methodStr.includes('carte') || methodStr.includes('qr')) {
-                          methodBadge = { label: 'QR Code / Carte', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+                          methodBadge = { label: 'Carte / QR', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
                         }
 
                         const userName = (tx as any).userName || (tx as any).userEmail?.split('@')[0] || 'Client Dokya';
@@ -3326,10 +3395,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </td>
 
-                            {/* 3. Référence Transaction avec Copie */}
+                            {/* 3. ID Transaction Money Fusion avec Copie */}
                             <td className="py-3.5 px-3">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-xs font-bold text-amber-300 tracking-wide truncate max-w-[140px]" title={txReference}>
+                                <span className="font-mono text-xs font-bold text-amber-300 tracking-wide truncate max-w-[145px]" title={txReference}>
                                   {txReference}
                                 </span>
                                 <button
@@ -3338,8 +3407,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     e.stopPropagation();
                                     handleCopyTxId(txReference);
                                   }}
-                                  className="p-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
-                                  title="Copier la référence"
+                                  className="p-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+                                  title="Copier la référence Money Fusion"
                                 >
                                   {isCopied ? (
                                     <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -3347,6 +3416,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <Copy className="w-3.5 h-3.5" />
                                   )}
                                 </button>
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1">
+                                <Zap className="w-3 h-3 text-blue-400" />
+                                <span>Money Fusion ID</span>
                               </div>
                             </td>
 
@@ -3365,9 +3438,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
                             </td>
 
-                            {/* 6. Méthode */}
+                            {/* 6. Mode de Paiement (Wave, Orange, Free, etc.) */}
                             <td className="py-3.5 px-3">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${methodBadge.className} whitespace-nowrap`}>
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${methodBadge.className} whitespace-nowrap shadow-xs`}>
                                 <span>{methodBadge.icon}</span>
                                 <span>{methodBadge.label}</span>
                               </span>
@@ -4215,9 +4288,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {!isApproved && (
                     <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
                       <div>
-                        <div className="text-xs font-bold text-amber-300">Contrôle Manuel de Secours</div>
+                        <div className="text-xs font-bold text-amber-300">Validation de Secours Money Fusion Direct</div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
-                          En cas de retard du webhook réseau, vous pouvez valider manuellement la transaction.
+                          En cas d'aléa réseau sur le webhook, vous pouvez forcer la validation et l'accréditation du compte.
                         </div>
                       </div>
 

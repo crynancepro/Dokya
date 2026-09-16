@@ -396,18 +396,27 @@ export const AdminAffiliationView: React.FC<AdminAffiliationViewProps> = ({ admi
       {/* ========================================================================= */}
       <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 border border-purple-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-300 text-xs font-black uppercase tracking-wider">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
-              <span>Console d'Affiliation & Parrainage</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-              <span className="text-amber-300">20% Réseau / 80% Dokya</span>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-300 text-xs font-black uppercase tracking-wider">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
+                <span>Console d'Affiliation & Parrainage</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                <span className="text-amber-300">20% Réseau / 80% Dokya</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-black">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Webhook Actif 🟢</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 text-xs font-black">
+                <span>⚡ Money Fusion Direct</span>
+              </div>
             </div>
             <h2 className="text-2xl font-black text-white tracking-tight">
               Gestion du Réseau d'Affiliés & Retraits Mobiles
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 max-w-3xl">
-              Analysez l'arbre des parrains et filleuls, validez les commissions sur achats de Pass & Documents et traitez les virements Wave / Orange Money.
+              Supervision des parrains et filleuls. Les commissions sont créditées automatiquement via Money Fusion Direct (Webhook) et les demandes de retraits Wave / Orange Money sont traitées ci-dessous.
             </p>
           </div>
 

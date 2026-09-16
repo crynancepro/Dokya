@@ -33,7 +33,7 @@ export const DEFAULT_PROMO_CODES: PromoCode[] = [
     maxUsageLimit: 500,
     currentUsageCount: 18,
     active: true,
-    description: '20% de remise sur tous les documents',
+    description: '20% de remise sur tous les documents et abonnements',
     createdAt: '2026-01-01T00:00:00.000Z'
   },
   {
@@ -41,15 +41,27 @@ export const DEFAULT_PROMO_CODES: PromoCode[] = [
     code: 'DAKAR2026',
     discountType: 'percentage',
     discountValue: 30,
-    minOrderAmount: 1399,
+    minOrderAmount: 1000,
     maxUsageLimit: 200,
     currentUsageCount: 37,
     active: true,
-    description: '30% de remise spéciale Pack Duo & Business',
+    description: '30% de remise spéciale sur les abonnements et packs',
     createdAt: '2026-01-01T00:00:00.000Z'
   },
   {
     id: 'PRM-003',
+    code: 'PROMO50',
+    discountType: 'percentage',
+    discountValue: 50,
+    minOrderAmount: 1000,
+    maxUsageLimit: 200,
+    currentUsageCount: 42,
+    active: true,
+    description: '50% de réduction immédiate sur tous les documents et abonnements',
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'PRM-004',
     code: 'VIP100',
     discountType: 'percentage',
     discountValue: 100,
@@ -57,7 +69,19 @@ export const DEFAULT_PROMO_CODES: PromoCode[] = [
     maxUsageLimit: 100,
     currentUsageCount: 8,
     active: true,
-    description: 'Accès 100% gratuit VIP et testeurs',
+    description: 'Accès 100% gratuit VIP et testeurs (0 FCFA)',
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'PRM-005',
+    code: 'BIENVENUE500',
+    discountType: 'fixed',
+    discountValue: 500,
+    minOrderAmount: 1000,
+    maxUsageLimit: 1000,
+    currentUsageCount: 54,
+    active: true,
+    description: '500 FCFA offerts sur votre commande',
     createdAt: '2026-01-01T00:00:00.000Z'
   }
 ];
