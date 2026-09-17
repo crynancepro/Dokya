@@ -1,4 +1,4 @@
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/firebase.js';
 import { doc, updateDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
 
 export default async function handler(req: any, res: any) {
@@ -119,5 +119,44 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     console.error("Erreur Webhook:", error);
     return res.status(500).json({ error: error?.message || 'Erreur serveur webhook' });
+  }
+}
+
+export async function POST(req: any) {
+  try {
+    let body: any = {};
+    if (typeof req.json === 'function') {
+      body = await req.json();
+    } else {
+      body = req.body || {};
+    }
+
+    let resultStatus = 200;
+    let resultPayload: any = { success: true };
+
+    const mockRes = {
+      status: (code: number) => {
+        resultStatus = code;
+        return {
+          json: (data: any) => {
+            resultPayload = data;
+            return data;
+          }
+        };
+      }
+    };
+
+    await handler({ method: 'POST', body }, mockRes);
+
+    return new Response(JSON.stringify(resultPayload), {
+      status: resultStatus,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (err: any) {
+    console.error("[Webhook Money Fusion POST error]:", err);
+    return new Response(JSON.stringify({ error: err?.message || 'Erreur interne webhook' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
