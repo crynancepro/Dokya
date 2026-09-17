@@ -502,6 +502,74 @@ export function subscribeToUserProfile(
 }
 
 /**
+ * Force refetch user data directly from Firestore server bypassing client cache
+ */
+export async function fetchUserData(userId: string): Promise<FirebaseUserProfile | null> {
+  if (!userId || userId === 'guest' || userId.startsWith('guest')) {
+    return null;
+  }
+  try {
+    const userRef = doc(db, 'users', userId);
+    let snapshot;
+    try {
+      snapshot = await getDocFromServer(userRef);
+    } catch (_e) {
+      snapshot = await getDoc(userRef);
+    }
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      const rawStatus = (data.subscription?.status || '').toUpperCase();
+      const rawPlanId = data.subscription?.planId || (data.subscriptionStatus === 'unlimited' ? 'PASS_VIP' : 'FREE');
+      
+      let calculatedStatus: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' = 'INACTIVE';
+      if (rawStatus === 'ACTIVE' || data.isVip || data.subscriptionStatus === 'ACTIVE') {
+        const expiresMillis = getTimestampMillis(data.subscription?.expiresAt);
+        if (expiresMillis === null || expiresMillis > Date.now()) {
+          calculatedStatus = 'ACTIVE';
+        } else {
+          calculatedStatus = 'EXPIRED';
+        }
+      }
+
+      const profile: FirebaseUserProfile = {
+        uid: userId,
+        email: data.email || auth.currentUser?.email || '',
+        displayName: data.displayName || auth.currentUser?.displayName || 'Candidat',
+        photoURL: data.photoURL || auth.currentUser?.photoURL || '',
+        walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : (typeof data.balance === 'number' ? data.balance : (typeof data.solde === 'number' ? data.solde : 0)),
+        currency: data.currency || 'FCFA',
+        subscription: {
+          planId: rawPlanId,
+          status: calculatedStatus,
+          activatedAt: data.subscription?.activatedAt || data.subscription?.startedAt || null,
+          expiresAt: data.subscription?.expiresAt || null,
+          autoRenew: data.subscription?.autoRenew ?? false,
+          adminNote: data.subscription?.adminNote,
+          updatedBy: data.subscription?.updatedBy
+        },
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString(),
+        purchasedDocIds: Array.isArray(data.purchasedDocIds) ? data.purchasedDocIds : [],
+        isVip: Boolean(data.isVip || calculatedStatus === 'ACTIVE'),
+        personalInfo: data.personalInfo || undefined,
+        role: data.role || (data.email === 'peter25ngouala@gmail.com' ? 'admin' : 'candidate')
+      };
+
+      try {
+        localStorage.setItem(getLocalProfileKey(userId), JSON.stringify(profile));
+      } catch (_e) {}
+
+      return profile;
+    }
+  } catch (err) {
+    console.warn('[fetchUserData error]:', err);
+  }
+  return null;
+}
+
+export const refetchProfile = fetchUserData;
+
+/**
  * Real-time listener for transaction status changes via Firestore onSnapshot + HTTP polling fallback
  */
 export function subscribeToTransactionStatus(

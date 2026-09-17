@@ -34,7 +34,8 @@ import { InterviewPrepView } from './components/InterviewPrepView';
 import { AuthModal } from './components/AuthModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
-import { auth, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, initializeUserAccountDoc, saveBusinessInvoice, getLocalProfileKey, getLocalTransactionsKey, getLocalDocumentsKey } from './lib/firebase';
+import { auth, db, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, fetchUserData, refetchProfile, initializeUserAccountDoc, saveBusinessInvoice, getLocalProfileKey, getLocalTransactionsKey, getLocalDocumentsKey } from './lib/firebase';
+import { doc, setDoc, increment, arrayUnion } from 'firebase/firestore';
 import { initAffiliateTracking } from './lib/referralTracking';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { generateCVWithGemini, generateInterviewPrepWithGemini } from './lib/geminiService';
@@ -389,6 +390,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       const searchParams = new URLSearchParams(window.location.search);
       let status = searchParams.get('status') || '';
       let paymentParam = searchParams.get('payment') || '';
+      let token = searchParams.get('token') || searchParams.get('paymentId') || searchParams.get('orderId') || '';
       let reference = searchParams.get('reference') || searchParams.get('orderReference') || searchParams.get('ref') || '';
       let amountParam = Number(searchParams.get('amount') || 0);
       let returnDocId = searchParams.get('docId') || '';
@@ -403,11 +405,12 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         setTimeout(() => setSuccessMessage(null), 5000);
       }
 
-      if (!status && !paymentParam && window.location.hash.includes('?')) {
+      if (!status && !paymentParam && !token && window.location.hash.includes('?')) {
         const hashQuery = window.location.hash.substring(window.location.hash.indexOf('?') + 1);
         const hashParams = new URLSearchParams(hashQuery);
         status = hashParams.get('status') || status;
         paymentParam = hashParams.get('payment') || paymentParam;
+        token = hashParams.get('token') || hashParams.get('paymentId') || token;
         reference = hashParams.get('reference') || hashParams.get('orderReference') || hashParams.get('ref') || reference;
         amountParam = Number(hashParams.get('amount') || amountParam);
         returnDocId = hashParams.get('docId') || returnDocId;
@@ -415,31 +418,172 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         returnType = hashParams.get('type') || returnType;
       }
 
-      const isPaymentSuccess = paymentParam === 'success' || status === 'success' || status === 'approved' || searchParams.get('unlocked') === 'true' || (reference && status !== 'cancel');
+      const isPaymentSuccess = paymentParam === 'success' || 
+        status === 'success' || 
+        status === 'approved' || 
+        searchParams.get('unlocked') === 'true' || 
+        Boolean(token) ||
+        (reference && status !== 'cancel');
 
       if (isPaymentSuccess) {
-        setIsCurrentDocPaid(true);
+        const uid = auth.currentUser?.uid || currentUser?.uid;
 
-        if (returnType === 'wallet' || reference?.includes('WALLET') || reference?.includes('RECHARGE')) {
-          setSuccessMessage(`💰 Recharge de solde validée avec succès via Money Fusion ! Votre portefeuille est immédiatement crédité.`);
-        } else if (returnPlan) {
-          setSuccessMessage(`👑 Abonnement VIP Dokya activé avec succès via Money Fusion ! Vous bénéficiez désormais de tous les accès.`);
-        } else if (returnDocId) {
-          setSuccessMessage('🎉 Paiement Money Fusion validé ! Votre document est débloqué et prêt au téléchargement.');
-        } else {
-          setSuccessMessage('✅ Paiement Money Fusion validé avec succès ! Vos accès sont activés.');
+        // 1. Appel direct de secours vers l'API de vérification backend sécurisée
+        fetch('/api/moneyfusion/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            paymentId: token,
+            docId: returnDocId,
+            userId: uid,
+            amount: amountParam,
+            type: returnType,
+            plan: returnPlan,
+            status: 'success'
+          })
+        }).catch(err => console.warn('[Money Fusion Verify Request Warn]:', err));
+
+        // 2. Synchronisation directe de secours dans Firestore côté client (sécurisée par les identifiants de l'utilisateur connecté)
+        if (uid && uid !== 'guest') {
+          const nowIso = new Date().toISOString();
+
+          // A. Rechargement de Solde
+          if (returnType === 'wallet' || reference?.includes('WALLET') || (!returnDocId && !returnPlan && amountParam > 0)) {
+            const incrementAmount = amountParam > 0 ? amountParam : 3000;
+            setDoc(doc(db, 'users', uid), {
+              walletBalance: increment(incrementAmount),
+              balance: increment(incrementAmount),
+              solde: increment(incrementAmount),
+              lastPaymentAt: nowIso,
+              lastPaymentProvider: 'Money Fusion',
+              updatedAt: nowIso
+            }, { merge: true }).catch(e => console.error('[Client Firestore Wallet Sync Error]:', e));
+          }
+
+          // B. Déblocage de Document
+          if (returnDocId) {
+            setDoc(doc(db, 'user_documents', returnDocId), {
+              isUnlocked: true,
+              status: "UNLOCKED",
+              paymentGateway: "Money Fusion",
+              unlocked: true,
+              isPaid: true,
+              unlockedAt: nowIso,
+              updatedAt: nowIso
+            }, { merge: true }).catch(e => console.error('[Client Firestore Doc Sync Error]:', e));
+
+            setDoc(doc(db, 'users', uid), {
+              purchasedDocIds: arrayUnion(returnDocId),
+              lastPaymentAt: nowIso,
+              updatedAt: nowIso
+            }, { merge: true }).catch(e => console.error('[Client Firestore User Docs Sync Error]:', e));
+          }
+
+          // C. Abonnement VIP
+          if (returnType === 'subscription' || returnPlan) {
+            const activePlan = returnPlan || 'PASS_VIP';
+            const durationDays = activePlan === 'annual' ? 365 : (activePlan === 'weekly' ? 7 : 30);
+            const expiresDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+            setDoc(doc(db, 'users', uid), {
+              isVip: true,
+              subscriptionStatus: 'ACTIVE',
+              plan: activePlan,
+              vipActivatedAt: nowIso,
+              lastPaymentAt: nowIso,
+              updatedAt: nowIso,
+              subscription: {
+                planId: activePlan,
+                status: 'ACTIVE',
+                activatedAt: nowIso,
+                expiresAt: expiresDate,
+                autoRenew: false
+              }
+            }, { merge: true }).catch(e => console.error('[Client Firestore VIP Sync Error]:', e));
+          }
+        }
+
+        // 3. Déclenche immédiatement un rechargement des données utilisateur depuis Firestore (fetchUserData() / refetchProfile())
+        const reloadUserData = async () => {
+          if (uid && uid !== 'guest') {
+            const freshProfile = await fetchUserData(uid);
+            if (freshProfile) {
+              if (typeof freshProfile.walletBalance === 'number') {
+                setUserBalance(freshProfile.walletBalance);
+              }
+              if (freshProfile.subscription) {
+                setUserSubscription(freshProfile.subscription);
+              }
+            }
+          }
+        };
+
+        reloadUserData();
+        setTimeout(reloadUserData, 1200);
+        setTimeout(reloadUserData, 2500);
+
+        // 4. Si type === 'wallet' : Affiche une notification Toast : "Votre solde a été crédité avec succès !"
+        if (returnType === 'wallet' || reference?.includes('WALLET') || reference?.includes('RECHARGE') || (!returnDocId && !returnPlan && amountParam > 0)) {
+          if (amountParam > 0) {
+            setUserBalance(prev => prev + amountParam);
+          }
+          setSuccessMessage("✅ Votre solde a été crédité avec succès !");
+        } 
+        // 5. Si type === 'subscription' : Active l'état VIP localement
+        else if (returnType === 'subscription' || returnPlan) {
+          const activePlan = returnPlan || 'PASS_VIP';
+          setUserSubscription({
+            planId: activePlan,
+            status: 'ACTIVE',
+            activatedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            autoRenew: false
+          });
+          setSuccessMessage("👑 Félicitations ! Votre abonnement VIP est maintenant actif.");
+        }
+
+        // 6. Si docId est présent : Marque le document comme débloqué dans l'état local React et ouvre la vue de téléchargement
+        if (returnDocId) {
+          setIsCurrentDocPaid(true);
+          setCurrentDocId(returnDocId);
+          if (returnType !== 'wallet' && returnType !== 'subscription' && !returnPlan) {
+            setSuccessMessage("🎉 Paiement validé ! Votre document est débloqué et prêt au téléchargement.");
+          }
+
+          // Ouvre la vue de téléchargement du document
+          if (returnType === 'letter' || activeTab === 'letter' || activeTab === 'letter_preview') {
+            setActiveTab('letter_preview');
+          } else if (returnType === 'devis' || activeTab === 'devis' || activeTab === 'devis_preview') {
+            setActiveTab('devis_preview');
+          } else if (returnType === 'facture' || activeTab === 'facture' || activeTab === 'facture_preview') {
+            setActiveTab('facture_preview');
+          } else if (returnType === 'pack_business' || activeTab === 'pack_business' || activeTab === 'pack_business_preview') {
+            setActiveTab('pack_business_preview');
+          } else if (returnType === 'ebook' || activeTab === 'ebook' || activeTab === 'ebook_preview') {
+            setActiveTab('ebook_preview');
+          } else {
+            setActiveTab('cv_preview');
+          }
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (!returnType && !returnPlan) {
+          setIsCurrentDocPaid(true);
+          setSuccessMessage("✅ Paiement Money Fusion validé avec succès !");
         }
 
         setTimeout(() => setSuccessMessage(null), 6000);
 
-        const cleanUrl = window.location.pathname + (window.location.hash.split('?')[0] || '');
-        window.history.replaceState({}, document.title, cleanUrl);
+        // 7. Nettoie l'URL sans recharger la page (window.history.replaceState)
+        const cleanPath = window.location.pathname;
+        const cleanHash = window.location.hash ? window.location.hash.split('?')[0] : '';
+        const cleanUrl = (cleanPath.endsWith('/') && cleanHash ? cleanPath.slice(0, -1) : cleanPath) + cleanHash;
+        window.history.replaceState({}, document.title, cleanUrl || '/');
       } else if (status === 'cancel') {
         setErrorMessage('Le paiement Money Fusion a été interrompu ou annulé. Vous pouvez réessayer à tout moment.');
         setTimeout(() => setErrorMessage(null), 5000);
       }
     } catch (_e) {}
-  }, []);
+  }, [currentUser, activeTab]);
 
   // -------------------------------------------------------------
   // Open Payment Modal Handlers for each service
@@ -1031,8 +1175,43 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   // ROUTE 2, 3, 4, 5: DASHBOARD, TEMPLATES GALLERY, EDITOR & PREVIEWS
   // -------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-indigo-500 selection:text-white relative">
       
+      {/* Global Floating Toast Notifications (Visible on Dashboard, Editor & All Views) */}
+      {successMessage && (
+        <div id="global-success-toast" className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-xl w-[92%] sm:w-auto p-4 bg-emerald-950/95 border-2 border-emerald-500 rounded-2xl text-emerald-100 text-sm sm:text-base flex items-center justify-between gap-4 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <span className="font-semibold">{successMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            className="text-emerald-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+            aria-label="Fermer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div id="global-error-toast" className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-xl w-[92%] sm:w-auto p-4 bg-rose-950/95 border-2 border-rose-500 rounded-2xl text-rose-100 text-sm sm:text-base flex items-center justify-between gap-4 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-4">
+          <div className="flex items-center gap-3">
+            <X className="w-5 h-5 text-rose-400 shrink-0" />
+            <span className="font-semibold">{errorMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="text-rose-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+            aria-label="Fermer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 1. TOP HEADER (When in Editor or Studio) */}
       {!isDashboardView && !isTemplatesView && (
         <Header

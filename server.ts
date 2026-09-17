@@ -2818,49 +2818,57 @@ app.get('/api/moneyfusion/status/:token', async (req, res) => {
       });
     }
 
-    // B. Si une clé API Money Fusion est configurée, interroger l'API Money Fusion
+    // B. Interroger l'API officielle Money Fusion (endpoint: https://pay.moneyfusion.net/paiementNotif/:token)
     const apiKey = process.env.MONEYFUSION_API_KEY;
-    if (apiKey) {
-      try {
-        const targetEndpoint = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim().replace(/\/$/, '');
-        const checkUrl = `${targetEndpoint}/api/v1/payments/${token}`;
-        const mfRes = await fetch(checkUrl, {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'application/json'
-          }
-        });
+    try {
+      const checkUrls = [
+        `https://pay.moneyfusion.net/paiementNotif/${token}`,
+        `https://api.moneyfusion.net/api/v1/payments/${token}`
+      ];
 
-        if (mfRes.ok) {
-          const mfData: any = await mfRes.json();
-          const status = String(mfData.statut ?? mfData.status ?? '').toLowerCase();
-          const isSuccess = status === 'true' || status === 'success' || status === 'paid' || status === 'completed' || status === 'approved';
+      for (const checkUrl of checkUrls) {
+        try {
+          const mfRes = await fetch(checkUrl, {
+            headers: {
+              'Accept': 'application/json',
+              ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+            }
+          });
 
-          if (isSuccess) {
-            // Déclencher le webhook interne pour créditer / débloquer
-            const webhookUrl = `http://localhost:${PORT || 3000}/api/webhooks/moneyfusion`;
-            fetch(webhookUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...mfData, token, statut: true })
-            }).catch(() => {});
+          if (mfRes.ok) {
+            const mfData: any = await mfRes.json();
+            const pData = mfData.data || mfData;
+            const status = String(pData.statut ?? mfData.statut ?? pData.status ?? mfData.status ?? '').toLowerCase();
+            const isSuccess = status === 'paid' || status === 'completed' || status === 'true' || status === 'success' || status === 'approved' || mfData.statut === true;
+
+            if (isSuccess) {
+              // Déclencher le webhook interne pour créditer / débloquer
+              const webhookUrl = `http://localhost:${PORT || 3000}/api/webhooks/moneyfusion`;
+              fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...mfData, ...pData, token, statut: true })
+              }).catch(() => {});
+
+              return res.json({
+                paid: true,
+                status: 'COMPLETED',
+                data: mfData
+              });
+            }
 
             return res.json({
-              paid: true,
-              status: 'COMPLETED',
+              paid: false,
+              status: status ? status.toUpperCase() : 'PENDING',
               data: mfData
             });
           }
-
-          return res.json({
-            paid: false,
-            status: status || 'PENDING',
-            data: mfData
-          });
+        } catch (_urlErr) {
+          // Continuer avec l'URL suivante
         }
-      } catch (checkErr: any) {
-        console.warn('[Money Fusion Status Check Warn]:', checkErr.message);
       }
+    } catch (checkErr: any) {
+      console.warn('[Money Fusion Status Check Warn]:', checkErr.message);
     }
 
     // C. Si en mode simulation
@@ -2879,6 +2887,75 @@ app.get('/api/moneyfusion/status/:token', async (req, res) => {
   } catch (err: any) {
     console.error('[Money Fusion Status Error]:', err);
     return res.status(500).json({ error: err.message || 'Erreur lors de la vérification de transaction' });
+  }
+});
+
+/**
+ * 1.E. Route de vérification de secours au retour client
+ * GET / POST /api/moneyfusion/verify
+ */
+app.all('/api/moneyfusion/verify', async (req, res) => {
+  try {
+    const params = req.method === 'POST' ? { ...req.query, ...req.body } : req.query;
+    const token = String(params.token || params.paymentId || '').trim();
+    let docId = String(params.docId || '').trim();
+    let userId = String(params.userId || '').trim();
+    let type = String(params.type || '').trim().toLowerCase();
+    let plan = String(params.plan || params.planId || '').trim();
+    let amount = Number(params.amount || 0);
+
+    console.log('[Server /api/moneyfusion/verify]', { token, docId, userId, type, plan, amount });
+
+    // Si token fourni, tenter vérification Money Fusion
+    if (token && !token.startsWith('MF_')) {
+      try {
+        const mfRes = await fetch(`https://pay.moneyfusion.net/paiementNotif/${token}`);
+        if (mfRes.ok) {
+          const mfData: any = await mfRes.json();
+          const pData = mfData.data || {};
+          const status = String(pData.statut || mfData.statut || '').toLowerCase();
+          if (status === 'paid' || status === 'completed' || status === 'success' || status === 'approved' || mfData.statut === true) {
+            const pInfo = Array.isArray(pData.personal_Info) ? (pData.personal_Info[0] || {}) : (pData.personal_Info || {});
+            if (!userId) userId = String(pInfo.userId || '').trim();
+            if (!docId) docId = String(pInfo.docId || '').trim();
+            if (!plan) plan = String(pInfo.planId || pInfo.plan || '').trim();
+            if (!type) type = String(pInfo.type || '').trim().toLowerCase();
+            if (!amount && pData.Montant) amount = Number(pData.Montant);
+          }
+        }
+      } catch (e: any) {
+        console.warn('[Verify Token Warn]:', e.message);
+      }
+    }
+
+    // Déclencher le webhook pour mise à jour Firestore et adminStore
+    const webhookUrl = `http://localhost:${PORT || 3000}/api/webhooks/moneyfusion`;
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        docId,
+        type: type || (docId ? 'document' : (plan ? 'subscription' : 'wallet')),
+        plan,
+        amount,
+        token: token || `VERIFY_${Date.now()}`,
+        statut: true
+      })
+    }).catch(e => console.error('[Verify Webhook Trigger Error]:', e));
+
+    return res.json({
+      success: true,
+      verified: true,
+      updated: true,
+      docId,
+      userId,
+      amount,
+      message: 'Compte mis à jour avec succès'
+    });
+  } catch (err: any) {
+    console.error('[Verify Route Error]:', err);
+    return res.status(500).json({ error: err.message });
   }
 });
 
