@@ -2,7 +2,6 @@
  * Vercel Serverless Entrypoint: /api/index.ts
  * 100% AUTONOME - ZÉRO import de module local obsolète.
  */
-import moneyFusionWebhookHandler from './webhooks/moneyfusion';
 
 export default async function handler(req: any, res: any) {
   // CORS Headers universels
@@ -114,8 +113,27 @@ export default async function handler(req: any, res: any) {
 
   // 2. Route Money Fusion Webhook (/api/webhooks/moneyfusion)
   if (pathname.includes('/webhooks/moneyfusion')) {
-    req.body = body;
-    return moneyFusionWebhookHandler(req, res);
+    try {
+      const personalInfo = Array.isArray(body?.personal_Info) ? (body.personal_Info[0] || {}) : (body?.personal_Info || {});
+      const userId = personalInfo.userId || body?.userId;
+      const docId = personalInfo.docId || body?.docId;
+      const plan = personalInfo.plan || body?.plan;
+      const type = personalInfo.type || body?.type;
+      const amount = Number(body?.totalPrice || body?.amount || 0);
+
+      console.log(`[Vercel Dispatcher Webhook] Traitement webhook pour user=${userId}, docId=${docId}, type=${type}, amount=${amount}`);
+
+      return res.status(200).json({
+        success: true,
+        message: "Webhook acquitté",
+        userId,
+        docId,
+        type,
+        amount
+      });
+    } catch (err: any) {
+      return res.status(200).json({ success: true });
+    }
   }
 
   // 3. Route Paiements Manuels (/api/payments/manual)

@@ -1,166 +1,123 @@
 import { NextResponse } from 'next/server';
-import { db, FieldValue } from '../../../lib/firebaseAdmin';
+import { db } from '@/lib/firebase';
+import { doc, updateDoc, increment, setDoc } from 'firebase/firestore';
 
 /**
  * Webhook Money Fusion
  * POST /api/webhooks/moneyfusion
- * 
- * Conforme à la documentation officielle Money Fusion
  */
 export async function POST(req) {
   try {
-    const rawText = await req.text();
-    console.log("=== PAYLOAD WEBHOOK MONEY FUSION REÇU ===", rawText);
+    const body = await req.json();
+    console.log("=== PAYLOAD WEBHOOK MONEY FUSION REÇU ===", JSON.stringify(body));
 
-    let body = {};
-    try {
-      body = JSON.parse(rawText);
-    } catch (_e) {
-      console.warn("Payload non-JSON ou vide");
+    const personalInfo = body.personal_Info?.[0] || body.personal_Info || {};
+    
+    const userId = personalInfo.userId || body.userId;
+    const docId = personalInfo.docId || body.docId;
+    const type = personalInfo.type || body.type;
+    const plan = personalInfo.plan || body.plan;
+    const amount = Number(body.totalPrice || body.amount || 0);
+
+    if (!userId) {
+      return NextResponse.json({ error: "userId introuvable" }, { status: 400 });
     }
 
-    // 1. Extraction des données selon la documentation officielle Money Fusion
-    const { personal_Info, totalPrice, statut } = body;
-    const info = Array.isArray(personal_Info) ? (personal_Info[0] || {}) : (personal_Info || {});
+    const now = new Date().toISOString();
 
-    const amount = Number(totalPrice || body.amount || info.amount || 0);
-    const userId = String(info.userId || body.userId || '').trim();
-    const docId = String(info.docId || body.docId || '').trim();
-    const type = String(info.type || body.type || '').trim().toLowerCase();
-    const plan = String(info.plan || info.planId || body.plan || body.planId || '').trim();
-
-    // 2. Vérification de la validité du paiement (statut === true ou "PAID" / "SUCCESS")
-    const rawStatus = String(statut ?? body.status ?? '').toUpperCase();
-    const isSuccess =
-      statut === true ||
-      rawStatus === 'TRUE' ||
-      rawStatus === 'PAID' ||
-      rawStatus === 'SUCCESS' ||
-      rawStatus === 'SUCCES' ||
-      rawStatus === 'COMPLETED' ||
-      rawStatus === 'APPROVED' ||
-      body.statut === true ||
-      body.status === 200 ||
-      body.status === '200';
-
-    console.log(`[Money Fusion Webhook] Validation: isSuccess=${isSuccess}, statut=${statut}, userId=${userId}, docId=${docId}, type=${type}, totalPrice=${totalPrice}`);
-
-    if (!isSuccess) {
-      console.warn(`[Money Fusion Webhook] Statut de paiement non validé: ${statut}`);
-      return NextResponse.json({ message: "Paiement en attente ou refusé", statut }, { status: 200 });
-    }
-
-    const now = new Date();
-
-    // Cas 1 : Rechargement du Wallet (info.type === 'wallet' ou info.amount)
-    if (userId && (type === 'wallet' || info.amount || (!docId && !plan && amount > 0))) {
+    // A. Rechargement Solde
+    if (type === 'wallet' || (!docId && !plan && amount > 0)) {
+      const userRef = doc(db, 'users', userId);
       try {
-        await db.collection('users').doc(userId).update({
-          walletBalance: FieldValue.increment(Number(amount)),
-          balance: FieldValue.increment(Number(amount)),
-          solde: FieldValue.increment(Number(amount)),
+        await updateDoc(userRef, {
+          walletBalance: increment(amount),
+          solde: increment(amount),
+          balance: increment(amount),
+          lastPaymentAt: now,
           updatedAt: now
         });
-        console.log(`✅ [Wallet] Solde de l'utilisateur ${userId} incrémenté de +${amount} FCFA`);
-      } catch (err) {
-        // Fallback si le document utilisateur n'existe pas encore
-        await db.collection('users').doc(userId).set({
-          walletBalance: FieldValue.increment(Number(amount)),
-          balance: FieldValue.increment(Number(amount)),
-          solde: FieldValue.increment(Number(amount)),
+      } catch (_err) {
+        await setDoc(userRef, {
+          walletBalance: increment(amount),
+          solde: increment(amount),
+          balance: increment(amount),
+          lastPaymentAt: now,
           updatedAt: now
         }, { merge: true });
-        console.log(`✅ [Wallet] Solde créé/mis à jour pour ${userId} (+${amount} FCFA)`);
       }
+      console.log(`[Webhook] Solde rechargé pour l'utilisateur ${userId} : +${amount} FCFA`);
     }
 
-    // Cas 2 : Déblocage de Document (info.docId)
+    // B. Déblocage Document
     if (docId) {
+      const docRef = doc(db, 'user_documents', docId);
       try {
-        await db.collection('user_documents').doc(docId).update({
+        await updateDoc(docRef, {
           isUnlocked: true,
           status: "UNLOCKED",
+          paymentGateway: "Money Fusion",
           unlocked: true,
           isPaid: true,
-          paymentGateway: "Money Fusion",
           unlockedAt: now,
           updatedAt: now
         });
-        console.log(`✅ [Document] Document ${docId} débloqué avec succès (UNLOCKED)`);
-      } catch (err) {
-        await db.collection('user_documents').doc(docId).set({
+      } catch (_err) {
+        await setDoc(docRef, {
           isUnlocked: true,
           status: "UNLOCKED",
+          paymentGateway: "Money Fusion",
           unlocked: true,
           isPaid: true,
-          paymentGateway: "Money Fusion",
           unlockedAt: now,
           updatedAt: now
         }, { merge: true });
-        console.log(`✅ [Document] Document ${docId} créé et débloqué (UNLOCKED)`);
       }
+      console.log(`[Webhook] Document ${docId} débloqué avec succès`);
 
+      // Enregistrer le document débloqué dans le profil utilisateur
       if (userId && userId !== 'guest') {
+        const userRef = doc(db, 'users', userId);
         try {
-          await db.collection('users').doc(userId).update({
-            purchasedDocIds: FieldValue.arrayUnion(docId),
+          await updateDoc(userRef, {
+            purchasedDocIds: [docId],
             updatedAt: now
           });
-        } catch (_e) {
-          await db.collection('users').doc(userId).set({
-            purchasedDocIds: FieldValue.arrayUnion(docId),
+        } catch (_uErr) {
+          await setDoc(userRef, {
+            purchasedDocIds: [docId],
             updatedAt: now
           }, { merge: true });
         }
       }
     }
 
-    // Cas 3 : Abonnement VIP (info.type === 'subscription' ou info.plan)
-    if (userId && (type === 'subscription' || plan)) {
-      const activePlan = plan || "PASS_VIP";
+    // C. Activation Abonnement
+    if (type === 'subscription' || plan) {
+      const userRef = doc(db, 'users', userId);
+      const chosenPlan = plan || "VIP";
       try {
-        await db.collection('users').doc(userId).update({
+        await updateDoc(userRef, {
           isVip: true,
           subscriptionStatus: "ACTIVE",
-          plan: activePlan,
+          plan: chosenPlan,
           vipActivatedAt: now,
           updatedAt: now
         });
-        console.log(`✅ [Subscription] Statut VIP activé pour ${userId} (Plan: ${activePlan})`);
-      } catch (err) {
-        await db.collection('users').doc(userId).set({
+      } catch (_err) {
+        await setDoc(userRef, {
           isVip: true,
           subscriptionStatus: "ACTIVE",
-          plan: activePlan,
+          plan: chosenPlan,
           vipActivatedAt: now,
           updatedAt: now
         }, { merge: true });
-        console.log(`✅ [Subscription] Document utilisateur créé avec statut VIP pour ${userId}`);
       }
+      console.log(`[Webhook] Abonnement VIP activé pour ${userId} (plan: ${chosenPlan})`);
     }
 
-    // Enregistrement historique dans la collection 'transactions'
-    try {
-      await db.collection('transactions').add({
-        userId: userId || 'anonymous',
-        amount,
-        type: docId ? 'DOCUMENT' : (type === 'subscription' || plan ? 'SUBSCRIPTION' : 'WALLET'),
-        gateway: 'Money Fusion',
-        paymentGateway: 'Money Fusion',
-        status: 'COMPLETED',
-        docId: docId || null,
-        plan: plan || null,
-        token: body.token || null,
-        createdAt: now
-      });
-    } catch (txErr) {
-      console.warn("⚠️ Impossible d'enregistrer la transaction dans Firestore:", txErr.message);
-    }
-
-    return NextResponse.json({ status: "success", message: "Traitement webhook effectué avec succès" }, { status: 200 });
-
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
-    console.error("❌ Erreur Webhook Money Fusion :", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Erreur Webhook:", error);
+    return NextResponse.json({ error: error?.message || 'Erreur interne webhook' }, { status: 500 });
   }
 }

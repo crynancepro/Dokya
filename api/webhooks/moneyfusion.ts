@@ -1,5 +1,5 @@
-import { db } from '../../lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { db } from '../../src/lib/firebase';
+import { doc, updateDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -24,71 +24,100 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "userId manquant" });
     }
 
+    const now = new Date().toISOString();
+
     // TRAITEMENT 1 : RECHARGEMENT DU SOLDE (WALLET)
     if (type === 'wallet' || (!docId && !plan && amount > 0)) {
-      const userRef = db.collection('users').doc(userId);
-      await userRef.set({
-        walletBalance: FieldValue.increment(amount),
-        balance: FieldValue.increment(amount),
-        solde: FieldValue.increment(amount),
-        updatedAt: new Date()
-      }, { merge: true });
+      const userRef = doc(db, 'users', userId);
+      try {
+        await updateDoc(userRef, {
+          walletBalance: increment(amount),
+          balance: increment(amount),
+          solde: increment(amount),
+          lastPaymentAt: now,
+          updatedAt: now
+        });
+      } catch (_e) {
+        await setDoc(userRef, {
+          walletBalance: increment(amount),
+          balance: increment(amount),
+          solde: increment(amount),
+          lastPaymentAt: now,
+          updatedAt: now
+        }, { merge: true });
+      }
       console.log(`Solde de l'utilisateur ${userId} crédité de ${amount} FCFA`);
     }
 
     // TRAITEMENT 2 : DÉBLOCAGE DE DOCUMENT
     if (docId) {
-      const docRef = db.collection('user_documents').doc(docId);
-      await docRef.set({
-        isUnlocked: true,
-        status: "UNLOCKED",
-        paymentGateway: "Money Fusion",
-        unlocked: true,
-        isPaid: true,
-        unlockedAt: new Date(),
-        updatedAt: new Date()
-      }, { merge: true });
+      const docRef = doc(db, 'user_documents', docId);
+      try {
+        await updateDoc(docRef, {
+          isUnlocked: true,
+          status: "UNLOCKED",
+          paymentGateway: "Money Fusion",
+          unlocked: true,
+          isPaid: true,
+          unlockedAt: now,
+          updatedAt: now
+        });
+      } catch (_e) {
+        await setDoc(docRef, {
+          isUnlocked: true,
+          status: "UNLOCKED",
+          paymentGateway: "Money Fusion",
+          unlocked: true,
+          isPaid: true,
+          unlockedAt: now,
+          updatedAt: now
+        }, { merge: true });
+      }
       console.log(`Document ${docId} débloqué avec succès`);
 
       if (userId && userId !== 'guest') {
-        const userRef = db.collection('users').doc(userId);
-        await userRef.set({
-          purchasedDocIds: FieldValue.arrayUnion(docId),
-          updatedAt: new Date()
-        }, { merge: true });
+        const userRef = doc(db, 'users', userId);
+        try {
+          await updateDoc(userRef, {
+            purchasedDocIds: arrayUnion(docId),
+            updatedAt: now
+          });
+        } catch (_uErr) {
+          await setDoc(userRef, {
+            purchasedDocIds: [docId],
+            updatedAt: now
+          }, { merge: true });
+        }
       }
     }
 
     // TRAITEMENT 3 : ABONNEMENT VIP
     if (type === 'subscription' || plan) {
-      const userRef = db.collection('users').doc(userId);
-      await userRef.set({
-        isVip: true,
-        subscriptionStatus: "ACTIVE",
-        plan: plan || "PASS_VIP",
-        vipActivatedAt: new Date(),
-        updatedAt: new Date()
-      }, { merge: true });
-      console.log(`Abonnement VIP activé pour l'utilisateur ${userId}`);
+      const userRef = doc(db, 'users', userId);
+      const chosenPlan = plan || 'VIP';
+      try {
+        await updateDoc(userRef, {
+          isVip: true,
+          subscriptionStatus: "ACTIVE",
+          plan: chosenPlan,
+          vipActivatedAt: now,
+          updatedAt: now
+        });
+      } catch (_e) {
+        await setDoc(userRef, {
+          isVip: true,
+          subscriptionStatus: "ACTIVE",
+          plan: chosenPlan,
+          vipActivatedAt: now,
+          updatedAt: now
+        }, { merge: true });
+      }
+      console.log(`Abonnement VIP activé pour ${userId} (${chosenPlan})`);
     }
 
-    // Enregistrement de la transaction globale
-    await db.collection('transactions').add({
-      userId,
-      amount,
-      type: docId ? 'DOCUMENT' : (type === 'subscription' ? 'SUBSCRIPTION' : 'WALLET'),
-      gateway: 'Money Fusion',
-      paymentGateway: 'Money Fusion',
-      status: 'COMPLETED',
-      docId: docId || null,
-      plan: plan || null,
-      createdAt: new Date()
-    });
-
-    return res.status(200).json({ status: "success" });
-
+    return res.status(200).json({ success: true });
   } catch (error: any) {
-    console.error("Erreur Webhook Money Fusion :", error);
-    return res.status(500).json({ error: error?.message || 'Erreur serveur' });
+    console.error("Erreur Webhook:", error);
+    return res.status(500).json({ error: error?.message || 'Erreur serveur webhook' });
   }
 }
