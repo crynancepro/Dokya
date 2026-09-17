@@ -1,13 +1,9 @@
-import { NextResponse } from 'next/server';
-import { db } from '../../../../lib/firebase.js';
-import { doc, updateDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
+import { NextResponse } from 'next/server.js';
+import { dbAdmin, FieldValue } from '../../../../lib/firebaseAdmin.js';
 
 /**
- * Route API Backend : Vérification et Validation Sécurisée de Secours
- * GET / POST /api/moneyfusion/verify
- * 
- * Permet au frontend de vérifier et finaliser un paiement lors du retour
- * sur le dashboard avec token, paymentId, docId, userId, amount, type, etc.
+ * Route API Backend : Vérification et Validation Sécurisée de Secours (Firebase Admin)
+ * GET / POST /app/api/moneyfusion/verify
  */
 export async function GET(req) {
   return handleVerification(req);
@@ -56,143 +52,121 @@ async function handleVerification(req) {
           if (status === 'paid' || status === 'completed' || status === 'success' || status === 'approved' || mfData.statut === true) {
             paymentVerified = true;
 
-            // Extraire les infos de personal_Info de Money Fusion si non fournies
             const pInfo = Array.isArray(pData.personal_Info) ? (pData.personal_Info[0] || {}) : (pData.personal_Info || {});
             if (!userId) userId = String(pInfo.userId || '').trim();
             if (!docId) docId = String(pInfo.docId || '').trim();
             if (!plan) plan = String(pInfo.planId || pInfo.plan || '').trim();
             if (!type) type = String(pInfo.type || '').trim().toLowerCase();
-            if (!amount && pData.Montant) amount = Number(pData.Montant);
+            if (!amount) amount = Number(pData.totalPrice || pData.amount || pInfo.amount || 0);
           }
         }
-      } catch (checkErr) {
-        console.warn('[Money Fusion Verify API Warn]:', checkErr?.message);
+      } catch (e) {
+        console.error('[Verify] Erreur vérification API Money Fusion:', e);
       }
-    } else if (token && (token.startsWith('MF_') || token.startsWith('MF-'))) {
-      // Mode simulation
-      paymentVerified = true;
-    } else if (queryParams.status === 'success' || queryParams.payment === 'success' || queryParams.status === 'approved') {
-      // Paramètre de succès présent
+    } else if (token) {
       paymentVerified = true;
     }
 
     if (!paymentVerified && token) {
       return NextResponse.json({
-        success: false,
         verified: false,
-        message: "Paiement en attente de validation par l'opérateur ou non trouvé",
-        status: "PENDING"
+        status: "PENDING_OR_FAILED",
+        message: "Paiement non confirmé auprès de Money Fusion"
       }, { status: 200 });
     }
 
-    // 2. Mise à jour Firestore via Firebase Client SDK
+    // 2. Mise à jour Firestore via Firebase Admin SDK
     const now = new Date().toISOString();
 
     // A. Rechargement du Wallet
     if (userId && (type === 'wallet' || (!docId && !plan && amount > 0))) {
       try {
-        const userRef = doc(db, 'users', userId);
-        try {
-          await updateDoc(userRef, {
-            walletBalance: increment(amount),
-            balance: increment(amount),
-            solde: increment(amount),
-            lastPaymentAt: now,
-            lastPaymentProvider: 'Money Fusion',
-            updatedAt: now
-          });
-        } catch (_err) {
-          await setDoc(userRef, {
-            walletBalance: increment(amount),
-            balance: increment(amount),
-            solde: increment(amount),
-            lastPaymentAt: now,
-            lastPaymentProvider: 'Money Fusion',
-            updatedAt: now
-          }, { merge: true });
-        }
-        console.log(`[Verify] Solde crédité pour ${userId}: +${amount}`);
-      } catch (err) {
-        console.error('[Verify] Erreur crédit solde Firestore:', err);
+        await dbAdmin.collection('users').doc(userId).update({
+          walletBalance: FieldValue.increment(amount),
+          balance: FieldValue.increment(amount),
+          solde: FieldValue.increment(amount),
+          lastPaymentAt: now,
+          lastPaymentProvider: 'Money Fusion',
+          updatedAt: now
+        });
+      } catch (_err) {
+        await dbAdmin.collection('users').doc(userId).set({
+          walletBalance: FieldValue.increment(amount),
+          balance: FieldValue.increment(amount),
+          solde: FieldValue.increment(amount),
+          lastPaymentAt: now,
+          lastPaymentProvider: 'Money Fusion',
+          updatedAt: now
+        }, { merge: true });
       }
+      console.log(`[Verify Admin] Solde crédité pour ${userId}: +${amount}`);
     }
 
     // B. Déblocage de Document
     if (docId) {
       try {
-        const docRef = doc(db, 'user_documents', docId);
+        await dbAdmin.collection('user_documents').doc(docId).update({
+          isUnlocked: true,
+          status: "UNLOCKED",
+          paymentGateway: "Money Fusion",
+          unlocked: true,
+          isPaid: true,
+          unlockedAt: now,
+          updatedAt: now
+        });
+      } catch (_err) {
+        await dbAdmin.collection('user_documents').doc(docId).set({
+          isUnlocked: true,
+          status: "UNLOCKED",
+          paymentGateway: "Money Fusion",
+          unlocked: true,
+          isPaid: true,
+          unlockedAt: now,
+          updatedAt: now
+        }, { merge: true });
+      }
+      console.log(`[Verify Admin] Document débloqué: ${docId}`);
+
+      if (userId && userId !== 'guest') {
         try {
-          await updateDoc(docRef, {
-            isUnlocked: true,
-            status: "UNLOCKED",
-            paymentGateway: "Money Fusion",
-            unlocked: true,
-            isPaid: true,
-            unlockedAt: now,
+          await dbAdmin.collection('users').doc(userId).update({
+            purchasedDocIds: FieldValue.arrayUnion(docId),
+            lastPaymentAt: now,
             updatedAt: now
           });
-        } catch (_err) {
-          await setDoc(docRef, {
-            isUnlocked: true,
-            status: "UNLOCKED",
-            paymentGateway: "Money Fusion",
-            unlocked: true,
-            isPaid: true,
-            unlockedAt: now,
+        } catch (_uErr) {
+          await dbAdmin.collection('users').doc(userId).set({
+            purchasedDocIds: [docId],
+            lastPaymentAt: now,
             updatedAt: now
           }, { merge: true });
         }
-        console.log(`[Verify] Document débloqué: ${docId}`);
-
-        if (userId && userId !== 'guest') {
-          const userRef = doc(db, 'users', userId);
-          try {
-            await updateDoc(userRef, {
-              purchasedDocIds: arrayUnion(docId),
-              lastPaymentAt: now,
-              updatedAt: now
-            });
-          } catch (_uErr) {
-            await setDoc(userRef, {
-              purchasedDocIds: [docId],
-              lastPaymentAt: now,
-              updatedAt: now
-            }, { merge: true });
-          }
-        }
-      } catch (err) {
-        console.error('[Verify] Erreur déblocage document Firestore:', err);
       }
     }
 
     // C. Abonnement VIP
     if (userId && (type === 'subscription' || plan)) {
+      const resolvedPlan = plan || 'PASS_VIP';
       try {
-        const userRef = doc(db, 'users', userId);
-        const resolvedPlan = plan || 'PASS_VIP';
-        try {
-          await updateDoc(userRef, {
-            isVip: true,
-            subscriptionStatus: "ACTIVE",
-            plan: resolvedPlan,
-            vipActivatedAt: now,
-            lastPaymentAt: now,
-            updatedAt: now
-          });
-        } catch (_err) {
-          await setDoc(userRef, {
-            isVip: true,
-            subscriptionStatus: "ACTIVE",
-            plan: resolvedPlan,
-            vipActivatedAt: now,
-            lastPaymentAt: now,
-            updatedAt: now
-          }, { merge: true });
-        }
-        console.log(`[Verify] Abonnement VIP activé pour ${userId} (${resolvedPlan})`);
-      } catch (err) {
-        console.error('[Verify] Erreur activation abonnement Firestore:', err);
+        await dbAdmin.collection('users').doc(userId).update({
+          isVip: true,
+          subscriptionStatus: "ACTIVE",
+          plan: resolvedPlan,
+          vipActivatedAt: now,
+          lastPaymentAt: now,
+          updatedAt: now
+        });
+      } catch (_err) {
+        await dbAdmin.collection('users').doc(userId).set({
+          isVip: true,
+          subscriptionStatus: "ACTIVE",
+          plan: resolvedPlan,
+          vipActivatedAt: now,
+          lastPaymentAt: now,
+          updatedAt: now
+        }, { merge: true });
       }
+      console.log(`[Verify Admin] Abonnement VIP activé pour ${userId} (${resolvedPlan})`);
     }
 
     return NextResponse.json({
