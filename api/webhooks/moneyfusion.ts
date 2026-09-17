@@ -1,4 +1,5 @@
-import { dbAdmin, FieldValue } from '../../lib/firebaseAdmin.js';
+import { db } from '@/lib/firebase';
+import { doc, updateDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -7,11 +8,9 @@ export default async function handler(req: any, res: any) {
 
   try {
     const body = req.body || {};
-    console.log("=== PAYLOAD MONEY FUSION REÇU (handler) ===", JSON.stringify(body));
+    console.log("PAYLOAD MONEY FUSION REÇU (handler) :", JSON.stringify(body));
 
-    const personalInfo = Array.isArray(body.personal_Info)
-      ? (body.personal_Info[0] || {})
-      : (body.personal_Info || {});
+    const personalInfo = Array.isArray(body.personal_Info) ? (body.personal_Info[0] || {}) : (body.personal_Info || {});
     const metadata = body.metadata || body.customData || {};
 
     const userId = personalInfo.userId || body.userId || metadata.userId;
@@ -29,30 +28,32 @@ export default async function handler(req: any, res: any) {
 
     // TRAITEMENT 1 : RECHARGEMENT DU SOLDE (WALLET)
     if (type === 'wallet' || (!docId && !plan && amount > 0)) {
+      const userRef = doc(db, 'users', userId);
       try {
-        await dbAdmin.collection('users').doc(userId).update({
-          walletBalance: FieldValue.increment(amount),
-          balance: FieldValue.increment(amount),
-          solde: FieldValue.increment(amount),
+        await updateDoc(userRef, {
+          walletBalance: increment(amount),
+          balance: increment(amount),
+          solde: increment(amount),
           lastPaymentAt: now,
           updatedAt: now
         });
       } catch (_e) {
-        await dbAdmin.collection('users').doc(userId).set({
-          walletBalance: FieldValue.increment(amount),
-          balance: FieldValue.increment(amount),
-          solde: FieldValue.increment(amount),
+        await setDoc(userRef, {
+          walletBalance: increment(amount),
+          balance: increment(amount),
+          solde: increment(amount),
           lastPaymentAt: now,
           updatedAt: now
         }, { merge: true });
       }
-      console.log(`[Webhook Admin] Solde de l'utilisateur ${userId} crédité de ${amount} FCFA`);
+      console.log(`[Webhook] Solde de l'utilisateur ${userId} crédité de ${amount} FCFA`);
     }
 
     // TRAITEMENT 2 : DÉBLOCAGE DE DOCUMENT
     if (docId) {
+      const docRef = doc(db, 'user_documents', docId);
       try {
-        await dbAdmin.collection('user_documents').doc(docId).update({
+        await updateDoc(docRef, {
           isUnlocked: true,
           status: "UNLOCKED",
           paymentGateway: "Money Fusion",
@@ -62,7 +63,7 @@ export default async function handler(req: any, res: any) {
           updatedAt: now
         });
       } catch (_e) {
-        await dbAdmin.collection('user_documents').doc(docId).set({
+        await setDoc(docRef, {
           isUnlocked: true,
           status: "UNLOCKED",
           paymentGateway: "Money Fusion",
@@ -72,16 +73,17 @@ export default async function handler(req: any, res: any) {
           updatedAt: now
         }, { merge: true });
       }
-      console.log(`[Webhook Admin] Document ${docId} débloqué pour l'utilisateur ${userId}`);
+      console.log(`[Webhook] Document ${docId} débloqué pour l'utilisateur ${userId}`);
 
       if (userId && userId !== 'guest') {
+        const userRef = doc(db, 'users', userId);
         try {
-          await dbAdmin.collection('users').doc(userId).update({
-            purchasedDocIds: FieldValue.arrayUnion(docId),
+          await updateDoc(userRef, {
+            purchasedDocIds: arrayUnion(docId),
             updatedAt: now
           });
         } catch (_uErr) {
-          await dbAdmin.collection('users').doc(userId).set({
+          await setDoc(userRef, {
             purchasedDocIds: [docId],
             updatedAt: now
           }, { merge: true });
@@ -92,8 +94,9 @@ export default async function handler(req: any, res: any) {
     // TRAITEMENT 3 : ABONNEMENT VIP
     if (type === 'subscription' || plan) {
       const chosenPlan = plan || "VIP";
+      const userRef = doc(db, 'users', userId);
       try {
-        await dbAdmin.collection('users').doc(userId).update({
+        await updateDoc(userRef, {
           isVip: true,
           subscriptionStatus: "ACTIVE",
           plan: chosenPlan,
@@ -101,7 +104,7 @@ export default async function handler(req: any, res: any) {
           updatedAt: now
         });
       } catch (_e) {
-        await dbAdmin.collection('users').doc(userId).set({
+        await setDoc(userRef, {
           isVip: true,
           subscriptionStatus: "ACTIVE",
           plan: chosenPlan,
@@ -109,13 +112,14 @@ export default async function handler(req: any, res: any) {
           updatedAt: now
         }, { merge: true });
       }
-      console.log(`[Webhook Admin] Abonnement VIP (${chosenPlan}) activé pour l'utilisateur ${userId}`);
+      console.log(`[Webhook] Abonnement VIP (${chosenPlan}) activé pour l'utilisateur ${userId}`);
     }
 
     // ENREGISTREMENT DE LA TRANSACTION
     try {
       const txId = body.token || body.orderId || `MF_${Date.now()}`;
-      await dbAdmin.collection('transactions').doc(txId).set({
+      const txRef = doc(db, 'transactions', txId);
+      await setDoc(txRef, {
         transactionId: txId,
         userId,
         amount,
@@ -128,12 +132,12 @@ export default async function handler(req: any, res: any) {
         rawPayload: body
       }, { merge: true });
     } catch (_tErr) {
-      console.error("[Webhook Admin] Erreur lors de l'enregistrement de la transaction:", _tErr);
+      console.error("[Webhook] Erreur enregistrement transaction:", _tErr);
     }
 
     return res.status(200).json({ success: true, message: "Webhook traité avec succès" });
   } catch (error: any) {
-    console.error("[Webhook Admin Error]:", error);
+    console.error("[Webhook Error]:", error);
     return res.status(500).json({ error: error?.message || 'Erreur serveur webhook' });
   }
 }

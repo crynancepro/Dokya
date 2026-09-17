@@ -38,10 +38,9 @@ service cloud.firestore {
 
     // 1. Profils Utilisateurs et sous-collections
     match /users/{userId} {
-      // Lecture autorisée pour tout affichage de profil et vérification de parrainage
+      // Lecture et mise à jour autorisées (crédit solde, abonnement VIP via webhook et gestion profil)
       allow read: if true;
-      allow create: if isOwner(userId) || isAdmin() || isSignedIn();
-      allow update: if isOwner(userId) || isAdmin() || isSignedIn();
+      allow create, update: if true;
       allow delete: if isAdmin();
 
       // Sous-collections privées de l'utilisateur
@@ -58,7 +57,7 @@ service cloud.firestore {
       }
 
       match /documents/{docId} {
-        allow read, write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
+        allow read, write, delete: if true;
       }
 
       // Filleuls parrainés
@@ -67,7 +66,7 @@ service cloud.firestore {
       }
 
       match /{allSubcollections=**} {
-        allow read, write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
+        allow read, write, delete: if true;
       }
     }
 
@@ -77,23 +76,20 @@ service cloud.firestore {
       allow write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
     }
 
-    // 2. Documents & CV générés
+    // 2. Documents & CV générés (déblocage immédiat par webhooks)
     match /user_documents/{docId} {
-      allow read, list: if true;
-      allow create: if isSignedIn() || isAdmin();
-      allow update, delete: if isDocOwner() || isAdmin() || isSignedIn();
+      allow read, list, write, create, update: if true;
+      allow delete: if isDocOwner() || isAdmin() || isSignedIn();
     }
 
     match /documents/{docId} {
-      allow read, list: if true;
-      allow create: if isSignedIn() || isAdmin();
-      allow update, delete: if isDocOwner() || isAdmin() || isSignedIn();
+      allow read, list, write, create, update: if true;
+      allow delete: if isDocOwner() || isAdmin() || isSignedIn();
     }
 
     match /generated_cvs/{cvId} {
-      allow read, list: if true;
-      allow create: if isSignedIn() || isAdmin();
-      allow update, delete: if isDocOwner() || isAdmin() || isSignedIn();
+      allow read, list, write, create, update: if true;
+      allow delete: if isDocOwner() || isAdmin() || isSignedIn();
     }
 
     // 3. Produits & Inventaire
@@ -128,22 +124,20 @@ service cloud.firestore {
     // 4. Transactions & Paiements (Money Fusion, Wave, Orange Money, etc.)
     match /transactions/{txId} {
       allow read, list: if true;
-      allow create: if true;
-      allow update: if isSignedIn() || isAdmin() || isDocOwner();
+      allow create, update: if true;
       allow delete: if isAdmin();
     }
 
     match /orders/{orderId} {
       allow read, list: if true;
-      allow create: if true;
-      allow update: if isSignedIn() || isAdmin() || isDocOwner();
+      allow create, update: if true;
       allow delete: if isAdmin();
     }
 
     match /payments/{paymentId} {
       allow read, list: if true;
-      allow create: if true;
-      allow update, delete: if isAdmin() || isSignedIn();
+      allow create, update: if true;
+      allow delete: if isAdmin();
     }
 
     match /manual_payments/{paymentId} {
