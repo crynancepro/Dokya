@@ -44,14 +44,32 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
     targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
   }
 
-  const payload = {
-    totalPrice: Number(targetAmount),
-    article: [{ "Déblocage Document Dokya": Number(targetAmount) }],
-    personal_Info: [{ userId: targetUserId, docId: targetDocId }],
-    numeroSend: targetPhone,
-    nomclient: targetName,
-    return_url: returnUrl,
-    webhook_url: webhookUrl
+  const resolvedUserId = String(userId || 'guest').trim();
+  const resolvedDocId = String(docId || '').trim();
+  const resolvedPlan = String(body.plan || body.planId || '').trim();
+  const resolvedType = String(body.type || (resolvedDocId ? 'document' : (resolvedPlan ? 'subscription' : 'wallet'))).trim();
+  const resolvedAmount = Number(amount) || 3000;
+  const resolvedPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
+  const resolvedName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
+  const resolvedDescription = body.description || (resolvedDocId ? "Déblocage Document Dokya" : (resolvedPlan ? `Abonnement Dokya ${resolvedPlan}` : "Service Dokya"));
+
+  const paymentData = {
+    totalPrice: Number(resolvedAmount),
+    article: [
+      { [resolvedDescription || "Service Dokya"]: Number(resolvedAmount) }
+    ],
+    personal_Info: [
+      { 
+        userId: resolvedUserId, 
+        docId: resolvedDocId || "", 
+        type: resolvedType || "wallet", 
+        plan: resolvedPlan || "" 
+      }
+    ],
+    numeroSend: resolvedPhone || "00000000",
+    nomclient: resolvedName || "Client Dokya",
+    return_url: "https://dokya-seven.vercel.app/dashboard?payment=success",
+    webhook_url: "https://dokya-seven.vercel.app/api/webhooks/moneyfusion"
   };
 
   if (apiKey || process.env.MONEYFUSION_API_URL) {
@@ -63,7 +81,7 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
           'Accept': 'application/json',
           ...(apiKey ? { 'Authorization': `Bearer ${apiKey}`, 'X-API-KEY': apiKey } : {})
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(paymentData)
       });
 
       const data: any = await response.json().catch(() => ({}));
