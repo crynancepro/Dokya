@@ -433,6 +433,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
           amount: payablePrice || 1000,
           docId: checkoutDocId,
           planId: checkoutPlanId,
+          plan: checkoutPlanId,
           type: checkoutType,
           promoCode: appliedPromo?.code || '',
           userId: user?.uid || currentUid,

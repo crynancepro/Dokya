@@ -506,22 +506,40 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
         // 3. Déclenche immédiatement un rechargement des données utilisateur depuis Firestore (fetchUserData() / refetchProfile())
         const reloadUserData = async () => {
-          if (uid && uid !== 'guest') {
-            const freshProfile = await fetchUserData(uid);
-            if (freshProfile) {
-              if (typeof freshProfile.walletBalance === 'number') {
-                setUserBalance(freshProfile.walletBalance);
+          const currentUid = auth.currentUser?.uid || currentUser?.uid || uid;
+          if (currentUid && currentUid !== 'guest') {
+            try {
+              const freshProfile = await fetchUserData(currentUid);
+              if (freshProfile) {
+                if (typeof freshProfile.walletBalance === 'number') {
+                  setUserBalance(freshProfile.walletBalance);
+                }
+                if (freshProfile.subscription) {
+                  setUserSubscription(freshProfile.subscription);
+                }
+                if (freshProfile.isVip) {
+                  setUserSubscription(prev => ({
+                    planId: (freshProfile as any).plan || prev?.planId || 'PASS_VIP',
+                    status: 'ACTIVE',
+                    activatedAt: (freshProfile as any).vipActivatedAt || new Date().toISOString(),
+                    expiresAt: prev?.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                    autoRenew: false
+                  }));
+                }
+                if (returnDocId && freshProfile.purchasedDocIds?.includes(returnDocId)) {
+                  setIsCurrentDocPaid(true);
+                }
               }
-              if (freshProfile.subscription) {
-                setUserSubscription(freshProfile.subscription);
-              }
+            } catch (err) {
+              console.warn('[reloadUserData Error]:', err);
             }
           }
         };
 
         reloadUserData();
-        setTimeout(reloadUserData, 1200);
-        setTimeout(reloadUserData, 2500);
+        setTimeout(reloadUserData, 600);
+        setTimeout(reloadUserData, 1500);
+        setTimeout(reloadUserData, 3000);
 
         // 4. Si type === 'wallet' : Affiche une notification Toast : "Votre solde a été crédité avec succès !"
         if (returnType === 'wallet' || reference?.includes('WALLET') || reference?.includes('RECHARGE') || (!returnDocId && !returnPlan && amountParam > 0)) {
@@ -566,9 +584,12 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
             setActiveTab('cv_preview');
           }
           window.scrollTo({ top: 0, behavior: 'smooth' });
-        } else if (!returnType && !returnPlan) {
+        } else {
+          setActiveTab('dashboard');
           setIsCurrentDocPaid(true);
-          setSuccessMessage("✅ Paiement Money Fusion validé avec succès !");
+          if (!returnType && !returnPlan) {
+            setSuccessMessage("✅ Paiement Money Fusion validé avec succès !");
+          }
         }
 
         setTimeout(() => setSuccessMessage(null), 6000);

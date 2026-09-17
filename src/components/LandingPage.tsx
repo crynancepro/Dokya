@@ -181,6 +181,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         body: JSON.stringify({
           amount: plan.amount,
           planId: plan.id,
+          plan: plan.id,
           type: 'subscription',
           userId: currentUid,
           userPhone: (currentUser as any)?.phoneNumber || '',

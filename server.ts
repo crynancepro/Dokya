@@ -2467,21 +2467,23 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       endpoint: targetEndpoint
     });
 
-    // Structure JSON requise par Money Fusion
-    const moneyFusionPayload = {
+    const paymentData = {
       totalPrice: Number(targetAmount),
-      article: [{ [articleLabel]: Number(targetAmount) }],
-      personal_Info: [{
-        userId: targetUserId,
-        docId: targetDocId,
-        planId: targetPlanId,
-        type: targetType,
-        promoCode: targetPromoCode
-      }],
-      numeroSend: targetPhone,
-      nomclient: targetName,
-      return_url: returnUrl,
-      webhook_url: webhookUrl
+      article: [
+        { [articleLabel || "Service Dokya"]: Number(targetAmount) }
+      ],
+      personal_Info: [
+        {
+          userId: targetUserId,
+          docId: targetDocId || "",
+          type: targetType || "wallet",
+          plan: targetPlanId || ""
+        }
+      ],
+      numeroSend: targetPhone || "00000000",
+      nomclient: targetName || "Client Dokya",
+      return_url: "https://dokya-seven.vercel.app/dashboard?payment=success",
+      webhook_url: "https://dokya-seven.vercel.app/api/webhooks/moneyfusion"
     };
 
     // 1. Si une clé API Money Fusion officielle ou une URL d'API est configurée
@@ -2494,7 +2496,7 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
             'Accept': 'application/json',
             ...(apiKey ? { 'Authorization': `Bearer ${apiKey}`, 'X-API-KEY': apiKey } : {})
           },
-          body: JSON.stringify(moneyFusionPayload)
+          body: JSON.stringify(paymentData)
         });
 
         const data: any = await response.json().catch(() => ({}));

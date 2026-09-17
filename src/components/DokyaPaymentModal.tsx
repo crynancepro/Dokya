@@ -598,6 +598,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           amount: payablePrice || 3000,
           docId: mode === 'document' ? (targetDocId || '') : '',
           planId: mode === 'subscription' ? (planId || 'monthly') : '',
+          plan: mode === 'subscription' ? (planId || 'monthly') : '',
           type: checkoutType,
           userId: user?.uid || userId || 'guest',
           userPhone: senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : ((user as any)?.phoneNumber || ''),

@@ -4,17 +4,7 @@ import { NextResponse } from 'next/server';
  * Route API Backend : Initialisation du Checkout Money Fusion
  * POST /api/moneyfusion/checkout
  * 
- * Reçoit la requête POST de la modale frontend :
- * {
- *   amount: 3000,
- *   docId: docId,
- *   userId: user.uid,
- *   userPhone: user.phoneNumber || "",
- *   userName: user.displayName || ""
- * }
- * 
- * Interroge l'API Money Fusion et retourne :
- * { success: true, url: "https://pay.moneyfusion.net/checkout/token..." }
+ * Conforme à la documentation officielle Money Fusion
  */
 export async function POST(req) {
   try {
@@ -22,24 +12,46 @@ export async function POST(req) {
     const {
       amount = 3000,
       docId = '',
+      plan = '',
       planId = '',
       type = '',
       userId = '',
       userPhone = '',
       userName = '',
+      description = '',
       customer = {}
     } = body || {};
 
-    const targetAmount = Math.max(100, Math.round(Number(amount) || 3000));
-    const targetDocId = String(docId || '').trim();
-    const targetPlanId = String(planId || '').trim();
-    const targetUserId = String(userId || 'guest').trim() || 'guest';
-    const targetPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
-    const targetName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
+    const resolvedUserId = String(userId || 'guest').trim();
+    const resolvedDocId = String(docId || '').trim();
+    const resolvedPlan = String(plan || planId || '').trim();
+    const resolvedType = String(type || (resolvedDocId ? 'document' : (resolvedPlan ? 'subscription' : 'wallet'))).trim();
+    const resolvedAmount = Number(amount) || 3000;
+    const resolvedPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
+    const resolvedName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
+    const resolvedDescription = description || (resolvedDocId ? "Déblocage Document Dokya" : (resolvedPlan ? `Abonnement Dokya ${resolvedPlan}` : "Service Dokya"));
 
-    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
-    const returnUrl = `${appBaseUrl}/dashboard?payment=success${targetDocId ? `&docId=${targetDocId}` : ''}${targetPlanId ? `&plan=${targetPlanId}` : ''}`;
-    const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
+    // Payload officiel Money Fusion
+    const paymentData = {
+      totalPrice: Number(resolvedAmount),
+      article: [
+        { [resolvedDescription || "Service Dokya"]: Number(resolvedAmount) }
+      ],
+      personal_Info: [
+        { 
+          userId: resolvedUserId, 
+          docId: resolvedDocId || "", 
+          type: resolvedType || "wallet", 
+          plan: resolvedPlan || "" 
+        }
+      ],
+      numeroSend: resolvedPhone || "00000000",
+      nomclient: resolvedName || "Client Dokya",
+      return_url: "https://dokya-seven.vercel.app/dashboard?payment=success",
+      webhook_url: "https://dokya-seven.vercel.app/api/webhooks/moneyfusion"
+    };
+
+    console.log('[Money Fusion Checkout] Payload officiel envoyé :', JSON.stringify(paymentData, null, 2));
 
     const apiKey = process.env.MONEYFUSION_API_KEY;
 
@@ -48,28 +60,6 @@ export async function POST(req) {
     if (targetEndpoint === 'https://api.moneyfusion.net' || targetEndpoint === 'https://api.moneyfusion.net/') {
       targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
     }
-
-    const articleLabel = targetDocId
-      ? "Déblocage Document Dokya"
-      : (targetPlanId ? `Abonnement Dokya ${targetPlanId}` : "Rechargement Wallet Dokya");
-
-    // Structure du payload JSON requise par Money Fusion
-    const payload = {
-      totalPrice: Number(targetAmount),
-      article: [{ [articleLabel]: Number(targetAmount) }],
-      personal_Info: [{
-        userId: targetUserId,
-        docId: targetDocId,
-        planId: targetPlanId,
-        type: type || (targetDocId ? 'document' : (targetPlanId ? 'subscription' : 'wallet'))
-      }],
-      numeroSend: targetPhone,
-      nomclient: targetName,
-      return_url: returnUrl,
-      webhook_url: webhookUrl
-    };
-
-    console.log('[Money Fusion Checkout] POST vers', targetEndpoint, payload);
 
     if (apiKey || process.env.MONEYFUSION_API_URL) {
       try {
@@ -80,7 +70,7 @@ export async function POST(req) {
             'Accept': 'application/json',
             ...(apiKey ? { 'Authorization': `Bearer ${apiKey}`, 'X-API-KEY': apiKey } : {})
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(paymentData)
         });
 
         const data = await response.json().catch(() => ({}));
@@ -101,8 +91,8 @@ export async function POST(req) {
       }
     }
 
-    // Fallback de simulation sécurisé en environnement local si indisponible
-    const simulatedUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
+    // Fallback de simulation pour tests locaux et prévisualisations
+    const simulatedUrl = `https://dokya-seven.vercel.app/dashboard?payment=success&status=approved&unlocked=true&docId=${resolvedDocId}&plan=${resolvedPlan}&type=${resolvedType}&amount=${resolvedAmount}&ref=MF_${Date.now()}`;
     return NextResponse.json({
       success: true,
       url: simulatedUrl,
