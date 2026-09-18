@@ -35,7 +35,7 @@ import { AuthModal } from './components/AuthModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
 import { auth, db, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, fetchUserData, refetchProfile, initializeUserAccountDoc, saveBusinessInvoice, getLocalProfileKey, getLocalTransactionsKey, getLocalDocumentsKey } from './lib/firebase';
-import { doc, setDoc, increment, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
 import { initAffiliateTracking } from './lib/referralTracking';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { generateCVWithGemini, generateInterviewPrepWithGemini } from './lib/geminiService';
@@ -561,7 +561,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           setSuccessMessage("👑 Félicitations ! Votre abonnement VIP est maintenant actif.");
         }
 
-        // 6. Si docId est présent : Marque le document comme débloqué dans l'état local React et ouvre la vue de téléchargement
+        // 6. Si docId est présent : Marque le document comme débloqué dans l'état local React et ouvre la vue de visualisation de CE document précis
         if (returnDocId) {
           setIsCurrentDocPaid(true);
           setCurrentDocId(returnDocId);
@@ -569,20 +569,67 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
             setSuccessMessage("🎉 Paiement validé ! Votre document est débloqué et prêt au téléchargement.");
           }
 
-          // Ouvre la vue de téléchargement du document
-          if (returnType === 'letter' || activeTab === 'letter' || activeTab === 'letter_preview') {
-            setActiveTab('letter_preview');
-          } else if (returnType === 'devis' || activeTab === 'devis' || activeTab === 'devis_preview') {
-            setActiveTab('devis_preview');
-          } else if (returnType === 'facture' || activeTab === 'facture' || activeTab === 'facture_preview') {
-            setActiveTab('facture_preview');
-          } else if (returnType === 'pack_business' || activeTab === 'pack_business' || activeTab === 'pack_business_preview') {
-            setActiveTab('pack_business_preview');
-          } else if (returnType === 'ebook' || activeTab === 'ebook' || activeTab === 'ebook_preview') {
-            setActiveTab('ebook_preview');
-          } else {
-            setActiveTab('cv_preview');
-          }
+          // Charger les données complètes de ce document précis depuis Firestore
+          getDoc(doc(db, 'user_documents', returnDocId)).then((snap) => {
+            if (snap.exists()) {
+              const docData: any = snap.data();
+              if (docData.formData) {
+                setFormData(docData.formData);
+              }
+              if (docData.aiData) {
+                setAiData(docData.aiData);
+              }
+              if (docData.businessDocData) {
+                setBusinessDocData(docData.businessDocData);
+              }
+              if (docData.ebookData) {
+                setEbookData(docData.ebookData);
+              }
+              const effectiveType = docData.type || docData.documentType || returnType;
+              if (effectiveType === 'letter' || docData.formData?.generationMode === 'letter_only') {
+                setActiveTab('letter_preview');
+              } else if (effectiveType === 'devis') {
+                setActiveTab('devis_preview');
+              } else if (effectiveType === 'facture') {
+                setActiveTab('facture_preview');
+              } else if (effectiveType === 'pack_business') {
+                setActiveTab('pack_business_preview');
+              } else if (effectiveType === 'ebook') {
+                setActiveTab('ebook_preview');
+              } else {
+                setActiveTab('cv_preview');
+              }
+            } else {
+              // Fallback selon le type
+              if (returnType === 'letter' || activeTab === 'letter' || activeTab === 'letter_preview') {
+                setActiveTab('letter_preview');
+              } else if (returnType === 'devis' || activeTab === 'devis' || activeTab === 'devis_preview') {
+                setActiveTab('devis_preview');
+              } else if (returnType === 'facture' || activeTab === 'facture' || activeTab === 'facture_preview') {
+                setActiveTab('facture_preview');
+              } else if (returnType === 'pack_business' || activeTab === 'pack_business' || activeTab === 'pack_business_preview') {
+                setActiveTab('pack_business_preview');
+              } else if (returnType === 'ebook' || activeTab === 'ebook' || activeTab === 'ebook_preview') {
+                setActiveTab('ebook_preview');
+              } else {
+                setActiveTab('cv_preview');
+              }
+            }
+          }).catch(() => {
+            if (returnType === 'letter' || activeTab === 'letter' || activeTab === 'letter_preview') {
+              setActiveTab('letter_preview');
+            } else if (returnType === 'devis' || activeTab === 'devis' || activeTab === 'devis_preview') {
+              setActiveTab('devis_preview');
+            } else if (returnType === 'facture' || activeTab === 'facture' || activeTab === 'facture_preview') {
+              setActiveTab('facture_preview');
+            } else if (returnType === 'pack_business' || activeTab === 'pack_business' || activeTab === 'pack_business_preview') {
+              setActiveTab('pack_business_preview');
+            } else if (returnType === 'ebook' || activeTab === 'ebook' || activeTab === 'ebook_preview') {
+              setActiveTab('ebook_preview');
+            } else {
+              setActiveTab('cv_preview');
+            }
+          });
           window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
           setActiveTab('dashboard');

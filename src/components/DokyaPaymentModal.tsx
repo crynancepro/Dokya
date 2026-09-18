@@ -601,6 +601,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           plan: mode === 'subscription' ? (planId || 'monthly') : '',
           type: checkoutType,
           userId: user?.uid || userId || 'guest',
+          userEmail: user?.email || userEmail || '',
           userPhone: senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : ((user as any)?.phoneNumber || ''),
           userName: user?.displayName || userName || 'Client Dokya'
         })
