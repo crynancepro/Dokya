@@ -475,7 +475,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
             userEmail,
             userName
           );
-          if (!vipRes.success && vipRes.error === 'INSUFFICIENT_BALANCE') {
+          if (!vipRes.success && (vipRes as any).error === 'INSUFFICIENT_BALANCE') {
             setIsAiScanning(false);
             setValidationOutcome('failed');
             setErrorMessage(vipRes.message || "Solde insuffisant pour activer le Pass VIP.");

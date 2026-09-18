@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { doc, updateDoc, setDoc, increment } from 'firebase/firestore';
+import { NextResponse } from 'next/server.js';
+import { db } from '../../../lib/firebase.js';
+import { doc, updateDoc, increment, setDoc } from 'firebase/firestore';
 
 export async function POST(req) {
   try {
@@ -35,7 +35,7 @@ export async function POST(req) {
           solde: increment(amount)
         }, { merge: true });
       }
-      console.log(`[Webhook] Solde de l'utilisateur ${userId} crédité de ${amount} FCFA`);
+      console.log(`[Webhook] Solde crédité pour ${userId}: +${amount} FCFA`);
     }
 
     // B. Déblocage de document
@@ -71,12 +71,12 @@ export async function POST(req) {
           plan: plan || "VIP"
         }, { merge: true });
       }
-      console.log(`[Webhook] Abonnement VIP activé pour ${userId} (plan: ${plan || 'VIP'})`);
+      console.log(`[Webhook] Abonnement VIP activé pour ${userId} (${plan || 'VIP'})`);
     }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
     console.error("Erreur Webhook:", error);
-    return NextResponse.json({ error: error?.message || 'Erreur interne webhook' }, { status: 500 });
+    return NextResponse.json({ error: error?.message || 'Erreur serveur' }, { status: 500 });
   }
 }

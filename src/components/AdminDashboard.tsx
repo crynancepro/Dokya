@@ -1370,7 +1370,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setTimeout(() => setSuccessMsg(null), 4500);
         loadAdminData();
       } else {
-        setErrorMsg(result.error || result.message || 'Erreur lors de la validation manuelle de la transaction.');
+        setErrorMsg((result as any).error || result.message || 'Erreur lors de la validation manuelle de la transaction.');
         loadAdminData();
       }
     } catch (e: any) {

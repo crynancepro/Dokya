@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
+import { NextResponse } from 'next/server.js';
+import { db } from '../../../../lib/firebase.js';
 import { doc, updateDoc, setDoc, increment } from 'firebase/firestore';
 
 export async function POST(req) {

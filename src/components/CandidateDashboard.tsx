@@ -288,7 +288,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       ]);
 
       if (remoteProfile) {
-        const liveBalance = (remoteProfile as any).walletBalance ?? remoteProfile.balance ?? 0;
+        const liveBalance = (remoteProfile as any).walletBalance ?? (remoteProfile as any).balance ?? 0;
         const isVip = isUserVipActive(remoteProfile.subscription) || remoteProfile.subscription?.status === 'active' || (remoteProfile.subscription?.status as any) === 'ACTIVE';
         setProfile(prev => {
           const updated = {

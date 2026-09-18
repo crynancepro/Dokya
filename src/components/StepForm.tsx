@@ -10,7 +10,7 @@ import {
   Wand2, Info, ArrowRight, ArrowLeft, Star, Heart,
   RefreshCw, UserCircle2, CheckCircle2, AlertCircle
 } from 'lucide-react';
-import { auth, fetchUserProfile } from '../lib/firebase';
+import { auth, fetchUserProfile, fetchCandidateProfile } from '../lib/firebase';
 import { AIFormValidationBanner } from './AIFormValidationBanner';
 import { validateCVForm, validateLetterForm } from '../lib/formValidationUtils';
 import { 
@@ -110,7 +110,7 @@ export const StepForm: React.FC<StepFormProps> = ({
       let profile: CandidateProfile | null = null;
 
       if (currentUser?.uid) {
-        profile = await fetchUserProfile(currentUser.uid);
+        profile = (await fetchCandidateProfile(currentUser.uid)) as any || (await fetchUserProfile(currentUser.uid)) as any;
       }
 
       // Si non connecté ou profil non trouvé, tenter depuis le cache local du profil

@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { db } from '@/src/lib/firebase';
+import { NextResponse } from 'next/server.js';
+import { db } from '../../../../lib/firebase.js';
 import { 
   doc, 
   getDoc, 
