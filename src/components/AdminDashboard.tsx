@@ -55,6 +55,7 @@ import {
   requestAdminNotificationPermission, 
   triggerAdminPushNotification 
 } from '../lib/adminAlerts';
+import { usePricing } from '../contexts/PricingContext';
 
 interface AdminDashboardProps {
   onBackHome: () => void;
@@ -125,19 +126,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isSavingSub, setIsSavingSub] = useState<boolean>(false);
   const [isLoadingSubs, setIsLoadingSubs] = useState<boolean>(false);
   const [transactionsList, setTransactionsList] = useState<TransactionRecord[]>([]);
-  const [pricingConfig, setPricingConfig] = useState<PlatformPricingConfig>({
-    cvOnlyPrice: 500,
-    letterOnlyPrice: 500,
-    fullPackPrice: 1500,
-    devisPrice: 1000,
-    facturePrice: 1000,
-    businessPackPrice: 3000,
-    unlimitedPassPrice: 5000,
-    recruiterSearchPrice: 10000,
-    currency: 'FCFA',
-    updatedAt: new Date().toISOString()
-  });
-  const [promoCodesList, setPromoCodesList] = useState<PromoCode[]>([]);
+  // Pricing & Promos global state via PricingContext (Single Source of Truth)
+  const {
+    pricing,
+    promoCodes: promoCodesList,
+    updatePricing,
+    savePromoCode,
+    deletePromoCode,
+    togglePromoCode
+  } = usePricing();
   
   // Impersonation state
   const [activeImpersonation, setActiveImpersonation] = useState(getImpersonatedSession);
@@ -224,9 +221,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [promoActiveInput, setPromoActiveInput] = useState<boolean>(true);
   const [isSavingPromo, setIsSavingPromo] = useState<boolean>(false);
 
-  // Pricing Form State
-  const [editingPricing, setEditingPricing] = useState<PlatformPricingConfig>(pricingConfig);
+  // Pricing Form State (local edit buffer for the form)
+  const [editingPricing, setEditingPricing] = useState<PlatformPricingConfig>(() => pricing || DEFAULT_PLATFORM_PRICING);
   const [isSavingPricing, setIsSavingPricing] = useState<boolean>(false);
+
+  // Sync editing buffer with real-time updates from PricingContext
+  useEffect(() => {
+    if (pricing && pricing.cvOnlyPrice) {
+      setEditingPricing(pricing);
+    }
+  }, [pricing]);
 
   // Demo Data Purge Modal State (Exclusive to peter25ngouala@gmail.com)
   const [isPurgeModalOpen, setIsPurgeModalOpen] = useState<boolean>(false);
@@ -262,10 +266,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setLoading(true);
     setErrorMsg(null);
     try {
-      // 1. Initialisation immédiate depuis Firestore et constantes locales (Zéro latence / Zéro blocage réseau)
-      setPricingConfig((prev) => (prev && prev.cvOnlyPrice ? prev : DEFAULT_PLATFORM_PRICING));
-      setEditingPricing((prev) => (prev && prev.cvOnlyPrice ? prev : DEFAULT_PLATFORM_PRICING));
-      setPromoCodesList((prev) => (prev && prev.length > 0 ? prev : DEFAULT_PROMO_CODES));
+      // 1. Initialisation de l'éditeur de tarifs depuis les tarifs globaux
+      setEditingPricing((prev) => (prev && prev.cvOnlyPrice ? prev : pricing || DEFAULT_PLATFORM_PRICING));
 
       // 2. Chargement direct des Utilisateurs depuis Firestore (100% réel)
       try {
@@ -325,11 +327,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setKpis(statsData.stats);
         }
         if (pricingData?.success && pricingData.pricing) {
-          setPricingConfig(pricingData.pricing);
           setEditingPricing(pricingData.pricing);
-        }
-        if (promoData?.success && Array.isArray(promoData.promoCodes) && promoData.promoCodes.length > 0) {
-          setPromoCodesList(promoData.promoCodes);
         }
       } catch (apiErr) {
         console.warn('[AdminDashboard] Synchronisation API silencieuse:', apiErr);
@@ -1122,35 +1120,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         updatedBy: adminEmail
       };
 
-      // 1. Immediate local state & storage update for 0-latency feedback
-      setPricingConfig(sanitizedPricing);
-      try {
-        localStorage.setItem('senegal_cv_platform_pricing', JSON.stringify(sanitizedPricing));
-        window.dispatchEvent(new CustomEvent('pricing-updated', { detail: sanitizedPricing }));
-      } catch (_e) {}
-
-      // 2. Persist to Firestore "settings_pricing/global"
-      await savePricingToFirestore(sanitizedPricing);
-
-      // 3. Persist to backend server API
-      const headers = getAdminHeaders(adminEmail);
-      const res = await fetch('/api/admin/pricing', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          adminEmail,
-          ...sanitizedPricing
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg('Tarifs enregistrés avec succès et synchronisés en temps réel sur toute la plateforme !');
+      // Save through PricingContext (updates context state, localStorage, Firestore, and backend API seamlessly)
+      const res = await updatePricing(sanitizedPricing, adminEmail);
+      if (res.success) {
+        setSuccessMsg(res.message || 'Tarifs enregistrés avec succès et synchronisés en temps réel sur toute la plateforme !');
       } else {
         setSuccessMsg('Tarifs enregistrés dans la base Firestore et appliqués immédiatement !');
       }
       setTimeout(() => setSuccessMsg(null), 4000);
-      loadAdminData();
     } catch (e: any) {
       console.warn('Pricing save notice:', e);
       setSuccessMsg('Tarifs appliqués avec succès !');
@@ -1210,36 +1187,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         createdBy: adminEmail
       };
 
-      // 1. Immediate local update
-      setPromoCodesList((prev) => {
-        const idx = prev.findIndex((p) => p.id === promoId || p.code === cleanCode);
-        const updated = idx >= 0 ? [...prev] : [newPromo, ...prev];
-        if (idx >= 0) updated[idx] = newPromo;
-        try {
-          localStorage.setItem('senegal_cv_platform_promos', JSON.stringify(updated));
-          window.dispatchEvent(new CustomEvent('promos-updated', { detail: updated }));
-        } catch (_e) {}
-        return updated;
-      });
-
-      // 2. Persist to Firestore collection "promo_codes"
-      await savePromoCodeToFirestore(newPromo);
-
-      // 3. Persist to backend server API
-      const headers = getAdminHeaders(adminEmail);
-      await fetch('/api/admin/promo-codes', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          adminEmail,
-          ...newPromo
-        })
-      });
-
-      setSuccessMsg(`Code promo "${cleanCode}" enregistré avec succès !`);
-      setIsPromoModalOpen(false);
-      setTimeout(() => setSuccessMsg(null), 4000);
-      loadAdminData();
+      const res = await savePromoCode(newPromo, adminEmail);
+      if (res.success) {
+        setSuccessMsg(res.message || `Code promo "${cleanCode}" enregistré avec succès !`);
+        setIsPromoModalOpen(false);
+        setTimeout(() => setSuccessMsg(null), 4000);
+      } else {
+        setErrorMsg(res.error || 'Erreur lors de l\'enregistrement du code promo.');
+      }
     } catch (e: any) {
       setErrorMsg(e?.message || 'Erreur lors de l\'enregistrement du code promo.');
     } finally {
@@ -1249,33 +1204,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleTogglePromoCode = async (id: string, code: string, currentActive: boolean) => {
     try {
-      const newActive = !currentActive;
-      // 1. Local state
-      setPromoCodesList(prev => {
-        const updated = prev.map(p => p.id === id || p.code === code ? { ...p, active: newActive } : p);
-        try {
-          localStorage.setItem('senegal_cv_platform_promos', JSON.stringify(updated));
-          window.dispatchEvent(new CustomEvent('promos-updated', { detail: updated }));
-        } catch (_e) {}
-        return updated;
-      });
-
-      // 2. Firestore
-      const target = promoCodesList.find(p => p.id === id || p.code === code);
-      if (target) {
-        await savePromoCodeToFirestore({ ...target, active: newActive });
+      const res = await togglePromoCode(id, code, currentActive, adminEmail);
+      if (res.success) {
+        setSuccessMsg(res.message || `Code promo ${code} ${!currentActive ? 'activé' : 'désactivé'} avec succès.`);
+      } else {
+        setErrorMsg(res.error || 'Erreur lors du changement de statut.');
       }
-
-      // 3. API
-      const headers = getAdminHeaders(adminEmail);
-      await fetch(`/api/admin/promo-codes/${id}/toggle`, {
-        method: 'POST',
-        headers
-      });
-
-      setSuccessMsg(`Code promo ${code} ${newActive ? 'activé' : 'désactivé'} avec succès.`);
       setTimeout(() => setSuccessMsg(null), 3000);
-      loadAdminData();
     } catch (e) {
       setErrorMsg('Erreur lors du changement de statut.');
     }
@@ -1291,40 +1226,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsDeletingPromo(true);
     setErrorMsg(null);
     try {
-      // 1. Immediate local state removal
-      setPromoCodesList(prev => {
-        const updated = prev.filter(p => p.id !== id && p.code !== code);
-        try {
-          localStorage.setItem('senegal_cv_platform_promos', JSON.stringify(updated));
-          window.dispatchEvent(new CustomEvent('promos-updated', { detail: updated }));
-        } catch (_e) {}
-        return updated;
-      });
-
-      // 2. Delete from Firestore collection "promo_codes"
-      await deletePromoCodeFromFirestore(id, code);
-
-      // 3. Delete from backend server API
-      const headers = getAdminHeaders(adminEmail);
-      try {
-        await fetch(`/api/admin/promo-codes/${id}?adminEmail=${encodeURIComponent(adminEmail)}`, {
-          method: 'DELETE',
-          headers
-        });
-      } catch (_e) {}
-
-      // Try deleting by code if id was generic
-      try {
-        await fetch(`/api/admin/promo-codes/${code}?adminEmail=${encodeURIComponent(adminEmail)}`, {
-          method: 'DELETE',
-          headers
-        });
-      } catch (_e) {}
-
-      setSuccessMsg(`Code promo "${code}" supprimé avec succès !`);
+      const res = await deletePromoCode(id, code, adminEmail);
+      if (res.success) {
+        setSuccessMsg(res.message || `Code promo "${code}" supprimé avec succès !`);
+      } else {
+        setErrorMsg(res.error || 'Erreur lors de la suppression du code promo.');
+      }
       setPromoToDelete(null);
       setTimeout(() => setSuccessMsg(null), 4000);
-      loadAdminData();
     } catch (e: any) {
       setErrorMsg(e?.message || 'Erreur lors de la suppression du code promo.');
     } finally {

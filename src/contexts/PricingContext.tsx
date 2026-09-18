@@ -140,10 +140,12 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     // B. Firestore onSnapshot real-time listener for pricing
     try {
       unsubscribePricing = subscribeToPricing((updatedPricing) => {
-        setPricing(updatedPricing);
-        try {
-          localStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(updatedPricing));
-        } catch (_e) {}
+        setTimeout(() => {
+          setPricing(updatedPricing);
+          try {
+            localStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(updatedPricing));
+          } catch (_e) {}
+        }, 0);
       });
     } catch (e) {
       console.warn('Could not subscribe to Firestore pricing:', e);
@@ -153,10 +155,12 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       unsubscribePromos = subscribeToPromoCodes((updatedPromos) => {
         if (Array.isArray(updatedPromos)) {
-          setPromoCodes(updatedPromos);
-          try {
-            localStorage.setItem(PROMOS_STORAGE_KEY, JSON.stringify(updatedPromos));
-          } catch (_e) {}
+          setTimeout(() => {
+            setPromoCodes(updatedPromos);
+            try {
+              localStorage.setItem(PROMOS_STORAGE_KEY, JSON.stringify(updatedPromos));
+            } catch (_e) {}
+          }, 0);
         }
       });
     } catch (e) {
@@ -166,13 +170,17 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     // D. Window CustomEvent listener for cross-tab or instant within-tab synchronization
     const handlePricingUpdatedEvent = (event: CustomEvent) => {
       if (event.detail) {
-        setPricing((prev) => ({ ...prev, ...event.detail }));
+        setTimeout(() => {
+          setPricing((prev) => ({ ...prev, ...event.detail }));
+        }, 0);
       }
     };
 
     const handlePromoUpdatedEvent = (event: CustomEvent) => {
       if (event.detail) {
-        setPromoCodes(event.detail);
+        setTimeout(() => {
+          setPromoCodes(event.detail);
+        }, 0);
       }
     };
 
