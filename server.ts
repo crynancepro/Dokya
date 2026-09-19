@@ -2681,7 +2681,8 @@ async function handlePaymentConfirmation(params: {
 app.post('/api/moneyfusion/checkout', async (req, res) => {
   try {
     const {
-      amount = 1000,
+      amount,
+      totalPrice,
       docId = '',
       userId = '',
       userPhone = '',
@@ -2693,12 +2694,19 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       email,
       userEmail,
       currency = 'XOF',
+      title = '',
+      documentTitle = '',
+      content = null,
+      contentData = null,
+      documentData = null,
       description = 'Service Dokya',
       customer = {},
       metadata = {}
     } = req.body || {};
 
-    const targetAmount = Math.max(100, Math.round(Number(amount) || 1000));
+    const rawAmount = amount !== undefined ? amount : (totalPrice !== undefined ? totalPrice : 1000);
+    const parsedAmount = Number(rawAmount);
+    const targetAmount = (!isNaN(parsedAmount) && parsedAmount > 0) ? Math.round(parsedAmount) : 1000;
     const targetDocId = String(docId || metadata.targetDocId || metadata.docId || '').trim();
     const targetPlanId = String(plan || planId || metadata.planId || metadata.plan || '').trim();
     
@@ -2718,12 +2726,42 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
     const targetPhone = String(userPhone || customer?.phone || '00000000').trim() || '00000000';
     const targetName = String(userName || customer?.name || 'Client Dokya').trim() || 'Client Dokya';
     const targetPromoCode = String(promoCode || metadata.promoCode || '').trim().toUpperCase();
+    const targetTitle = String(title || documentTitle || 'Document sans titre').trim();
+    const targetContent = content || contentData || documentData || {};
 
     // Génération d'un ID de transaction unique et traçable
     const transactionId = `MF-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     const nowIso = new Date().toISOString();
 
-    // 1. CRÉATION DE LA TRANSACTION DÈS LE CHECKOUT DANS LA COLLECTION FIRESTORE 'transactions'
+    const db = getServerAdminDb();
+
+    // 1. SAUVEGARDE DU DOCUMENT AVANT LE PAIEMENT (Résolution NOT_FOUND)
+    // Crée impérativement le document dans la collection Firestore 'user_documents' AVANT le paiement
+    if (resolvedType === 'document' && targetDocId) {
+      try {
+        const docRef = db.collection('user_documents').doc(targetDocId);
+        const docSnap = await docRef.get();
+        if (!docSnap.exists) {
+          await docRef.set({
+            id: targetDocId,
+            docId: targetDocId,
+            userId: targetUserId,
+            title: targetTitle || "Document sans titre",
+            content: targetContent,
+            isUnlocked: false,
+            status: "PENDING",
+            isPaid: false,
+            createdAt: nowIso,
+            updatedAt: nowIso
+          }, { merge: true });
+          console.log(`[Money Fusion Checkout] Document pré-enregistré dans user_documents/${targetDocId} (status: PENDING)`);
+        }
+      } catch (dbDocErr: any) {
+        console.warn('[Money Fusion Checkout] Warning pré-création document dans Firestore:', dbDocErr?.message);
+      }
+    }
+
+    // 2. CRÉATION DE LA TRANSACTION DÈS LE CHECKOUT DANS LA COLLECTION FIRESTORE 'transactions'
     const pendingTxRecord = {
       id: transactionId,
       transactionId: transactionId,
@@ -2748,7 +2786,6 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       updatedAt: nowIso
     };
 
-    const db = getServerAdminDb();
     try {
       await db.collection('transactions').doc(transactionId).set(pendingTxRecord, { merge: true });
       console.log(`[Money Fusion Checkout] Transaction PENDING enregistrée dans Firestore: ${transactionId} (${resolvedType}, ${targetAmount} FCFA)`);
@@ -2774,8 +2811,10 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       ? `Déblocage Document Dokya (${targetDocId || 'Nouveau'})`
       : (resolvedType === 'subscription' ? `Abonnement Dokya ${targetPlanId || 'VIP'}` : "Rechargement Wallet Dokya");
 
-    // 2. TRANSMISSION DE TOUTES LES MÉTADONNÉES DANS LE CHAMP personal_Info DE MONEY FUSION
+    // 3. TRANSMISSION DU MONTANT ET DES MÉTADONNÉES DANS /api/moneyfusion/checkout
+    // Transmets impérativement le montant sous les clés amount et totalPrice dans le body et dans personal_Info
     const paymentData = {
+      amount: Number(targetAmount),
       totalPrice: Number(targetAmount),
       article: [
         { [articleLabel]: Number(targetAmount) }
@@ -2783,11 +2822,11 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       personal_Info: [
         {
           userId: targetUserId,
-          userEmail: targetUserEmail,
-          docId: targetDocId || null,
-          plan: targetPlanId || null,
+          docId: targetDocId || "",
           type: resolvedType,
+          plan: targetPlanId || "",
           amount: Number(targetAmount),
+          userEmail: targetUserEmail,
           transactionId: transactionId
         }
       ],

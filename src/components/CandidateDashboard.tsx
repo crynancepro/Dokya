@@ -633,10 +633,52 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const isAuthorizedForExport = (docItem?: SavedUserDocument | null): boolean => {
     if (!docItem) return false;
     if (isSubscriptionActive) return true;
-    if (docItem.isPaid === true || (docItem as any).unlocked === true) return true;
+    if (
+      docItem.isUnlocked === true || 
+      docItem.status === 'UNLOCKED' || 
+      docItem.isPaid === true || 
+      (docItem as any).unlocked === true
+    ) return true;
     if (profile?.purchasedDocIds && profile.purchasedDocIds.includes(docItem.id)) return true;
     if (user?.email && isAdminEmail(user.email)) return true;
     return false;
+  };
+
+  // 4. ACCÈS DIRECT DEPUIS "MES DOCUMENTS" :
+  // Quand l'utilisateur clique sur un document :
+  // - Si document.isUnlocked === true : Ouvrir directement la page du document complet pour la consultation et le téléchargement (sans réafficher l'écran de paiement).
+  // - Si document.isUnlocked === false : Rediriger vers la page d'achat/paiement.
+  const handleDocumentClick = (docItem: SavedUserDocument) => {
+    const isInterviewDoc = !!docItem.interviewPrepData || (docItem.generationMode as any) === 'interview_prep';
+    if (isInterviewDoc && onOpenInterviewPrepDocument) {
+      const prepData: InterviewPrepData = docItem.interviewPrepData || {
+        id: docItem.id,
+        candidateName: `${docItem.formData?.personalInfo?.firstName || ''} ${docItem.formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat Pro',
+        targetJob: docItem.formData?.personalInfo?.targetJob || 'Poste Cible',
+        targetCompany: docItem.formData?.targetCompany || '',
+        createdAt: docItem.createdAt,
+        pitch2Min: {
+          hook: `Madame, Monsieur, fort d'un parcours dynamique en tant que ${docItem.formData?.personalInfo?.targetJob || 'professionnel'}, j'ai développé une solide expertise technique et managériale.`,
+          careerHighlights: `Au fil de mes expériences, j'ai piloté des projets stratégiques et optimisé des processus clés.`,
+          valueProposition: `Aujourd'hui, je souhaite mettre ma rigueur et mon dynamisme au service de vos objectifs.`,
+          fullText: `Bonjour, je suis ${docItem.formData?.personalInfo?.firstName || 'Candidat'} ${docItem.formData?.personalInfo?.lastName || ''}. Fort d'une expérience confirmée dans le domaine de ${docItem.formData?.personalInfo?.targetJob || 'mon secteur'}, j'ai consolidé une expertise reconnue dans la gestion opérationnelle et le travail en équipe.`
+        },
+        questions: [],
+        behavioralTips: [],
+        suggestedQuestionsToAskRecruiter: []
+      };
+      onOpenInterviewPrepDocument(prepData);
+      return;
+    }
+
+    if (isAuthorizedForExport(docItem)) {
+      setPreviewDoc(docItem);
+      setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
+    } else {
+      setPaywallTargetDoc(docItem);
+      setPaywallTargetFormat('pdf');
+      setIsPaywallOpen(true);
+    }
   };
 
   // Déclenchement sécurisé du téléchargement PDF / Word avec contrôle Paywall
@@ -1503,13 +1545,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     const isDevis = docItem.generationMode === 'devis' || docItem.businessDocData?.type === 'devis';
                     const isPaid = docItem.businessDocData?.paymentStatus === 'PAID';
                     const quoteStatus = docItem.businessDocData?.quoteStatus || 'BROUILLON';
+                    const isUnlocked = isAuthorizedForExport(docItem);
 
                     return (
                     <div
                       key={docItem.id}
-                      className={`bg-slate-900 border ${isInterviewDoc ? 'border-indigo-500/40 hover:border-indigo-500/70' : 'border-slate-800 hover:border-slate-700'} rounded-3xl p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all`}
+                      className={`bg-slate-900 border ${isInterviewDoc ? 'border-indigo-500/40 hover:border-indigo-500/70' : isUnlocked ? 'border-slate-800 hover:border-emerald-500/50' : 'border-slate-800 hover:border-amber-500/50'} rounded-3xl p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all`}
                     >
-                      <div className="space-y-2.5">
+                      <div 
+                        className="space-y-2.5 cursor-pointer group"
+                        onClick={() => handleDocumentClick(docItem)}
+                        title={isUnlocked ? "Cliquer pour consulter et télécharger le document" : "Cliquer pour débloquer le document"}
+                      >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${
@@ -1531,11 +1578,29 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                 : 'CV Pro ATS'}
                             </span>
 
+                            {/* Statut Débloqué / Verrouillé */}
+                            {!isInterviewDoc && (
+                              isUnlocked ? (
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  Débloqué
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                                  <Lock className="w-3 h-3 text-amber-400" />
+                                  À débloquer
+                                </span>
+                              )
+                            )}
+
                             {/* Facture : Statut Règlement Rapide (PAYÉE / IMPAYÉE) */}
                             {isFacture && (
                               <button
                                 type="button"
-                                onClick={() => handleToggleDocPaymentStatus(docItem)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleDocPaymentStatus(docItem);
+                                }}
                                 className={`px-2 py-0.5 rounded text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 active:scale-95 ${
                                   isPaid 
                                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30' 
@@ -1561,6 +1626,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                             {isDevis && (
                               <select
                                 value={quoteStatus}
+                                onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => handleUpdateDocQuoteStatus(docItem, e.target.value as any)}
                                 className={`px-2 py-0.5 rounded text-[10px] font-black border cursor-pointer bg-slate-950 ${
                                   quoteStatus === 'ACCEPTE'
@@ -1586,7 +1652,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           </span>
                         </div>
 
-                        <h4 className="text-sm font-black text-white line-clamp-1">{docItem.title}</h4>
+                        <h4 className="text-sm font-black text-white line-clamp-1 group-hover:text-indigo-300 transition-colors">{docItem.title}</h4>
                         <p className="text-xs text-slate-400 line-clamp-2">
                           {docItem.formData?.personalInfo?.targetJob || docItem.businessDocData?.issuer?.companyName || docItem.ebookData?.author || 'Document Dokya'}
                         </p>
@@ -1622,7 +1688,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                   },
                                   questions: [],
                                   behavioralTips: [],
-                                  questionsToAskRecruiter: []
+                                  suggestedQuestionsToAskRecruiter: []
                                 };
                                 onOpenInterviewPrepDocument(prepData);
                               }
@@ -1670,12 +1736,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                             {/* Preview */}
                             <button
                               type="button"
-                              onClick={() => {
-                                setPreviewDoc(docItem);
-                                setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
-                              }}
+                              onClick={() => handleDocumentClick(docItem)}
                               className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                              title="Aperçu Grand Format"
+                              title={isUnlocked ? "Consulter le document complet" : "Débloquer / Acheter le document"}
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
@@ -2460,6 +2523,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         onBalanceUpdated={(newBal) => {
           setProfile(prev => ({ ...prev, balance: newBal }));
         }}
+        documentData={paywallTargetDoc}
+        contentData={paywallTargetDoc?.content || paywallTargetDoc}
       />
 
 

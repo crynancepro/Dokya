@@ -7,7 +7,10 @@ import {
 import { 
   recordTransactionEverywhere, 
   subscribeToUserProfile,
-  auth
+  auth,
+  db,
+  doc,
+  setDoc
 } from '../lib/firebase';
 import { TransactionRecord } from '../types';
 import { usePricing } from '../contexts/PricingContext';
@@ -97,6 +100,8 @@ export interface PaywallModalProps {
   onUnlocked: () => void;
   onDownloadAction?: (format: 'pdf' | 'docx') => void;
   onBalanceUpdated?: (newBalance: number) => void;
+  documentData?: any;
+  contentData?: any;
 }
 
 export const PaywallModal: React.FC<PaywallModalProps> = ({
@@ -112,7 +117,9 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   userName,
   onUnlocked,
   onDownloadAction,
-  onBalanceUpdated
+  onBalanceUpdated,
+  documentData,
+  contentData
 }) => {
   // Selected formula (1 000 F, 2 500 F, or 5 000 F XOF)
   const [selectedPlanId, setSelectedPlanId] = useState<PaywallFormulaId>('single');
@@ -424,13 +431,47 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
       const isSubFormula = selectedFormula.id === 'vip_career' || selectedFormula.id === 'business';
       const checkoutType = isSubFormula ? 'subscription' : 'document';
       const checkoutPlanId = selectedFormula.id === 'vip_career' ? 'PASS_VIP' : (selectedFormula.id === 'business' ? 'PASS_BUSINESS' : '');
-      const checkoutDocId = selectedFormula.id === 'single' ? (targetDocId || '') : '';
+      const checkoutDocId = selectedFormula.id === 'single' ? (targetDocId || `DOC-${Date.now()}`) : (targetDocId || '');
 
+      const cleanAmount = Math.max(100, Math.round(Number(payablePrice) || 1000));
+      const fullContent = contentData || documentData || {};
+
+      // 1. SAUVEGARDE DU DOCUMENT AVANT LE PAIEMENT (Résolution NOT_FOUND) :
+      // Dès que l'utilisateur clique sur "Payer" ou "Débloquer", crée IMPÉRATIVEMENT le document
+      // dans la collection Firestore 'user_documents' AVANT d'ouvrir le lien Money Fusion
+      if (checkoutType === 'document' && checkoutDocId) {
+        try {
+          const docRef = doc(db, 'user_documents', checkoutDocId);
+          await setDoc(docRef, {
+            id: checkoutDocId,
+            docId: checkoutDocId,
+            userId: user?.uid || currentUid,
+            title: documentTitle || "Document sans titre",
+            content: fullContent,
+            formData: fullContent?.formData || null,
+            aiData: fullContent?.aiData || null,
+            businessDocData: fullContent?.businessDocData || null,
+            ebookData: fullContent?.ebookData || null,
+            generationMode: fullContent?.generationMode || 'cv_only',
+            isUnlocked: false,
+            status: "PENDING",
+            isPaid: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          console.log(`[PaywallModal] Document sauvegardé dans user_documents/${checkoutDocId} (status: PENDING) avant redirection Money Fusion.`);
+        } catch (dbDocErr) {
+          console.warn('[PaywallModal] Erreur pré-sauvegarde document Firestore:', dbDocErr);
+        }
+      }
+
+      // 2. TRANSMISSION DU MONTANT ET DES MÉTADONNÉES DANS /api/moneyfusion/checkout
       const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: payablePrice || 1000,
+          amount: cleanAmount,
+          totalPrice: cleanAmount,
           docId: checkoutDocId,
           planId: checkoutPlanId,
           plan: checkoutPlanId,
@@ -439,7 +480,16 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
           userId: user?.uid || currentUid,
           userEmail: user?.email || userEmail || '',
           userPhone: (user as any)?.phoneNumber || '',
-          userName: user?.displayName || currentUserName
+          userName: user?.displayName || currentUserName,
+          title: documentTitle || "Document sans titre",
+          content: fullContent,
+          personal_Info: [{
+            userId: user?.uid || currentUid,
+            docId: checkoutDocId || "",
+            type: checkoutType,
+            plan: checkoutPlanId || "",
+            amount: cleanAmount
+          }]
         })
       });
 

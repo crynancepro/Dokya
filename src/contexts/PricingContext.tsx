@@ -109,11 +109,13 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (pRes.ok) {
           const data = await safeParseJsonResponse(pRes);
           if (data?.success && data.pricing) {
-            setPricing((prev) => {
-              const updated = { ...prev, ...data.pricing };
-              try { localStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(updated)); } catch (_e) {}
-              return updated;
-            });
+            setTimeout(() => {
+              setPricing((prev) => {
+                const updated = { ...prev, ...data.pricing };
+                try { localStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(updated)); } catch (_e) {}
+                return updated;
+              });
+            }, 0);
           }
         }
       } catch (_e) {
@@ -125,8 +127,10 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (promoRes.ok) {
           const pData = await safeParseJsonResponse(promoRes);
           if (pData?.success && Array.isArray(pData.promoCodes) && pData.promoCodes.length > 0) {
-            setPromoCodes(pData.promoCodes);
-            try { localStorage.setItem(PROMOS_STORAGE_KEY, JSON.stringify(pData.promoCodes)); } catch (_e) {}
+            setTimeout(() => {
+              setPromoCodes(pData.promoCodes);
+              try { localStorage.setItem(PROMOS_STORAGE_KEY, JSON.stringify(pData.promoCodes)); } catch (_e) {}
+            }, 0);
           }
         }
       } catch (_e) {

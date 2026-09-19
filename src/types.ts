@@ -645,12 +645,17 @@ export interface DokyaNotification {
 
 export interface SavedUserDocument {
   id: string;
+  docId?: string;
   userId: string;
   title: string;
   generationMode: GenerationMode;
   createdAt: string;
   updatedAt: string;
   isPaid: boolean;
+  isUnlocked?: boolean;
+  status?: 'PENDING' | 'UNLOCKED' | string;
+  content?: any;
+  paymentGateway?: string;
   formData?: CVFormData;
   aiData?: AIOptimizedData | null;
   businessDocData?: BusinessDocData;

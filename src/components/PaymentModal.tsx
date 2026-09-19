@@ -19,6 +19,8 @@ export interface PaymentModalProps {
   onDownloadPDF?: () => void;
   onDownloadDocx?: () => void;
   onOpenInterviewPrep?: () => void;
+  documentData?: any;
+  contentData?: any;
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -37,7 +39,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onOpenRechargeModal,
   onDownloadPDF,
   onDownloadDocx,
-  onOpenInterviewPrep
+  onOpenInterviewPrep,
+  documentData,
+  contentData
 }) => {
   return (
     <DokyaPaymentModal
@@ -58,6 +62,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       onDownloadPDF={onDownloadPDF}
       onDownloadDocx={onDownloadDocx}
       onOpenInterviewPrep={onOpenInterviewPrep}
+      documentData={documentData}
+      contentData={contentData}
     />
   );
 };

@@ -47,7 +47,10 @@ import {
   subscribeToTransactionStatus, 
   subscribeToVipWithWallet,
   subscribeToUserProfile,
-  auth
+  auth,
+  db,
+  doc,
+  setDoc
 } from '../lib/firebase';
 import { COUNTRIES, CountryOption, isMobileMoneyCountry } from '../constants/countries';
 import { useLocale } from '../contexts/LocaleContext';
@@ -104,6 +107,8 @@ export interface DokyaPaymentModalProps {
   onPaymentSuccess?: (method: 'wallet' | 'mobile_money' | 'free', transaction?: TransactionRecord) => void;
   onOpenRechargeModal?: () => void;
   isUserVip?: boolean;
+  documentData?: any;
+  contentData?: any;
 }
 
 export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
@@ -130,7 +135,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   userName,
   onPaymentSuccess,
   onOpenRechargeModal,
-  isUserVip
+  isUserVip,
+  documentData,
+  contentData
 }) => {
   const { pricing, validatePromoCode } = usePricing();
 
@@ -591,19 +598,58 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     try {
       const user = auth.currentUser;
       const checkoutType = mode === 'recharge' ? 'wallet' : (mode === 'subscription' ? 'subscription' : 'document');
+      const checkoutDocId = mode === 'document' ? (targetDocId || `DOC-${Date.now()}`) : '';
+      const cleanAmount = Math.max(100, Math.round(Number(payablePrice) || 3000));
+      const targetUserId = user?.uid || userId || 'guest';
+      const targetUserName = user?.displayName || userName || 'Client Dokya';
+      const targetPhone = senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : ((user as any)?.phoneNumber || '');
+
+      // 1. SAUVEGARDE DU DOCUMENT AVANT LE PAIEMENT (Résolution NOT_FOUND)
+      if (checkoutType === 'document' && checkoutDocId) {
+        try {
+          const docRef = doc(db, 'user_documents', checkoutDocId);
+          await setDoc(docRef, {
+            id: checkoutDocId,
+            docId: checkoutDocId,
+            userId: targetUserId,
+            title: documentTitle || "Document sans titre",
+            content: contentData || documentData || {},
+            isUnlocked: false,
+            status: "PENDING",
+            isPaid: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          console.log(`[DokyaPaymentModal] Document sauvegardé dans user_documents/${checkoutDocId} (status: PENDING) avant redirection Money Fusion.`);
+        } catch (dbDocErr) {
+          console.warn('[DokyaPaymentModal] Erreur pré-sauvegarde document Firestore:', dbDocErr);
+        }
+      }
+
+      // 2. TRANSMISSION DU MONTANT ET DES MÉTADONNÉES DANS /api/moneyfusion/checkout
       const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: payablePrice || 3000,
-          docId: mode === 'document' ? (targetDocId || '') : '',
+          amount: cleanAmount,
+          totalPrice: cleanAmount,
+          docId: checkoutDocId,
           planId: mode === 'subscription' ? (planId || 'monthly') : '',
           plan: mode === 'subscription' ? (planId || 'monthly') : '',
           type: checkoutType,
-          userId: user?.uid || userId || 'guest',
+          userId: targetUserId,
           userEmail: user?.email || userEmail || '',
-          userPhone: senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : ((user as any)?.phoneNumber || ''),
-          userName: user?.displayName || userName || 'Client Dokya'
+          userPhone: targetPhone,
+          userName: targetUserName,
+          title: documentTitle || "Document sans titre",
+          content: contentData || documentData || {},
+          personal_Info: [{
+            userId: targetUserId,
+            docId: checkoutDocId || "",
+            type: checkoutType,
+            plan: mode === 'subscription' ? (planId || 'monthly') : '',
+            amount: cleanAmount
+          }]
         })
       });
 

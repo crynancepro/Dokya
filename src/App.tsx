@@ -270,9 +270,62 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       if (hash === '#subscription' || pathname === '/subscription') {
         return 'subscription';
       }
+      if (pathname.startsWith('/documents/')) {
+        return 'dashboard';
+      }
+      if (pathname === '/documents' || hash === '#documents') {
+        return user ? 'dashboard' : 'landing';
+      }
     }
     return auth.currentUser ? 'dashboard' : 'landing';
   });
+
+  // Support direct access to /documents and /documents/:docId
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const pathname = window.location.pathname;
+    if (pathname.startsWith('/documents/')) {
+      const routeDocId = pathname.replace(/^\/documents\//, '').split(/[?#/]/)[0];
+      if (routeDocId) {
+        getDoc(doc(db, 'user_documents', routeDocId)).then((snap) => {
+          if (snap.exists()) {
+            const data: any = snap.data();
+            const isUnlocked = data.isUnlocked === true || data.status === 'UNLOCKED' || data.isPaid === true || data.unlocked === true;
+            setCurrentDocId(routeDocId);
+            if (data.formData) setFormData(data.formData);
+            if (data.aiData) setAiData(data.aiData);
+            if (data.businessDocData) setBusinessDocData(data.businessDocData);
+            if (data.ebookData) setEbookData(data.ebookData);
+
+            const effectiveType = data.type || data.documentType || data.generationMode;
+            if (effectiveType === 'letter' || effectiveType === 'letter_only') {
+              setActiveTab('letter_preview');
+            } else if (effectiveType === 'devis') {
+              setActiveTab('devis_preview');
+            } else if (effectiveType === 'facture') {
+              setActiveTab('facture_preview');
+            } else if (effectiveType === 'pack_business') {
+              setActiveTab('pack_business_preview');
+            } else if (effectiveType === 'ebook') {
+              setActiveTab('ebook_preview');
+            } else {
+              setActiveTab('cv_preview');
+            }
+
+            if (isUnlocked) {
+              setIsCurrentDocPaid(true);
+            } else {
+              setIsCurrentDocPaid(false);
+              setPaymentDocTitle(data.title || 'Document Professionnel');
+              setIsPaymentModalOpen(true);
+            }
+          }
+        }).catch(err => console.warn('[Route /documents/:id load error]:', err));
+      }
+    } else if (pathname === '/documents') {
+      setActiveTab('dashboard');
+    }
+  }, []);
 
   // Clean stale storage
   useEffect(() => {
@@ -502,6 +555,23 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
               }
             }, { merge: true }).catch(e => console.error('[Client Firestore VIP Sync Error]:', e));
           }
+
+          // D. Mettre à jour la transaction correspondante dans la collection 'transactions' à status: 'SUCCESS' avec le montant exact
+          const txKey = token || reference || (returnDocId ? `TX-${returnDocId}` : `TX-${Date.now()}`);
+          if (txKey) {
+            setDoc(doc(db, 'transactions', txKey), {
+              id: txKey,
+              transactionId: txKey,
+              status: 'SUCCESS',
+              aiStatus: 'COMPLETED',
+              amount: amountParam > 0 ? amountParam : 1000,
+              type: returnType === 'wallet' ? 'wallet' : returnType === 'subscription' ? 'subscription' : 'document',
+              userId: uid,
+              docId: returnDocId || null,
+              plan: returnPlan || null,
+              updatedAt: nowIso
+            }, { merge: true }).catch(e => console.warn('[Client Firestore Tx Update Error]:', e));
+          }
         }
 
         // 3. Déclenche immédiatement un rechargement des données utilisateur depuis Firestore (fetchUserData() / refetchProfile())
@@ -641,11 +711,15 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
         setTimeout(() => setSuccessMessage(null), 6000);
 
-        // 7. Nettoie l'URL sans recharger la page (window.history.replaceState)
-        const cleanPath = window.location.pathname;
-        const cleanHash = window.location.hash ? window.location.hash.split('?')[0] : '';
-        const cleanUrl = (cleanPath.endsWith('/') && cleanHash ? cleanPath.slice(0, -1) : cleanPath) + cleanHash;
-        window.history.replaceState({}, document.title, cleanUrl || '/');
+        // 7. Nettoie l'URL sans recharger la page ou redirige vers /documents/:docId
+        if (returnDocId) {
+          window.history.replaceState({}, document.title, `/documents/${returnDocId}`);
+        } else {
+          const cleanPath = window.location.pathname;
+          const cleanHash = window.location.hash ? window.location.hash.split('?')[0] : '';
+          const cleanUrl = (cleanPath.endsWith('/') && cleanHash ? cleanPath.slice(0, -1) : cleanPath) + cleanHash;
+          window.history.replaceState({}, document.title, cleanUrl || '/');
+        }
       } else if (status === 'cancel') {
         setErrorMessage('Le paiement Money Fusion a été interrompu ou annulé. Vous pouvez réessayer à tout moment.');
         setTimeout(() => setErrorMessage(null), 5000);
@@ -664,33 +738,87 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       return;
     }
     setPaymentDocType(docType);
+    let resolvedTitle = 'Document Professionnel';
+    let resolvedPrice = 1000;
     if (docType === 'cv') {
       const title = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - CV Pro ATS`.trim();
-      setPaymentDocTitle(title || 'Mon CV Pro ATS');
+      resolvedTitle = title || 'Mon CV Pro ATS';
+      setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('CV Pro ATS');
+      resolvedPrice = 1000;
       setPaymentPrice(1000);
     } else if (docType === 'letter') {
       const title = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - Lettre de Motivation`.trim();
-      setPaymentDocTitle(title || 'Ma Lettre de Motivation');
+      resolvedTitle = title || 'Ma Lettre de Motivation';
+      setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Lettre de Motivation');
+      resolvedPrice = 1000;
       setPaymentPrice(1000);
     } else if (docType === 'devis') {
-      setPaymentDocTitle(`Devis Professionnel - ${businessDocData.docNumber}`);
+      resolvedTitle = `Devis Professionnel - ${businessDocData.docNumber}`;
+      setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Devis Professionnel');
+      resolvedPrice = 1000;
       setPaymentPrice(1000);
     } else if (docType === 'facture') {
-      setPaymentDocTitle(`Facture Client - ${businessDocData.docNumber}`);
+      resolvedTitle = `Facture Client - ${businessDocData.docNumber}`;
+      setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Facture Client');
+      resolvedPrice = 1000;
       setPaymentPrice(1000);
     } else if (docType === 'ebook') {
-      setPaymentDocTitle(ebookData.title || 'Mon Livre Numérique');
+      resolvedTitle = ebookData.title || 'Mon Livre Numérique';
+      setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Livre Numérique (Ebook Pro)');
+      resolvedPrice = 3000;
       setPaymentPrice(3000);
     } else {
-      setPaymentDocTitle(`Pack Business (Devis + Facture) - ${businessDocData.docNumber}`);
+      resolvedTitle = `Pack Business (Devis + Facture) - ${businessDocData.docNumber}`;
+      setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Pack Business (Devis + Facture)');
+      resolvedPrice = 1499;
       setPaymentPrice(1499);
     }
+
+    const resolvedDocId = currentDocId || `DOC-${Date.now()}`;
+    if (!currentDocId) {
+      setCurrentDocId(resolvedDocId);
+    }
+    const currentUid = auth.currentUser?.uid || currentUser?.uid || 'guest';
+    const contentPayload = {
+      formData: { ...formData },
+      aiData: aiData ? { ...aiData } : null,
+      businessDocData: { ...businessDocData },
+      ebookData: { ...ebookData },
+      generationMode: (
+        docType === 'letter' ? 'letter_only'
+        : docType === 'devis' ? 'devis'
+        : docType === 'facture' ? 'facture'
+        : docType === 'pack_business' ? 'pack_business'
+        : docType === 'ebook' ? 'ebook'
+        : 'cv_only'
+      )
+    };
+
+    // 1. SAUVEGARDE DU DOCUMENT AVANT LE PAIEMENT (Résolution NOT_FOUND)
+    setDoc(doc(db, 'user_documents', resolvedDocId), {
+      id: resolvedDocId,
+      docId: resolvedDocId,
+      userId: currentUid,
+      title: resolvedTitle || "Document sans titre",
+      content: contentPayload,
+      formData: contentPayload.formData,
+      aiData: contentPayload.aiData,
+      businessDocData: contentPayload.businessDocData,
+      ebookData: contentPayload.ebookData,
+      generationMode: contentPayload.generationMode,
+      isUnlocked: false,
+      status: "PENDING",
+      isPaid: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, { merge: true }).catch(err => console.warn('[App pre-save document warn]:', err));
+
     setIsPaymentModalOpen(true);
   };
 
@@ -1938,6 +2066,27 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         }}
         onBalanceUpdated={(newBal) => {
           setUserBalance(newBal);
+        }}
+        contentData={{
+          formData,
+          aiData,
+          businessDocData,
+          ebookData,
+          generationMode: (
+            paymentDocType === 'letter' ? 'letter_only'
+            : paymentDocType === 'devis' ? 'devis'
+            : paymentDocType === 'facture' ? 'facture'
+            : paymentDocType === 'pack_business' ? 'pack_business'
+            : paymentDocType === 'ebook' ? 'ebook'
+            : 'cv_only'
+          )
+        }}
+        documentData={{
+          title: paymentDocTitle,
+          formData,
+          aiData,
+          businessDocData,
+          ebookData
         }}
       />
 
