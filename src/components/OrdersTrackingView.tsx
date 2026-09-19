@@ -480,7 +480,7 @@ export const OrdersTrackingView: React.FC<OrdersTrackingViewProps> = ({
 
                     {/* Payment Method Badge */}
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
-                      {tx.paymentMethod === 'wave' ? 'Wave Mobile' : tx.paymentMethod === 'orange_money' ? 'Orange Money' : tx.paymentMethod === 'card' ? 'Carte Bancaire' : 'Solde Wallet'}
+                      {tx.paymentMethod === 'wallet' ? 'Solde Dokya Wallet' : tx.paymentMethod === 'money_fusion' || tx.paymentMethod === 'moneyfusion' ? 'Money Fusion' : tx.paymentMethod === 'wave' ? 'Wave Mobile' : tx.paymentMethod === 'orange_money' ? 'Orange Money' : tx.paymentMethod === 'card' ? 'Carte Bancaire' : (tx.paymentMethod || 'En ligne')}
                     </span>
                   </div>
 
@@ -490,14 +490,14 @@ export const OrdersTrackingView: React.FC<OrdersTrackingViewProps> = ({
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-bold animate-pulse">
                         <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
                         <Clock className="w-3.5 h-3.5 text-amber-400" />
-                        <span>En attente de validation</span>
+                        <span>En attente</span>
                       </div>
                     )}
 
                     {status === 'completed' && (
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-black">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Validé & Débloqué</span>
+                        <span>Complété</span>
                       </div>
                     )}
 
@@ -514,7 +514,7 @@ export const OrdersTrackingView: React.FC<OrdersTrackingViewProps> = ({
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
                   <div className="space-y-1">
                     <h3 className="text-base font-black text-white flex items-center gap-2">
-                      <span>{tx.documentTitle || tx.description || 'Commande Dokya'}</span>
+                      <span>{tx.documentTitle || tx.description || (category === 'recharge' ? 'Recharge de solde Dokya' : 'Achat Document')}</span>
                     </h3>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                       <span className="flex items-center gap-1">
@@ -533,11 +533,11 @@ export const OrdersTrackingView: React.FC<OrdersTrackingViewProps> = ({
                   </div>
 
                   <div className="text-right shrink-0">
-                    <p className="text-lg font-black text-white font-mono">
-                      {amountVal.toLocaleString('fr-FR')} <span className="text-xs text-emerald-400 font-sans">FCFA</span>
+                    <p className={`text-lg font-black font-mono ${category === 'recharge' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {category === 'recharge' ? `+${amountVal.toLocaleString('fr-FR')}` : `-${amountVal.toLocaleString('fr-FR')}`} <span className="text-xs font-sans">FCFA</span>
                     </p>
                     <p className="text-[10px] text-slate-400">
-                      {category === 'recharge' ? 'Crédit Solde' : 'Tarif Net'}
+                      {category === 'recharge' ? 'Crédit Solde' : 'Débit / Achat'}
                     </p>
                   </div>
                 </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import confetti from 'canvas-confetti';
 import { 
   X, Crown, Briefcase, Zap, CheckCircle2, ShieldCheck, 
   Check, Loader2, Sparkles, AlertCircle, Star, Lock,
@@ -98,6 +99,7 @@ export interface PaywallModalProps {
   userEmail?: string;
   userName?: string;
   onUnlocked: () => void;
+  onOpenRechargeModal?: () => void;
   onDownloadAction?: (format: 'pdf' | 'docx') => void;
   onBalanceUpdated?: (newBalance: number) => void;
   documentData?: any;
@@ -116,6 +118,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   userEmail,
   userName,
   onUnlocked,
+  onOpenRechargeModal,
   onDownloadAction,
   onBalanceUpdated,
   documentData,
@@ -367,9 +370,35 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     const txId = `TX-WALLET-${Date.now()}`;
 
     try {
+      const isDoc = selectedFormula.id === 'single';
+      const itemType = isDoc ? 'document' : 'subscription';
+      const itemId = isDoc ? (targetDocId || `doc-${Date.now()}`) : selectedFormula.id;
+
+      const payRes = await fetch('/api/wallet/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUid,
+          itemType,
+          itemId,
+          price: payablePrice,
+          userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
+          userName: userName || auth.currentUser?.displayName || 'Client Dokya'
+        })
+      });
+
+      const payData = await payRes.json();
+      if (!payData.success) {
+        if (payData.reason === 'INSUFFICIENT_FUNDS') {
+          setErrorMessage(payData.message || `Solde insuffisant. Veuillez recharger votre solde.`);
+          return;
+        }
+        throw new Error(payData.error || 'Erreur lors du paiement par solde.');
+      }
+
       const tx: TransactionRecord = {
-        id: txId,
-        transactionId: txId,
+        id: payData.transactionId || txId,
+        transactionId: payData.transactionId || txId,
         userId: currentUid,
         userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
         userName: userName || auth.currentUser?.displayName || 'Client Dokya',
@@ -379,7 +408,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         currency: 'FCFA',
         promoCode: appliedPromo?.code || undefined,
         description: `Règlement ${selectedFormula.title}${appliedPromo ? ` [Code: ${appliedPromo.code}]` : ''} (Débit solde)`,
-        status: 'APPROVED',
+        status: 'SUCCESS',
         aiStatus: 'COMPLETED',
         paymentMethod: 'wallet',
         targetDocId: targetDocId,
@@ -403,15 +432,23 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         }).catch(() => {});
       }
 
-      const newBal = Math.max(0, userBalance - payablePrice);
+      const newBal = payData.newBalance ?? Math.max(0, userBalance - payablePrice);
       if (onBalanceUpdated) {
         onBalanceUpdated(newBal);
       }
 
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      } catch (_cErr) {}
+
       triggerUnlockSuccess();
     } catch (err: any) {
       console.error('[Wallet Pay Error]:', err);
-      setErrorMessage("Une erreur est survenue lors du débit du solde. Veuillez réessayer.");
+      setErrorMessage(err?.message || "Une erreur est survenue lors du débit du solde. Veuillez réessayer.");
     } finally {
       setIsPayingWithWallet(false);
     }
@@ -607,9 +644,20 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                       )}
                     </button>
                   ) : (
-                    <span className="text-[11px] text-slate-400 sm:text-right">
-                      Solde insuffisant • Utilisez le paiement instantané Money Fusion ci-dessous
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-amber-300 font-medium">
+                        Solde insuffisant
+                      </span>
+                      {onOpenRechargeModal && (
+                        <button
+                          type="button"
+                          onClick={onOpenRechargeModal}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all cursor-pointer active:scale-95"
+                        >
+                          Recharger mon solde
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

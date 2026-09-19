@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import confetti from 'canvas-confetti';
 import { 
   X, 
   Wallet, 
@@ -469,25 +470,30 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       const newComputedBalance = Math.max(0, safeBalance - payablePrice);
 
       if (activeMode === 'subscription') {
-        // Subscription via wallet with atomic Firestore transaction
+        // Subscription via wallet with /api/wallet/pay
         const effectivePlanId: 'weekly' | 'monthly' | 'annual' = planId === 'annual' ? 'annual' : (planId === 'weekly' ? 'weekly' : 'monthly');
         const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
         const subEndDate = new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString();
 
-        if (userId && userId !== 'guest') {
-          const vipRes = await subscribeToVipWithWallet(
-            userId,
-            effectivePlanId,
-            payablePrice,
-            userEmail,
-            userName
-          );
-          if (!vipRes.success && (vipRes as any).error === 'INSUFFICIENT_BALANCE') {
-            setIsAiScanning(false);
-            setValidationOutcome('failed');
-            setErrorMessage(vipRes.message || "Solde insuffisant pour activer le Pass VIP.");
-            return;
-          }
+        const payRes = await fetch('/api/wallet/pay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: userId || 'guest',
+            itemType: 'subscription',
+            itemId: effectivePlanId,
+            price: payablePrice,
+            userEmail: userEmail || 'candidat@dokya.sn',
+            userName: userName || 'Candidat Dokya'
+          })
+        });
+
+        const payData = await payRes.json();
+        if (!payData.success) {
+          setIsAiScanning(false);
+          setValidationOutcome('failed');
+          setErrorMessage(payData.message || payData.error || "Solde insuffisant pour activer le Pass VIP. Veuillez recharger votre solde.");
+          return;
         }
 
         const activeSub: UserSubscription = {
@@ -501,24 +507,19 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           documentsGeneratedCount: 0
         };
 
-        fetch('/api/subscription/submit-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: userId || 'guest',
-            userEmail: userEmail || 'candidat@dokya.sn',
-            planId,
-            planTitle,
-            amount: payablePrice,
-            paymentMethod: 'wallet'
-          })
-        }).catch(() => {});
+        try {
+          confetti({
+            particleCount: 70,
+            spread: 60,
+            origin: { y: 0.6 }
+          });
+        } catch (_cErr) {}
 
         setTimeout(() => {
           setIsAiScanning(false);
           setValidationOutcome('success');
           setValidationDetails({
-            txId: rawTxId,
+            txId: payData.transactionId || rawTxId,
             amount: payablePrice,
             message: `Abonnement "${planTitle}" activé avec succès ! Débit de ${payablePrice.toLocaleString('fr-FR')} FCFA sur votre solde Dokya Wallet.`,
             unlockedTitle: planTitle,
@@ -533,21 +534,32 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         }, 800);
 
       } else {
-        // Document purchase via wallet
-        fetch('/api/wallet/debit', {
+        // Document purchase via wallet with /api/wallet/pay
+        const targetDocIdToPay = targetDocId || `doc-${Date.now()}`;
+        const payRes = await fetch('/api/wallet/pay', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId: userId || 'guest',
-            amount: payablePrice,
-            currentBalance: safeBalance,
-            documentTitle,
-            promoCode: appliedPromo?.code
+            itemType: 'document',
+            itemId: targetDocIdToPay,
+            price: payablePrice,
+            userEmail: userEmail || 'candidat@dokya.sn',
+            userName: userName || 'Candidat Dokya'
           })
-        }).catch(() => {});
+        });
+
+        const payData = await payRes.json();
+        if (!payData.success) {
+          setIsAiScanning(false);
+          setValidationOutcome('failed');
+          setErrorMessage(payData.message || payData.error || "Solde insuffisant pour débloquer ce document. Veuillez recharger votre solde.");
+          return;
+        }
 
         const tx: TransactionRecord = {
-          id: rawTxId,
+          id: payData.transactionId || rawTxId,
+          transactionId: payData.transactionId || rawTxId,
           userId: userId || 'guest',
           userEmail: userEmail || 'candidat@dokya.sn',
           userName: userName || 'Candidat Dokya',
@@ -555,24 +567,30 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           amount: -payablePrice,
           currency: 'XOF',
           description: `Achat ${documentTypeLabel} : ${documentTitle}`,
-          status: 'COMPLETED',
+          status: 'SUCCESS',
           aiStatus: 'COMPLETED',
           createdAt: new Date().toISOString(),
           paymentMethod: 'wallet',
-          newBalance: newComputedBalance,
+          newBalance: payData.newBalance ?? newComputedBalance,
           documentTitle,
           senderPhone: fullPhone
         };
 
-        recordTransactionEverywhere(tx).catch(() => {});
+        try {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+        } catch (_cErr) {}
 
         setTimeout(() => {
           setIsAiScanning(false);
           setValidationOutcome('success');
           setValidationDetails({
-            txId: rawTxId,
+            txId: payData.transactionId || rawTxId,
             amount: payablePrice,
-            message: `Débit de ${payablePrice.toLocaleString('fr-FR')} FCFA effectué sur votre solde Dokya Wallet.`,
+            message: `Débit de ${payablePrice.toLocaleString('fr-FR')} FCFA effectué sur votre solde Dokya Wallet. Document débloqué avec succès !`,
             unlockedTitle: documentTitle,
             senderPhone: fullPhone
           });

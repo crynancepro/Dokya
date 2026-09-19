@@ -32,6 +32,7 @@ import { LetterTemplateGallery } from './components/LetterTemplateGallery';
 import { InterviewPrepOfferModal } from './components/InterviewPrepOfferModal';
 import { InterviewPrepView } from './components/InterviewPrepView';
 import { AuthModal } from './components/AuthModal';
+import { VictoryModal } from './components/VictoryModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
 import { auth, db, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, fetchUserData, refetchProfile, initializeUserAccountDoc, saveBusinessInvoice, getLocalProfileKey, getLocalTransactionsKey, getLocalDocumentsKey } from './lib/firebase';
@@ -239,6 +240,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   const [isRechargeModalOpen, setIsRechargeModalOpen] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'signup'>('login');
+  const [isVictoryModalOpen, setIsVictoryModalOpen] = useState<boolean>(false);
+  const [victoryDocTitle, setVictoryDocTitle] = useState<string>('');
 
   // -------------------------------------------------------------
   // Initial View Determination & URL Sync
@@ -637,12 +640,16 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           setCurrentDocId(returnDocId);
           if (returnType !== 'wallet' && returnType !== 'subscription' && !returnPlan) {
             setSuccessMessage("🎉 Paiement validé ! Votre document est débloqué et prêt au téléchargement.");
+            setIsVictoryModalOpen(true);
           }
 
           // Charger les données complètes de ce document précis depuis Firestore
           getDoc(doc(db, 'user_documents', returnDocId)).then((snap) => {
             if (snap.exists()) {
               const docData: any = snap.data();
+              if (docData.title) {
+                setVictoryDocTitle(docData.title);
+              }
               if (docData.formData) {
                 setFormData(docData.formData);
               }
@@ -2050,11 +2057,15 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         userName={currentUser?.displayName || undefined}
         onUnlocked={() => {
           setIsCurrentDocPaid(true);
+          setVictoryDocTitle(paymentDocTitle || 'Document Professionnel');
+          setIsVictoryModalOpen(true);
           setSuccessMessage('🎉 Document débloqué avec succès ! Vous pouvez maintenant le télécharger.');
           setTimeout(() => setSuccessMessage(null), 4500);
         }}
         onDownloadAction={(format) => {
           setIsCurrentDocPaid(true);
+          setVictoryDocTitle(paymentDocTitle || 'Document Professionnel');
+          setIsVictoryModalOpen(true);
           if (format === 'pdf') {
             if (activeTab === 'cv_preview') downloadCVPDF();
             else if (activeTab === 'letter_preview') downloadLetterPDF();
@@ -2193,6 +2204,29 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           </div>
         </div>
       )}
+
+      {/* 7. VICTORY & CELEBRATION MODAL */}
+      <VictoryModal
+        isOpen={isVictoryModalOpen}
+        onClose={() => setIsVictoryModalOpen(false)}
+        documentTitle={victoryDocTitle || paymentDocTitle || 'Document Professionnel'}
+        onDownloadAction={(format) => {
+          setIsCurrentDocPaid(true);
+          if (format === 'pdf') {
+            if (activeTab === 'cv_preview') downloadCVPDF();
+            else if (activeTab === 'letter_preview') downloadLetterPDF();
+            else if (activeTab === 'ebook_preview') downloadEbookPDF();
+            else downloadBusinessDocPDF();
+          } else {
+            handleExportDOCX();
+          }
+        }}
+        onViewDocumentAction={() => {
+          setIsVictoryModalOpen(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        actionButtonLabel="Consulter mon document"
+      />
 
     </div>
   );

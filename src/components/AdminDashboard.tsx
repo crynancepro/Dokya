@@ -569,6 +569,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           if (!currentMethod.includes('moov')) return false;
         } else if (target === 'moneyfusion') {
           if (!currentMethod.includes('money') && !currentMethod.includes('fusion')) return false;
+        } else if (target === 'wallet') {
+          if (!currentMethod.includes('wallet') && !currentMethod.includes('solde')) return false;
         } else if (currentMethod !== target) {
           return false;
         }
@@ -3159,7 +3161,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="mtn" className="bg-slate-900 text-white">MTN Money</option>
                   <option value="moov" className="bg-slate-900 text-white">Moov Money</option>
                   <option value="card" className="bg-slate-900 text-white">QR Code / Carte</option>
-                  <option value="moneyfusion" className="bg-slate-900 text-white">Money Fusion Direct</option>
+                  <option value="moneyfusion" className="bg-slate-900 text-white">Money Fusion</option>
+                  <option value="wallet" className="bg-slate-900 text-white">Solde Dokya</option>
                 </select>
 
                 <button
@@ -3249,11 +3252,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         // Identify payment method
                         const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '') + ' ' + (tx.network || '')).toLowerCase();
                         let methodBadge = {
-                          label: 'Money Fusion Direct',
+                          label: 'Money Fusion',
                           icon: '⚡',
                           className: 'bg-blue-500/15 text-blue-300 border-blue-500/30'
                         };
-                        if (methodStr.includes('wave')) {
+                        if (methodStr.includes('wallet') || methodStr.includes('solde')) {
+                          methodBadge = { label: 'Solde Dokya', icon: '💳', className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
+                        } else if (methodStr.includes('wave')) {
                           methodBadge = { label: 'Wave', icon: '🌊', className: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
                         } else if (methodStr.includes('orange') || methodStr.includes('om')) {
                           methodBadge = { label: 'Orange Money', icon: '🍊', className: 'bg-orange-500/15 text-orange-300 border-orange-500/30' };

@@ -2351,6 +2351,187 @@ app.all(['/api/wallet', '/api/wallet/debit'], async (req, res) => {
   }
 });
 
+/**
+ * 2. PAIEMENT INTERNE ET DÉBLOCAGE PAR SOLDE (DOCUMENTS ET ABONNEMENTS)
+ * POST /api/wallet/pay
+ * Paramètres reçus : { userId, itemType: 'document' | 'subscription', itemId, price, userEmail, userName }
+ */
+app.post('/api/wallet/pay', async (req, res) => {
+  try {
+    const {
+      userId,
+      itemType = 'document',
+      itemId,
+      price,
+      amount,
+      userEmail = '',
+      userName = ''
+    } = req.body || {};
+
+    const rawPrice = price !== undefined ? price : (amount !== undefined ? amount : 0);
+    const numericPrice = Math.max(0, Number(rawPrice) || 0);
+
+    if (!userId || userId === 'guest') {
+      return res.status(400).json({
+        success: false,
+        error: 'Utilisateur non connecté ou identifiant manquant.'
+      });
+    }
+
+    if (!itemId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Identifiant manquant (itemId).'
+      });
+    }
+
+    const db = getServerAdminDb();
+    const userRef = db.collection('users').doc(userId);
+    const userSnap = await userRef.get();
+
+    let currentBalance = 0;
+    let effectiveEmail = String(userEmail || '').trim();
+    let effectiveName = String(userName || '').trim();
+
+    if (userSnap.exists) {
+      const uData = userSnap.data() || {};
+      currentBalance = Number(uData.walletBalance ?? uData.balance ?? uData.solde ?? 0);
+      if (!effectiveEmail) effectiveEmail = uData.email || '';
+      if (!effectiveName) effectiveName = `${uData.firstName || ''} ${uData.lastName || ''}`.trim() || uData.displayName || 'Utilisateur';
+    }
+
+    // SI walletBalance < price : Retourne une réponse { success: false, reason: 'INSUFFICIENT_FUNDS' } et propose à l'utilisateur de recharger son solde
+    if (currentBalance < numericPrice) {
+      return res.status(200).json({
+        success: false,
+        reason: 'INSUFFICIENT_FUNDS',
+        currentBalance,
+        requiredPrice: numericPrice,
+        message: `Solde insuffisant (${currentBalance.toLocaleString('fr-FR')} FCFA disponible, ${numericPrice.toLocaleString('fr-FR')} FCFA requis). Veuillez recharger votre solde pour débloquer cet élément.`
+      });
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const transactionId = "WAL-" + Date.now();
+    const newComputedBalance = Math.max(0, currentBalance - numericPrice);
+
+    // a) Déduis le montant du solde : walletBalance -= price
+    await userRef.set({
+      walletBalance: FieldValue.increment(-numericPrice),
+      balance: FieldValue.increment(-numericPrice),
+      solde: FieldValue.increment(-numericPrice),
+      lastPaymentAt: nowIso,
+      lastPaymentProvider: 'Wallet',
+      updatedAt: nowIso
+    }, { merge: true });
+
+    // b) Si itemType === 'document' : Mets à jour 'user_documents/{itemId}' avec { isUnlocked: true, status: 'UNLOCKED', unlockedAt: new Date().toISOString() }
+    if (itemType === 'document') {
+      const docRef = db.collection('user_documents').doc(itemId);
+      await docRef.set({
+        id: itemId,
+        isUnlocked: true,
+        status: 'UNLOCKED',
+        unlocked: true,
+        isPaid: true,
+        unlockedAt: nowIso,
+        paidAt: nowIso,
+        paymentMethod: 'WALLET',
+        updatedAt: nowIso
+      }, { merge: true });
+
+      // Ajout aux purchasedDocIds de l'utilisateur
+      await userRef.set({
+        purchasedDocIds: FieldValue.arrayUnion(itemId)
+      }, { merge: true });
+    }
+
+    // c) Si itemType === 'subscription' : Mets à jour 'users/{userId}' avec { isVip: true, subscriptionStatus: 'ACTIVE', vipPlan: itemId }
+    if (itemType === 'subscription') {
+      const planDurationDays = itemId === 'annual' ? 365 : (itemId === 'weekly' ? 7 : 30);
+      const expiresDate = new Date(Date.now() + planDurationDays * 24 * 60 * 60 * 1000).toISOString();
+
+      await userRef.set({
+        isVip: true,
+        subscriptionStatus: 'ACTIVE',
+        vipPlan: itemId,
+        vipActivatedAt: nowIso,
+        subscription: {
+          planId: itemId,
+          status: 'ACTIVE',
+          activatedAt: nowIso,
+          expiresAt: expiresDate,
+          pricePaid: numericPrice,
+          paymentMethod: 'WALLET'
+        },
+        updatedAt: nowIso
+      }, { merge: true });
+    }
+
+    // d) Enregistre la transaction interne dans Firestore 'transactions'
+    const newTxRecord = {
+      id: transactionId,
+      transactionId: transactionId,
+      userId: userId,
+      userEmail: effectiveEmail,
+      userName: effectiveName || "Utilisateur",
+      type: itemType === 'document' ? "document_purchase" : "subscription_purchase",
+      typeLabel: itemType === 'document' ? "Achat Document" : "Abonnement VIP",
+      amount: numericPrice,
+      expectedAmount: numericPrice,
+      currency: "XOF",
+      status: "SUCCESS",
+      paymentMethod: "WALLET",
+      itemId: itemId,
+      docId: itemType === 'document' ? itemId : null,
+      targetDocId: itemType === 'document' ? itemId : null,
+      planId: itemType === 'subscription' ? itemId : null,
+      createdAt: nowIso,
+      completedAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    await db.collection('transactions').doc(transactionId).set(newTxRecord, { merge: true });
+
+    // e) Crée une notification dans 'users/{userId}/notifications'
+    try {
+      await userRef.collection('notifications').add({
+        title: "Achat réussi",
+        message: `Votre ${itemType === 'document' ? 'document' : 'abonnement'} a été activé avec succès !`,
+        createdAt: nowIso,
+        read: false
+      });
+    } catch (_notifErr) {}
+
+    // Mise à jour de la mémoire adminStore pour affichage immédiat
+    adminStore.transactions.unshift(newTxRecord);
+    const uStoreIdx = adminStore.users.findIndex(u => u.uid === userId);
+    if (uStoreIdx !== -1) {
+      adminStore.users[uStoreIdx].walletBalance = newComputedBalance;
+      adminStore.users[uStoreIdx].balance = newComputedBalance;
+      if (itemType === 'subscription') {
+        adminStore.users[uStoreIdx].isVip = true;
+        adminStore.users[uStoreIdx].subscriptionStatus = 'ACTIVE';
+      }
+    }
+
+    // f) Retourne { success: true }
+    return res.json({
+      success: true,
+      transactionId,
+      newBalance: newComputedBalance,
+      message: `Votre ${itemType === 'document' ? 'document' : 'abonnement'} a été activé avec succès !`
+    });
+  } catch (err: any) {
+    console.error('[API /api/wallet/pay Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Erreur lors du traitement du paiement par solde.'
+    });
+  }
+});
+
 // ==========================================
 // PAYMENT CONFIG & VERIFY (KKIAPAY / MOBILE MONEY)
 // ==========================================
@@ -2485,10 +2666,18 @@ async function handlePaymentConfirmation(params: {
 
   // Résolution et normalisation du type ('wallet' | 'document' | 'subscription')
   let resolvedType = String(type || '').trim().toLowerCase();
-  if (resolvedType !== 'wallet' && resolvedType !== 'document' && resolvedType !== 'subscription') {
-    if (docId) resolvedType = 'document';
-    else if (plan) resolvedType = 'subscription';
-    else resolvedType = 'wallet';
+  if (resolvedType.includes('wallet') || resolvedType.includes('recharge')) {
+    resolvedType = 'wallet';
+  } else if (resolvedType.includes('doc')) {
+    resolvedType = 'document';
+  } else if (resolvedType.includes('sub') || resolvedType.includes('vip')) {
+    resolvedType = 'subscription';
+  } else if (docId) {
+    resolvedType = 'document';
+  } else if (plan) {
+    resolvedType = 'subscription';
+  } else {
+    resolvedType = 'wallet';
   }
 
   if (!txId) {
@@ -2505,7 +2694,7 @@ async function handlePaymentConfirmation(params: {
     userEmail: userEmail || '',
     userName: userName || 'Client Dokya',
     userPhone: userPhone || '',
-    type: resolvedType,
+    type: resolvedType === 'wallet' ? 'wallet_recharge' : (resolvedType === 'document' ? 'document_purchase' : 'subscription_purchase'),
     typeLabel: resolvedType === 'document' ? 'Achat Document' : (resolvedType === 'subscription' ? 'Abonnement VIP' : 'Recharge Solde'),
     docId: docId || null,
     targetDocId: docId || null,
@@ -2704,27 +2893,36 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       metadata = {}
     } = req.body || {};
 
-    const rawAmount = amount !== undefined ? amount : (totalPrice !== undefined ? totalPrice : 1000);
-    const parsedAmount = Number(rawAmount);
-    const targetAmount = (!isNaN(parsedAmount) && parsedAmount > 0) ? Math.round(parsedAmount) : 1000;
+    const rawAmount = amount !== undefined ? amount : (totalPrice !== undefined ? totalPrice : 0);
+    const numericAmount = Number(rawAmount || 0);
+    
+    // Vérifie que numericAmount > 0
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Montant de paiement invalide. Le montant doit être supérieur à 0 FCFA.'
+      });
+    }
+
+    const targetAmount = Math.round(numericAmount);
     const targetDocId = String(docId || metadata.targetDocId || metadata.docId || '').trim();
     const targetPlanId = String(plan || planId || metadata.planId || metadata.plan || '').trim();
     
     // Résolution explicite du type : 'wallet' | 'document' | 'subscription'
     let resolvedType: 'wallet' | 'document' | 'subscription' = 'wallet';
     const rawType = String(type || metadata.type || '').trim().toLowerCase();
-    if (rawType === 'document' || rawType === 'subscription' || rawType === 'wallet') {
-      resolvedType = rawType;
-    } else if (targetDocId) {
+    if (rawType.includes('wallet') || rawType.includes('recharge')) {
+      resolvedType = 'wallet';
+    } else if (rawType.includes('doc') || targetDocId) {
       resolvedType = 'document';
-    } else if (targetPlanId) {
+    } else if (rawType.includes('sub') || rawType.includes('vip') || targetPlanId) {
       resolvedType = 'subscription';
     }
 
     const targetUserId = String(userId || metadata.userId || 'guest').trim() || 'guest';
     const targetUserEmail = String(userEmail || email || customer?.email || metadata?.userEmail || '').trim();
     const targetPhone = String(userPhone || customer?.phone || '00000000').trim() || '00000000';
-    const targetName = String(userName || customer?.name || 'Client Dokya').trim() || 'Client Dokya';
+    const targetName = String(userName || customer?.name || 'Utilisateur').trim() || 'Utilisateur';
     const targetPromoCode = String(promoCode || metadata.promoCode || '').trim().toUpperCase();
     const targetTitle = String(title || documentTitle || 'Document sans titre').trim();
     const targetContent = content || contentData || documentData || {};
@@ -2762,14 +2960,16 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
     }
 
     // 2. CRÉATION DE LA TRANSACTION DÈS LE CHECKOUT DANS LA COLLECTION FIRESTORE 'transactions'
+    const txType = resolvedType === 'wallet' ? 'wallet_recharge' : (resolvedType === 'document' ? 'document_purchase' : 'subscription_purchase');
     const pendingTxRecord = {
       id: transactionId,
       transactionId: transactionId,
       userId: targetUserId,
       userEmail: targetUserEmail,
-      userName: targetName,
+      userName: targetName || "Utilisateur",
       userPhone: targetPhone,
-      type: resolvedType,
+      type: txType,
+      resolvedType: resolvedType,
       typeLabel: resolvedType === 'document' ? 'Achat Document' : (resolvedType === 'subscription' ? 'Abonnement VIP' : 'Recharge Solde'),
       docId: targetDocId || null,
       targetDocId: targetDocId || null,
@@ -2788,7 +2988,7 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
 
     try {
       await db.collection('transactions').doc(transactionId).set(pendingTxRecord, { merge: true });
-      console.log(`[Money Fusion Checkout] Transaction PENDING enregistrée dans Firestore: ${transactionId} (${resolvedType}, ${targetAmount} FCFA)`);
+      console.log(`[Money Fusion Checkout] Transaction PENDING enregistrée dans Firestore: ${transactionId} (${txType}, ${targetAmount} FCFA)`);
     } catch (dbErr: any) {
       console.warn('[Money Fusion Checkout] Warning sauvegarde transaction PENDING dans Firestore:', dbErr?.message);
     }

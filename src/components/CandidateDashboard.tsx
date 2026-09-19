@@ -30,6 +30,7 @@ import { SubscriptionModal } from './SubscriptionModal';
 import { RechargeWalletModal } from './RechargeWalletModal';
 import { PaymentModal } from './PaymentModal';
 import { PaywallModal } from './PaywallModal';
+import { VictoryModal } from './VictoryModal';
 import { openDocumentWhatsAppShare } from '../utils/whatsappUtils';
 import { downloadElementAsPDF } from '../lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from '../lib/exportUtils';
@@ -91,6 +92,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   // Filter & Search state for Documents tab
   const [docFilterType, setDocFilterType] = useState<string>('all');
   const [docSearchQuery, setDocSearchQuery] = useState<string>('');
+  const [isVictoryModalOpen, setIsVictoryModalOpen] = useState(false);
+  const [victoryDocTitle, setVictoryDocTitle] = useState('');
 
   // Initializer helper for a clean, user-scoped profile
   const createCleanInitialProfile = (u?: FirebaseUser | null): CandidateProfile => ({
@@ -2507,10 +2510,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             if (previewDoc && previewDoc.id === targetId) {
               setPreviewDoc(prev => prev ? { ...prev, isPaid: true, unlocked: true } : null);
             }
+            setVictoryDocTitle(paywallTargetDoc.title || 'Document Professionnel');
+            setIsVictoryModalOpen(true);
           }
         }}
         onDownloadAction={(format) => {
           if (paywallTargetDoc) {
+            setVictoryDocTitle(paywallTargetDoc.title || 'Document Professionnel');
+            setIsVictoryModalOpen(true);
             if (format === 'pdf') {
               setPreviewDoc(paywallTargetDoc);
               setPreviewTab(paywallTargetDoc.generationMode === 'letter_only' ? 'letter' : 'cv');
@@ -2525,6 +2532,31 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         }}
         documentData={paywallTargetDoc}
         contentData={paywallTargetDoc?.content || paywallTargetDoc}
+      />
+
+      {/* 5. VICTORY CELEBRATION MODAL */}
+      <VictoryModal
+        isOpen={isVictoryModalOpen}
+        onClose={() => setIsVictoryModalOpen(false)}
+        documentTitle={victoryDocTitle || paywallTargetDoc?.title || 'Document Professionnel'}
+        onDownloadAction={(format) => {
+          if (paywallTargetDoc) {
+            if (format === 'pdf') {
+              setPreviewDoc(paywallTargetDoc);
+              setPreviewTab(paywallTargetDoc.generationMode === 'letter_only' ? 'letter' : 'cv');
+              setTimeout(handleModalDownloadPDF, 150);
+            } else {
+              handleDirectCardDocx(paywallTargetDoc);
+            }
+          }
+        }}
+        onViewDocumentAction={() => {
+          setIsVictoryModalOpen(false);
+          if (paywallTargetDoc) {
+            setPreviewDoc(paywallTargetDoc);
+          }
+        }}
+        actionButtonLabel="Voir le document"
       />
 
 
