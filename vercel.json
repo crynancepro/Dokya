@@ -44,6 +44,18 @@
       "destination": "/api/webhooks/moneyfusion"
     },
     {
+      "source": "/api/wallet/pay",
+      "destination": "/api/wallet/pay"
+    },
+    {
+      "source": "/api/promo/validate",
+      "destination": "/api/promo/validate"
+    },
+    {
+      "source": "/api/promo/valider",
+      "destination": "/api/promo/valider"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },

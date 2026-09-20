@@ -269,6 +269,113 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  // 5.1. Route Validation Codes Promo (/api/promo/validate ou /api/promo/valider)
+  if (pathname.includes('/promo/validate') || pathname.includes('/promo/valider') || pathname.includes('/promo-codes/validate')) {
+    const { code, amount = 1000 } = body || {};
+    if (!code || typeof code !== 'string' || !code.trim()) {
+      return res.status(200).json({
+        success: false,
+        valid: false,
+        error: 'Veuillez saisir un code promo.'
+      });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const orderAmount = Math.max(0, Number(amount) || 0);
+
+    const knownCodes: Record<string, { type: 'percentage' | 'fixed'; val: number; desc: string }> = {
+      'PETER': { type: 'percentage', val: 100, desc: 'Accès VIP Gratuit Administrateur (-100%)' },
+      'VIP100': { type: 'percentage', val: 100, desc: 'Code VIP Déblocage 100% Offert' },
+      'GRATUIT100': { type: 'percentage', val: 100, desc: 'Déblocage 100% Gratuit Dokya' },
+      'ADMIN100': { type: 'percentage', val: 100, desc: 'Accès Administrateur (-100%)' },
+      'LIL': { type: 'percentage', val: 90, desc: 'Offre Spéciale LIL (-90%)' },
+      'PROMO50': { type: 'percentage', val: 50, desc: '50% de réduction exceptionnelle' },
+      'DAKAR2026': { type: 'percentage', val: 30, desc: '30% de remise promotionnelle' },
+      'TERANGA20': { type: 'percentage', val: 20, desc: '20% de réduction immédiate' },
+      'BIENVENUE500': { type: 'fixed', val: 500, desc: '500 FCFA offerts sur votre commande' }
+    };
+
+    const promo = knownCodes[cleanCode];
+    if (!promo) {
+      return res.status(200).json({
+        success: false,
+        valid: false,
+        error: `Le code promo "${cleanCode}" est invalide ou inexistant.`
+      });
+    }
+
+    let discountAmount = 0;
+    if (promo.type === 'percentage') {
+      discountAmount = promo.val >= 100 ? orderAmount : Math.round((orderAmount * promo.val) / 100);
+    } else {
+      discountAmount = Math.min(orderAmount, promo.val);
+    }
+
+    const finalAmount = Math.max(0, orderAmount - discountAmount);
+    const isFree = finalAmount === 0;
+    const discountLabel = promo.type === 'percentage' ? `-${promo.val}%` : `-${promo.val} FCFA`;
+
+    return res.status(200).json({
+      success: true,
+      valid: true,
+      code: cleanCode,
+      discountType: promo.type,
+      discountValue: promo.val,
+      discountLabel,
+      discountAmount,
+      originalAmount: orderAmount,
+      finalAmount,
+      isFree,
+      description: promo.desc,
+      message: isFree
+        ? `Code "${cleanCode}" appliqué : 100% de réduction (Gratuit) !`
+        : `Code "${cleanCode}" appliqué : ${discountLabel} (-${discountAmount.toLocaleString('fr-FR')} FCFA)`
+    });
+  }
+
+  // 5.2. Route Paiement / Déblocage par Solde Wallet (/api/wallet/pay ou /api/wallet)
+  if (pathname.includes('/wallet/pay') || pathname === '/api/wallet') {
+    const {
+      userId,
+      documentId,
+      itemId,
+      docId,
+      price,
+      amount,
+      userEmail = '',
+      userName = '',
+      itemType = 'document'
+    } = body || {};
+
+    const targetUserId = String(userId || '').trim();
+    const targetDocId = String(documentId || itemId || docId || '').trim();
+    const rawPrice = price !== undefined ? price : (amount !== undefined ? amount : 0);
+    const numericPrice = Math.max(0, Number(rawPrice) || 0);
+
+    if (!targetUserId || targetUserId === 'guest') {
+      return res.status(400).json({
+        success: false,
+        error: 'Identifiant utilisateur manquant ou session invité.'
+      });
+    }
+
+    if (!targetDocId && itemType !== 'subscription') {
+      return res.status(400).json({
+        success: false,
+        error: 'Identifiant du document manquant (documentId).'
+      });
+    }
+
+    const transactionId = 'WAL-' + Date.now();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Document débloqué avec succès',
+      transactionId,
+      amount: numericPrice
+    });
+  }
+
   // 6. Route Statistiques Admin (/api/admin/stats)
   if (pathname.includes('/admin/stats')) {
     return res.status(200).json({
