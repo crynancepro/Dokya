@@ -498,6 +498,7 @@ export interface UserSubscription {
   autoRenew?: boolean;
   pricePaid?: number;
   paymentMethod?: string;
+  unlimitedDownloads?: boolean;
   documentsGeneratedCount?: number;
   receiptImage?: string;
   transactionReference?: string;

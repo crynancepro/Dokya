@@ -132,11 +132,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [selectedCurrency, setSelectedCurrency] = useState<'XOF' | 'EUR' | 'USD'>('XOF');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
-  // États checkout Money Fusion direct
-  const [processingPlanId, setProcessingPlanId] = useState<string | null>(null);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
-
   const currentUser = auth.currentUser;
+
+  const handlePlanClick = (_plan: PricingPlan) => {
+    if (currentUser) {
+      onGoToDashboard();
+    } else {
+      onGoToAuth('signup');
+    }
+  };
 
   // Calcul du prix et du sous-titre selon la devise choisie
   const getPlanPriceDisplay = (plan: PricingPlan) => {
@@ -163,48 +167,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       }
     } else {
       onGoToAuth('signup');
-    }
-  };
-
-  // Déclenchement automatisé du paiement Money Fusion direct
-  const handleMoneyFusionPlanCheckout = async (plan: PricingPlan) => {
-    setProcessingPlanId(plan.id);
-    setCheckoutError(null);
-
-    try {
-      const currentUid = currentUser?.uid || `guest_${Date.now()}`;
-      const currentUserName = (currentUser?.displayName || 'Client Dokya').trim();
-
-      const response = await fetch('/api/moneyfusion/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: plan.amount,
-          planId: plan.id,
-          plan: plan.id,
-          type: 'subscription',
-          userId: currentUid,
-          userPhone: (currentUser as any)?.phoneNumber || '',
-          userName: currentUserName
-        })
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Erreur lors de l\'initialisation de la session Money Fusion.');
-      }
-
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error('Lien de paiement Money Fusion indisponible.');
-      }
-    } catch (err: any) {
-      console.error('[Landing Money Fusion Error]:', err);
-      setCheckoutError(err.message || 'Impossible d\'ouvrir la passerelle de paiement sécurisée. Veuillez réessayer.');
-    } finally {
-      setProcessingPlanId(null);
     }
   };
 
@@ -854,26 +816,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <span>Tarification Claire &amp; Sans Surprise</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
-              Choisissez votre Formule &amp; Payez en 1-Clic
+              Choisissez votre Formule &amp; Débloquez avec votre Solde
             </h2>
             <p className="text-sm text-slate-400">
-              Règlement instantané sécurisé par Wave, Orange Money, MTN ou QR Code via Money Fusion.
+              Paiement 100% solde interne Dokya. Rechargez facilement votre solde via Money Fusion (Wave, Orange Money, MTN).
             </p>
           </div>
-
-          {/* Erreur de paiement le cas échéant */}
-          {checkoutError && (
-            <div className="p-4 rounded-2xl bg-rose-950/50 border border-rose-500/50 text-xs text-rose-300 flex items-center gap-2.5 max-w-2xl mx-auto">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-              <span>{checkoutError}</span>
-            </div>
-          )}
 
           {/* LES 3 OFFRES CLAIRES EN CARTES 3D TILT */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             
             {PRICING_PLANS.map((plan) => {
-              const isProcessing = processingPlanId === plan.id;
               const priceInfo = getPlanPriceDisplay(plan);
 
               return (
@@ -924,34 +877,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       </ul>
                     </div>
 
-                    {/* Bouton de déclenchement direct Money Fusion */}
+                    {/* Bouton de sélection et d'abonnement via solde */}
                     <div className="space-y-2.5 pt-2">
                       <button
                         type="button"
-                        onClick={() => handleMoneyFusionPlanCheckout(plan)}
-                        disabled={isProcessing}
-                        className={`w-full py-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        onClick={() => handlePlanClick(plan)}
+                        className={`w-full py-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 ${
                           plan.popular
                             ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-95 text-white shadow-blue-600/30'
                             : 'bg-slate-800 hover:bg-slate-700 text-white'
                         }`}
                       >
-                        {isProcessing ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin text-white" />
-                            <span>Connexion Money Fusion...</span>
-                          </>
-                        ) : (
-                          <>
-                            <CreditCard className="w-4 h-4 text-amber-300" />
-                            <span>{plan.ctaLabel}</span>
-                          </>
-                        )}
+                        <CreditCard className="w-4 h-4 text-amber-300" />
+                        <span>{currentUser ? `S'abonner avec mon solde (${plan.priceFormatted})` : `Commencer avec ${plan.title}`}</span>
                       </button>
 
                       <p className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1">
                         <Lock className="w-3 h-3 text-emerald-400" />
-                        <span>Money Fusion : Wave, OM, MTN, QR Code</span>
+                        <span>Règlement via solde interne • Recharge facile via Money Fusion</span>
                       </p>
                     </div>
 

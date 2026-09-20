@@ -1,5 +1,5 @@
 import React from 'react';
-import { DokyaPaymentModal } from './DokyaPaymentModal';
+import { PaywallModal } from './PaywallModal';
 import { CVFormData, AIOptimizedData, TransactionRecord } from '../types';
 
 export interface DocumentCheckoutWizardModalProps {
@@ -7,6 +7,7 @@ export interface DocumentCheckoutWizardModalProps {
   onClose: () => void;
   documentTitle: string;
   documentTypeLabel: string;
+  targetDocId?: string;
   formData?: CVFormData;
   aiData?: AIOptimizedData | null;
   price?: number;
@@ -23,6 +24,7 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
   onClose,
   documentTitle,
   documentTypeLabel,
+  targetDocId,
   price,
   userBalance = 0,
   userId,
@@ -32,23 +34,25 @@ export const DocumentCheckoutWizardModal: React.FC<DocumentCheckoutWizardModalPr
   onOpenRechargeModal
 }) => {
   return (
-    <DokyaPaymentModal
+    <PaywallModal
       isOpen={isOpen}
       onClose={onClose}
-      mode="document"
       documentTitle={documentTitle}
       documentTypeLabel={documentTypeLabel}
-      price={price}
+      targetDocId={targetDocId}
+      documentPrice={price}
       userBalance={userBalance}
       userId={userId}
-      onPaymentSuccess={(_method, tx) => {
-        if (tx && onSuccessTransaction) {
-          onSuccessTransaction(tx.newBalance ?? userBalance, tx);
+      onUnlocked={() => {
+        if (onSuccessTransaction) {
+          onSuccessTransaction(Math.max(0, userBalance - (price || 1000)), {} as TransactionRecord);
         }
       }}
       onOpenRechargeModal={onOpenRechargeModal}
-      onDownloadPDF={onDownloadPDF}
-      onDownloadDocx={onDownloadDocx}
+      onDownloadAction={(format) => {
+        if (format === 'docx' && onDownloadDocx) onDownloadDocx();
+        else if (onDownloadPDF) onDownloadPDF();
+      }}
     />
   );
 };

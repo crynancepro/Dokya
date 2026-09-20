@@ -524,11 +524,22 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
               <div className="pt-2">
                 <button
                   type="button"
-                  onClick={() => onSubscribePlan('monthly', 5000, 'Pass VIP Mensuel')}
+                  onClick={() => {
+                    const balance = profile?.balance ?? 0;
+                    if (balance < 5000) {
+                      onOpenRecharge();
+                    } else {
+                      onSubscribePlan('monthly', 5000, 'Pass VIP Mensuel');
+                    }
+                  }}
                   className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>Souscrire au Pass VIP Mensuel (5 000 F)</span>
+                  <span>
+                    {(profile?.balance ?? 0) < 5000 
+                      ? 'Solde insuffisant : Recharger mon solde' 
+                      : "S'abonner avec mon solde (5 000 FCFA)"}
+                  </span>
                 </button>
               </div>
             </div>

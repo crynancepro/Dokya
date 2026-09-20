@@ -29,6 +29,7 @@ import {
   HelpCircle,
   QrCode,
   Lock,
+  Unlock,
   BadgePercent,
   CheckCircle,
   Globe,
@@ -608,64 +609,42 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     }
   };
 
-  // Paiement Automatique Exclusif via Money Fusion Checkout (Wave, Orange Money, MTN, Moov, QR Code)
+  // Paiement Automatique Exclusif via Money Fusion Checkout (Uniquement pour la recharge du portefeuille)
   const handlePayWithMoneyFusion = async () => {
+    if (activeMode !== 'recharge') {
+      return handlePayWithWallet();
+    }
     setIsPaymentLoading(true);
     setErrorMessage(null);
 
     try {
       const user = auth.currentUser;
-      const checkoutType = mode === 'recharge' ? 'wallet' : (mode === 'subscription' ? 'subscription' : 'document');
-      const checkoutDocId = mode === 'document' ? (targetDocId || `DOC-${Date.now()}`) : '';
       const cleanAmount = Math.max(100, Math.round(Number(payablePrice) || 3000));
       const targetUserId = user?.uid || userId || 'guest';
       const targetUserName = user?.displayName || userName || 'Client Dokya';
       const targetPhone = senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : ((user as any)?.phoneNumber || '');
 
-      // 1. SAUVEGARDE DU DOCUMENT AVANT LE PAIEMENT (Résolution NOT_FOUND)
-      if (checkoutType === 'document' && checkoutDocId) {
-        try {
-          const docRef = doc(db, 'user_documents', checkoutDocId);
-          await setDoc(docRef, {
-            id: checkoutDocId,
-            docId: checkoutDocId,
-            userId: targetUserId,
-            title: documentTitle || "Document sans titre",
-            content: contentData || documentData || {},
-            isUnlocked: false,
-            status: "PENDING",
-            isPaid: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-          console.log(`[DokyaPaymentModal] Document sauvegardé dans user_documents/${checkoutDocId} (status: PENDING) avant redirection Money Fusion.`);
-        } catch (dbDocErr) {
-          console.warn('[DokyaPaymentModal] Erreur pré-sauvegarde document Firestore:', dbDocErr);
-        }
-      }
-
-      // 2. TRANSMISSION DU MONTANT ET DES MÉTADONNÉES DANS /api/moneyfusion/checkout
+      // Transmission du montant et des métadonnées dans /api/moneyfusion/checkout pour recharge
       const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: cleanAmount,
           totalPrice: cleanAmount,
-          docId: checkoutDocId,
-          planId: mode === 'subscription' ? (planId || 'monthly') : '',
-          plan: mode === 'subscription' ? (planId || 'monthly') : '',
-          type: checkoutType,
+          docId: '',
+          planId: '',
+          plan: '',
+          type: 'wallet',
           userId: targetUserId,
           userEmail: user?.email || userEmail || '',
           userPhone: targetPhone,
           userName: targetUserName,
-          title: documentTitle || "Document sans titre",
-          content: contentData || documentData || {},
+          title: "Recharge Dokya Wallet",
           personal_Info: [{
             userId: targetUserId,
-            docId: checkoutDocId || "",
-            type: checkoutType,
-            plan: mode === 'subscription' ? (planId || 'monthly') : '',
+            docId: "",
+            type: 'wallet',
+            plan: '',
             amount: cleanAmount
           }]
         })
@@ -1347,73 +1326,66 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 gap-3">
-                    {/* Money Fusion Checkout (Passerelle Unique Mobile Money & QR Code) */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMethod('moneyfusion')}
-                      className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${
-                        selectedMethod === 'moneyfusion'
-                          ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg ring-1 ring-blue-500'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                        <QrCode className="w-5 h-5 text-blue-400" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-1">
-                          <p className="text-sm font-black text-white flex items-center gap-2">
-                            <span>Money Fusion • Mobile Money & QR Code</span>
-                            <span className="text-[10px] bg-blue-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
-                              ⚡ Paiement Direct
-                            </span>
-                          </p>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">
-                          Paiement instantané par Mobile Money (<strong className="text-slate-200">Wave, Orange Money, MTN, Moov</strong>) ou scan de <strong className="text-slate-200">QR Code</strong>. Déblocage automatique en temps réel.
-                        </p>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">🌊 Wave</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN / Moov</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">📱 QR Code</span>
+                    {activeMode === 'recharge' ? (
+                      /* Mode Recharge : Passerelle Money Fusion exclusive */
+                      <div className="p-4 rounded-2xl border bg-blue-600/20 border-blue-500 text-white shadow-lg ring-1 ring-blue-500">
+                        <div className="flex items-start gap-3.5">
+                          <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                            <QrCode className="w-5 h-5 text-blue-400" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-1">
+                              <p className="text-sm font-black text-white flex items-center gap-2">
+                                <span>Recharge Money Fusion • Mobile Money &amp; QR</span>
+                                <span className="text-[10px] bg-blue-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
+                                  ⚡ Automatisé
+                                </span>
+                              </p>
+                            </div>
+                            <p className="text-xs text-slate-300 mt-1">
+                              Créditez votre portefeuille par Wave, Orange Money, MTN ou scan QR Code. Votre solde sera mis à jour en direct.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">🌊 Wave</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN / Moov</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">📱 QR Code</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </button>
-
-                    {/* Solde Dokya Wallet (if not recharging) */}
-                    {activeMode !== 'recharge' && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedMethod('wallet')}
-                        className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all cursor-pointer ${
-                          selectedMethod === 'wallet'
-                            ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-lg ring-1 ring-indigo-500'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                          <Wallet className={`w-5 h-5 ${hasEnoughBalance ? 'text-emerald-400' : 'text-slate-500'}`} />
+                    ) : (
+                      /* Mode Achat/Déblocage : Règlement 100% Solde Portefeuille Dokya */
+                      <div className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all ${
+                        hasEnoughBalance 
+                          ? 'bg-emerald-950/40 border-emerald-500/60 text-white shadow-lg' 
+                          : 'bg-amber-950/30 border-amber-500/40 text-slate-300'
+                      }`}>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                          hasEnoughBalance ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-amber-500/20 border border-amber-500/30'
+                        }`}>
+                          <Wallet className={`w-5 h-5 ${hasEnoughBalance ? 'text-emerald-400' : 'text-amber-400'}`} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between">
-                            <p className="text-sm font-black text-white">Solde Portefeuille Dokya</p>
-                            <span className={`text-xs font-mono font-bold ${hasEnoughBalance ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            <p className="text-sm font-black text-white">Votre Solde Dokya</p>
+                            <span className={`text-xs font-mono font-bold ${hasEnoughBalance ? 'text-emerald-400' : 'text-amber-400'}`}>
                               {safeBalance.toLocaleString('fr-FR')} FCFA
-                              {userCurrency !== 'XOF' && ` (≈ ${formatPrice(safeBalance)})`}
                             </span>
                           </div>
                           <p className="text-xs text-slate-400 mt-1">
-                            {hasEnoughBalance ? 'Déblocage instantané en 1 clic sans frais' : 'Solde insuffisant pour ce montant'}
+                            {hasEnoughBalance 
+                              ? 'Solde suffisant pour un déblocage immédiat.' 
+                              : 'Solde insuffisant pour ce montant. Une recharge est requise.'}
                           </p>
                         </div>
-                      </button>
+                      </div>
                     )}
                   </div>
 
-                  {/* Action Button: Money Fusion or Wallet Direct Pay */}
+                  {/* Boutons d'action contextuels */}
                   <div className="pt-2">
-                    {selectedMethod === 'moneyfusion' ? (
+                    {activeMode === 'recharge' ? (
                       <button
                         type="button"
                         disabled={isPaymentLoading}
@@ -1429,23 +1401,50 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                           <>
                             <QrCode className="w-4 h-4" />
                             <span>
-                              Payer via Money Fusion ({payablePrice.toLocaleString('fr-FR')} FCFA{userCurrency !== 'XOF' ? ` ≈ ${formatPrice(payablePrice)}` : ''})
+                              Recharger via Money Fusion ({payablePrice.toLocaleString('fr-FR')} FCFA)
                             </span>
                             <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    ) : hasEnoughBalance ? (
+                      <button
+                        type="button"
+                        disabled={isPaymentLoading}
+                        onClick={async () => {
+                          setIsPaymentLoading(true);
+                          try {
+                            await handlePayWithWallet();
+                          } finally {
+                            setIsPaymentLoading(false);
+                          }
+                        }}
+                        className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm transition-all shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      >
+                        {isPaymentLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Déblocage en cours...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Unlock className="w-4 h-4 text-amber-300" />
+                            <span>
+                              Débloquer avec mon solde ({payablePrice.toLocaleString('fr-FR')} FCFA)
+                            </span>
                           </>
                         )}
                       </button>
                     ) : (
                       <button
                         type="button"
-                        disabled={!hasEnoughBalance}
-                        onClick={handlePayWithWallet}
-                        className="w-full py-4 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
+                        onClick={() => {
+                          if (onOpenRechargeModal) onOpenRechargeModal();
+                        }}
+                        className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-sm transition-all shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                       >
-                        <Check className="w-4 h-4" />
-                        <span>
-                          Confirmer avec mon solde ({payablePrice.toLocaleString('fr-FR')} FCFA{userCurrency !== 'XOF' ? ` ≈ ${formatPrice(payablePrice)}` : ''})
-                        </span>
+                        <span>⚡ Solde insuffisant : Recharger mon solde</span>
+                        <ArrowRight className="w-4 h-4" />
                       </button>
                     )}
                   </div>

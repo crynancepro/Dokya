@@ -2051,10 +2051,15 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         documentTitle={paymentDocTitle}
         documentTypeLabel={paymentDocTypeLabel}
         targetDocId={currentDocId}
+        documentPrice={paymentPrice}
         userBalance={userBalance}
         userId={currentUser?.uid}
         userEmail={currentUser?.email || undefined}
         userName={currentUser?.displayName || undefined}
+        onOpenRechargeModal={() => {
+          setIsPaymentModalOpen(false);
+          setIsRechargeModalOpen(true);
+        }}
         onUnlocked={() => {
           setIsCurrentDocPaid(true);
           setVictoryDocTitle(paymentDocTitle || 'Document Professionnel');

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { 
-  X, Crown, Briefcase, Zap, CheckCircle2, ShieldCheck, 
-  Check, Loader2, Sparkles, AlertCircle, Star, Lock,
-  CreditCard, ArrowRight, Smartphone, QrCode, Tag, Gift, Trash2
+  X, CheckCircle2, ShieldCheck, 
+  Loader2, Sparkles, AlertCircle, Lock,
+  Unlock, Wallet, ArrowUpRight, Tag, Gift, Trash2, FileText
 } from 'lucide-react';
 import { 
   recordTransactionEverywhere, 
@@ -16,77 +16,6 @@ import {
 import { TransactionRecord } from '../types';
 import { usePricing } from '../contexts/PricingContext';
 
-export type PaywallFormulaId = 'single' | 'vip_career' | 'business';
-
-export interface PaywallFormula {
-  id: PaywallFormulaId;
-  title: string;
-  subtitle: string;
-  price: number;
-  priceFormatted: string;
-  badge?: string;
-  badgeColor?: string;
-  icon: any;
-  popular?: boolean;
-  features: string[];
-  ctaLabel: string;
-}
-
-export const PAYWALL_FORMULAS: PaywallFormula[] = [
-  {
-    id: 'single',
-    title: "Paiement à l'acte",
-    subtitle: "Déblocage immédiat de votre document actif",
-    price: 1000,
-    priceFormatted: "1 000 F CFA",
-    icon: Zap,
-    features: [
-      "Téléchargement immédiat du document en cours",
-      "Formats haute résolution PDF & Word (.docx) éditables",
-      "Sans filigrane, mise en page vectorielle A4",
-      "Conservation & archivage permanent dans votre espace"
-    ],
-    ctaLabel: "Paiement à l'acte (1 000 F)"
-  },
-  {
-    id: 'vip_career',
-    title: "Pass VIP Carrière",
-    subtitle: "Accès illimité pour booster vos recrutements",
-    price: 2500,
-    priceFormatted: "2 500 F CFA",
-    badge: "Populaire Candidats 🔥",
-    badgeColor: "bg-indigo-500/20 text-indigo-300 border-indigo-500/40",
-    popular: true,
-    icon: Crown,
-    features: [
-      "Tous les modèles de CV professionnels certifiés ATS",
-      "Génération illimitée de lettres de motivation",
-      "Simulateur & Coaching d'Entretien RH par IA",
-      "Téléchargements illimités PDF & Word pendant 30 jours",
-      "Assistance prioritaire Dokya Carrière"
-    ],
-    ctaLabel: "Pass VIP Carrière (2 500 F)"
-  },
-  {
-    id: 'business',
-    title: "Pass Business",
-    subtitle: "Facturation pro & gestion commerciale complète",
-    price: 5000,
-    priceFormatted: "5 000 F CFA",
-    badge: "Entreprises & Freelances 💼",
-    badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-    icon: Briefcase,
-    features: [
-      "Factures & Devis illimités conformes normes OHADA / UEMOA",
-      "Partage direct WhatsApp 1-Clic et relances clients",
-      "Suivi des encaissements, créances et états de compte",
-      "Comprend tout le Pass VIP Carrière (CV + Lettres)",
-      "Multi-entreprises & mentions légales professionnelles"
-    ],
-    ctaLabel: "Pass Business (5 000 F)"
-  }
-];
-
 export interface PaywallModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -94,6 +23,7 @@ export interface PaywallModalProps {
   documentTypeLabel?: string;
   targetDocId?: string;
   targetFormat?: 'pdf' | 'docx';
+  documentPrice?: number;
   userBalance?: number;
   userId?: string;
   userEmail?: string;
@@ -113,6 +43,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   documentTypeLabel = 'Document',
   targetDocId,
   targetFormat = 'pdf',
+  documentPrice,
   userBalance = 0,
   userId,
   userEmail,
@@ -124,18 +55,28 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   documentData,
   contentData
 }) => {
-  // Selected formula (1 000 F, 2 500 F, or 5 000 F XOF)
-  const [selectedPlanId, setSelectedPlanId] = useState<PaywallFormulaId>('single');
-  const selectedFormula = PAYWALL_FORMULAS.find(f => f.id === selectedPlanId) || PAYWALL_FORMULAS[0];
+  const { validatePromoCode, appliedGlobalPromo, setAppliedGlobalPromo, pricing } = usePricing();
 
-  // Loading & error states
-  const [isPaymentLoading, setIsPaymentLoading] = useState<boolean>(false);
+  // Resolve base price for the document
+  const resolveBasePrice = () => {
+    if (documentPrice && documentPrice > 0) return documentPrice;
+    const labelLower = (documentTypeLabel || '').toLowerCase();
+    if (labelLower.includes('ebook') || labelLower.includes('livre')) return pricing?.ebookPrice ?? 3000;
+    if (labelLower.includes('business') || labelLower.includes('pack')) return pricing?.businessPackPrice ?? 1499;
+    if (labelLower.includes('lettre')) return pricing?.letterOnlyPrice ?? 1000;
+    if (labelLower.includes('devis')) return pricing?.devisPrice ?? 1000;
+    if (labelLower.includes('facture')) return pricing?.facturePrice ?? 1000;
+    return pricing?.cvOnlyPrice ?? 1000;
+  };
+
+  const basePrice = resolveBasePrice();
+
+  // States
   const [isPayingWithWallet, setIsPayingWithWallet] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isApproved, setIsApproved] = useState<boolean>(false);
 
-  // Promo code integration
-  const { validatePromoCode, appliedGlobalPromo, setAppliedGlobalPromo } = usePricing();
+  // Promo code
   const [promoInput, setPromoInput] = useState<string>('');
   const [isCheckingPromo, setIsCheckingPromo] = useState<boolean>(false);
   const [appliedPromo, setAppliedPromo] = useState<{
@@ -152,7 +93,6 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
 
   // Price calculations with promo
-  const basePrice = selectedFormula.price;
   let promoDiscount = 0;
   if (appliedPromo) {
     if (appliedPromo.discountType === 'percentage') {
@@ -165,6 +105,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   }
   const payablePrice = Math.max(0, basePrice - promoDiscount);
   const isFreeWithPromo = Boolean(appliedPromo && payablePrice === 0);
+  const hasSufficientBalance = userBalance >= payablePrice || isFreeWithPromo;
 
   const userProfileUnsubRef = useRef<(() => void) | null>(null);
 
@@ -173,7 +114,6 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     if (isOpen) {
       setErrorMessage(null);
       setIsApproved(false);
-      setIsPaymentLoading(false);
       setIsPayingWithWallet(false);
       if (appliedGlobalPromo && !appliedPromo) {
         handleApplyPromo(appliedGlobalPromo.code);
@@ -266,58 +206,24 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     setPromoError(null);
   };
 
-  // Free promo unlock handler
-  const handleFreePromoUnlock = async () => {
-    setIsPaymentLoading(true);
-    setErrorMessage(null);
-
-    const currentUid = (userId && userId !== 'guest') ? userId : (auth.currentUser?.uid || 'guest');
-    const nowIso = new Date().toISOString();
-    const txId = `TX-FREE-PROMO-${Date.now()}`;
-
+  // Trigger unlock when approved
+  const triggerUnlockSuccess = () => {
+    setIsApproved(true);
     try {
-      const tx: TransactionRecord = {
-        id: txId,
-        transactionId: txId,
-        userId: currentUid,
-        userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
-        userName: userName || auth.currentUser?.displayName || 'Client Dokya',
-        type: selectedFormula.id === 'single' ? 'DIRECT_PURCHASE' : 'PASS_VIP',
-        amount: 0,
-        expectedAmount: 0,
-        currency: 'FCFA',
-        description: `Déblocage gratuit avec code ${appliedPromo?.code} (${selectedFormula.title})`,
-        status: 'APPROVED',
-        aiStatus: 'COMPLETED',
-        paymentMethod: 'free',
-        targetDocId: targetDocId,
-        unlockedDocId: targetDocId,
-        createdAt: nowIso,
-        updatedAt: nowIso
-      };
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+    } catch (_cErr) {}
 
-      await recordTransactionEverywhere(tx);
-
-      if (appliedPromo?.code) {
-        fetch('/api/promo/redeem', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code: appliedPromo.code,
-            userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
-            finalAmount: 0,
-            documentTitle: selectedFormula.title
-          })
-        }).catch(() => {});
+    setTimeout(() => {
+      onUnlocked();
+      if (onDownloadAction && targetFormat) {
+        onDownloadAction(targetFormat);
       }
-
-      triggerUnlockSuccess();
-    } catch (err: any) {
-      console.error('[Free Promo Unlock Error]:', err);
-      setErrorMessage("Erreur lors de l'application du déblocage gratuit.");
-    } finally {
-      setIsPaymentLoading(false);
-    }
+      onClose();
+    }, 1200);
   };
 
   // Listen to profile updates (e.g. if user is credited or unlocked in background)
@@ -343,22 +249,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     };
   }, [isOpen, userId, targetDocId]);
 
-  // Trigger unlock when approved
-  const triggerUnlockSuccess = () => {
-    setIsApproved(true);
-    setTimeout(() => {
-      onUnlocked();
-      if (onDownloadAction && targetFormat) {
-        onDownloadAction(targetFormat);
-      }
-      onClose();
-    }, 1800);
-  };
-
-  // 1. Pay with wallet balance if sufficient
+  // Execute unlock with wallet balance via /api/wallet/pay
   const handlePayWithWallet = async () => {
-    if (userBalance < payablePrice) {
-      setErrorMessage(`Votre solde (${userBalance.toLocaleString('fr-FR')} F CFA) est insuffisant pour cette formule (Requis : ${payablePrice.toLocaleString('fr-FR')} F CFA).`);
+    if (!hasSufficientBalance) {
+      setErrorMessage(`Votre solde (${userBalance.toLocaleString('fr-FR')} FCFA) est insuffisant pour débloquer ce document (Requis : ${payablePrice.toLocaleString('fr-FR')} FCFA).`);
       return;
     }
 
@@ -367,20 +261,42 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
     const currentUid = (userId && userId !== 'guest') ? userId : (auth.currentUser?.uid || 'guest');
     const nowIso = new Date().toISOString();
+    const effectiveDocId = targetDocId || `DOC-${Date.now()}`;
     const txId = `TX-WALLET-${Date.now()}`;
 
     try {
-      const isDoc = selectedFormula.id === 'single';
-      const itemType = isDoc ? 'document' : 'subscription';
-      const itemId = isDoc ? (targetDocId || `doc-${Date.now()}`) : selectedFormula.id;
+      // 1. Pre-save document to Firestore user_documents if not already existing
+      try {
+        const fullContent = contentData || documentData || {};
+        const docRef = doc(db, 'user_documents', effectiveDocId);
+        await setDoc(docRef, {
+          id: effectiveDocId,
+          docId: effectiveDocId,
+          userId: currentUid,
+          title: documentTitle || "Document Professionnel",
+          content: fullContent,
+          formData: fullContent?.formData || null,
+          aiData: fullContent?.aiData || null,
+          businessDocData: fullContent?.businessDocData || null,
+          ebookData: fullContent?.ebookData || null,
+          generationMode: fullContent?.generationMode || 'cv_only',
+          isUnlocked: false,
+          status: "PENDING",
+          isPaid: false,
+          updatedAt: nowIso
+        }, { merge: true });
+      } catch (dbErr) {
+        console.warn('[PaywallModal pre-save document warn]:', dbErr);
+      }
 
+      // 2. Call server-side /api/wallet/pay
       const payRes = await fetch('/api/wallet/pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: currentUid,
-          itemType,
-          itemId,
+          itemType: 'document',
+          itemId: effectiveDocId,
           price: payablePrice,
           userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
           userName: userName || auth.currentUser?.displayName || 'Client Dokya'
@@ -396,29 +312,31 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         throw new Error(payData.error || 'Erreur lors du paiement par solde.');
       }
 
+      // 3. Record transaction in client Firestore for instant reactivity
       const tx: TransactionRecord = {
         id: payData.transactionId || txId,
         transactionId: payData.transactionId || txId,
         userId: currentUid,
         userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
         userName: userName || auth.currentUser?.displayName || 'Client Dokya',
-        type: selectedFormula.id === 'single' ? 'DIRECT_PURCHASE' : 'PASS_VIP',
+        type: 'DIRECT_PURCHASE',
         amount: -payablePrice,
         expectedAmount: payablePrice,
         currency: 'FCFA',
         promoCode: appliedPromo?.code || undefined,
-        description: `Règlement ${selectedFormula.title}${appliedPromo ? ` [Code: ${appliedPromo.code}]` : ''} (Débit solde)`,
+        description: `Déblocage document "${documentTitle}" (Débit solde interne)`,
         status: 'SUCCESS',
         aiStatus: 'COMPLETED',
-        paymentMethod: 'wallet',
-        targetDocId: targetDocId,
-        unlockedDocId: targetDocId,
+        paymentMethod: 'WALLET',
+        targetDocId: effectiveDocId,
+        unlockedDocId: effectiveDocId,
         createdAt: nowIso,
         updatedAt: nowIso
       };
 
       await recordTransactionEverywhere(tx);
 
+      // Redeem promo if any
       if (appliedPromo?.code) {
         fetch('/api/promo/redeem', {
           method: 'POST',
@@ -427,23 +345,16 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
             code: appliedPromo.code,
             userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
             finalAmount: payablePrice,
-            documentTitle: selectedFormula.title
+            documentTitle
           })
         }).catch(() => {});
       }
 
+      // Update balance locally
       const newBal = payData.newBalance ?? Math.max(0, userBalance - payablePrice);
       if (onBalanceUpdated) {
         onBalanceUpdated(newBal);
       }
-
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-      } catch (_cErr) {}
 
       triggerUnlockSuccess();
     } catch (err: any) {
@@ -454,127 +365,29 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     }
   };
 
-  // 2. SOUMISSION DU PAIEMENT EN LIGNE (Money Fusion Exclusif)
-  const handleCheckoutSubmit = async () => {
-    setIsPaymentLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const currentUid = (userId && userId !== 'guest') ? userId : (auth.currentUser?.uid || 'guest');
-      const currentUserName = (userName || auth.currentUser?.displayName || 'Client Dokya').trim();
-      const user = auth.currentUser;
-
-      // Requête POST vers le backend local /api/moneyfusion/checkout
-      const isSubFormula = selectedFormula.id === 'vip_career' || selectedFormula.id === 'business';
-      const checkoutType = isSubFormula ? 'subscription' : 'document';
-      const checkoutPlanId = selectedFormula.id === 'vip_career' ? 'PASS_VIP' : (selectedFormula.id === 'business' ? 'PASS_BUSINESS' : '');
-      const checkoutDocId = selectedFormula.id === 'single' ? (targetDocId || `DOC-${Date.now()}`) : (targetDocId || '');
-
-      const cleanAmount = Math.max(100, Math.round(Number(payablePrice) || 1000));
-      const fullContent = contentData || documentData || {};
-
-      // 1. SAUVEGARDE DU DOCUMENT AVANT LE PAIEMENT (Résolution NOT_FOUND) :
-      // Dès que l'utilisateur clique sur "Payer" ou "Débloquer", crée IMPÉRATIVEMENT le document
-      // dans la collection Firestore 'user_documents' AVANT d'ouvrir le lien Money Fusion
-      if (checkoutType === 'document' && checkoutDocId) {
-        try {
-          const docRef = doc(db, 'user_documents', checkoutDocId);
-          await setDoc(docRef, {
-            id: checkoutDocId,
-            docId: checkoutDocId,
-            userId: user?.uid || currentUid,
-            title: documentTitle || "Document sans titre",
-            content: fullContent,
-            formData: fullContent?.formData || null,
-            aiData: fullContent?.aiData || null,
-            businessDocData: fullContent?.businessDocData || null,
-            ebookData: fullContent?.ebookData || null,
-            generationMode: fullContent?.generationMode || 'cv_only',
-            isUnlocked: false,
-            status: "PENDING",
-            isPaid: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-          console.log(`[PaywallModal] Document sauvegardé dans user_documents/${checkoutDocId} (status: PENDING) avant redirection Money Fusion.`);
-        } catch (dbDocErr) {
-          console.warn('[PaywallModal] Erreur pré-sauvegarde document Firestore:', dbDocErr);
-        }
-      }
-
-      // 2. TRANSMISSION DU MONTANT ET DES MÉTADONNÉES DANS /api/moneyfusion/checkout
-      const response = await fetch('/api/moneyfusion/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: cleanAmount,
-          totalPrice: cleanAmount,
-          docId: checkoutDocId,
-          planId: checkoutPlanId,
-          plan: checkoutPlanId,
-          type: checkoutType,
-          promoCode: appliedPromo?.code || '',
-          userId: user?.uid || currentUid,
-          userEmail: user?.email || userEmail || '',
-          userPhone: (user as any)?.phoneNumber || '',
-          userName: user?.displayName || currentUserName,
-          title: documentTitle || "Document sans titre",
-          content: fullContent,
-          personal_Info: [{
-            userId: user?.uid || currentUid,
-            docId: checkoutDocId || "",
-            type: checkoutType,
-            plan: checkoutPlanId || "",
-            amount: cleanAmount
-          }]
-        })
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Erreur lors de la création de la session de paiement Money Fusion.');
-      }
-
-      // Redirection vers la propriété 'url' renvoyée par le backend
-      if (data.url) {
-        window.location.href = data.url;
-        return;
-      } else {
-        throw new Error("L'URL de paiement retournée par Money Fusion est indisponible.");
-      }
-    } catch (err: any) {
-      console.error('[Money Fusion Checkout Error]:', err);
-      setErrorMessage(err.message || 'Impossible de se connecter à la passerelle Money Fusion.');
-    } finally {
-      setIsPaymentLoading(false);
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in overflow-y-auto">
-      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[94vh]">
+      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden my-auto flex flex-col animate-in zoom-in-95 duration-200">
         
-        {/* Top Header */}
-        <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border-b border-slate-800 flex items-center justify-between gap-4">
+        {/* Header */}
+        <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-indigo-950/50 to-slate-900 border-b border-slate-800 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-inner">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 shadow-inner">
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
                 <h3 className="text-base sm:text-lg font-black text-white">
                   Débloquer mon Document
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span>Paiement Sécurisé Money Fusion</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Solde 100% Interne
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5 truncate max-w-md sm:max-w-lg">
-                {documentTitle} ({documentTypeLabel}) • Export HD sans filigrane
+              <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xs sm:max-w-sm">
+                {documentTitle} ({documentTypeLabel})
               </p>
             </div>
           </div>
@@ -582,415 +395,204 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800/80 hover:bg-slate-700 transition-colors cursor-pointer shrink-0"
-            title="Fermer"
+            className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800/80 hover:bg-slate-700 transition-all cursor-pointer shrink-0"
+            aria-label="Fermer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-6">
-
-          {/* APPROVED STATE SUCCESS BANNER */}
-          {isApproved ? (
-            <div className="p-8 text-center space-y-4 bg-emerald-950/40 border border-emerald-500/40 rounded-3xl animate-in zoom-in-95">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20 animate-bounce">
-                <CheckCircle2 className="w-10 h-10" />
+        <div className="p-5 sm:p-6 space-y-5">
+          
+          {/* Document Summary Card */}
+          <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                <FileText className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-lg sm:text-xl font-black text-white">Paiement Validé & Approuvé !</h4>
-                <p className="text-sm text-emerald-200 mt-1">
-                  Votre document est débloqué. Le téléchargement {targetFormat.toUpperCase()} démarre automatiquement...
+                <h4 className="text-xs font-bold text-slate-200">
+                  Export PDF & Word (.docx) Haute Définition
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Sans filigrane, prêt à l'emploi et conservé à vie
                 </p>
               </div>
-              <div className="flex items-center justify-center gap-2 text-xs font-mono text-slate-400">
-                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-                <span>Génération du fichier haute définition en cours...</span>
-              </div>
             </div>
-          ) : (
-            <>
-              {/* Solde Portefeuille Information Bar (si le candidat dispose de crédits) */}
-              {userBalance > 0 && (
-                <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
-                      <CreditCard className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-xs text-slate-400">Votre Solde Portefeuille :</span>
-                      <p className="text-sm font-black text-white font-mono">{userBalance.toLocaleString('fr-FR')} F CFA</p>
-                    </div>
-                  </div>
-
-                  {userBalance >= selectedFormula.price ? (
-                    <button
-                      type="button"
-                      onClick={handlePayWithWallet}
-                      disabled={isPayingWithWallet}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-                    >
-                      {isPayingWithWallet ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Débit du solde...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="w-3.5 h-3.5 text-amber-300" />
-                          <span>Payer avec mon solde ({selectedFormula.priceFormatted})</span>
-                        </>
-                      )}
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-amber-300 font-medium">
-                        Solde insuffisant
-                      </span>
-                      {onOpenRechargeModal && (
-                        <button
-                          type="button"
-                          onClick={onOpenRechargeModal}
-                          className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all cursor-pointer active:scale-95"
-                        >
-                          Recharger mon solde
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* LES 3 FORMULES : SÉLECTION DYNAMIQUE */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Star className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Choisissez votre formule</span>
-                  </label>
-                  <span className="text-[11px] text-slate-400">3 options sans engagement</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                  {PAYWALL_FORMULAS.map((formula) => {
-                    const isSelected = selectedPlanId === formula.id;
-                    const Icon = formula.icon;
-
-                    return (
-                      <div
-                        key={formula.id}
-                        onClick={() => setSelectedPlanId(formula.id)}
-                        className={`relative rounded-2xl p-4 transition-all cursor-pointer border flex flex-col justify-between ${
-                          isSelected
-                            ? 'bg-gradient-to-b from-indigo-950/60 to-slate-900 border-indigo-500 shadow-xl shadow-indigo-500/10 ring-2 ring-indigo-500/30'
-                            : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60'
-                        }`}
-                      >
-                        {formula.badge && (
-                          <span className={`absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[10px] font-black border shadow-sm ${formula.badgeColor}`}>
-                            {formula.badge}
-                          </span>
-                        )}
-
-                        <div className="space-y-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                              isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'
-                            }`}>
-                              <Icon className="w-4 h-4" />
-                            </div>
-                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                              isSelected ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-700'
-                            }`}>
-                              {isSelected && <Check className="w-3 h-3" />}
-                            </div>
-                          </div>
-
-                          <div>
-                            <h4 className="text-sm font-black text-white">{formula.title}</h4>
-                            <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{formula.subtitle}</p>
-                          </div>
-
-                          <div className="pt-1">
-                            <span className="text-lg font-black text-white font-mono">{formula.priceFormatted}</span>
-                            {formula.id !== 'single' && (
-                              <span className="text-[10px] text-slate-400 ml-1">/ 30 jours</span>
-                            )}
-                          </div>
-
-                          <ul className="space-y-1.5 pt-2 border-t border-slate-800/80 text-[11px] text-slate-300">
-                            {formula.features.map((feat, idx) => (
-                              <li key={idx} className="flex items-start gap-1.5">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                                <span className="line-clamp-2">{feat}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* CHOIX DU MOYEN DE PAIEMENT DANS LE MODAL : Passerelle 1 vs Passerelle 2 */}
-              <div className="pt-2 space-y-4">
-                
-                {/* Error Banner */}
-                {errorMessage && (
-                  <div className="p-3.5 bg-rose-950/50 border border-rose-500/50 rounded-2xl text-xs text-rose-300 flex items-center gap-2.5 animate-in fade-in">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                    <span>{errorMessage}</span>
-                  </div>
-                )}
-
-                {/* CODE PROMO & RÉDUCTIONS */}
-                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <Tag className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Code Promo / Coupon de Réduction</span>
-                    </label>
-                    {appliedPromo && (
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        {appliedPromo.discountLabel} ACTIF
-                      </span>
-                    )}
-                  </div>
-
-                  {appliedPromo ? (
-                    <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Gift className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-white truncate">
-                            Code <span className="font-mono text-emerald-300">{appliedPromo.code}</span> appliqué !
-                          </p>
-                          <p className="text-[11px] text-emerald-400/90 truncate">
-                            {appliedPromo.message}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleRemovePromo}
-                        className="px-2.5 py-1 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded-lg flex items-center gap-1 transition-colors shrink-0"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Retirer</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={promoInput}
-                          onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleApplyPromo();
-                            }
-                          }}
-                          placeholder="Ex: PROMO50, VIP100..."
-                          className="flex-1 bg-slate-900 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-white placeholder-slate-500 text-xs px-3 py-2.5 rounded-xl uppercase font-mono tracking-wider transition-all"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleApplyPromo()}
-                          disabled={isCheckingPromo || !promoInput.trim()}
-                          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-md shadow-amber-500/10 cursor-pointer"
-                        >
-                          {isCheckingPromo ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Check className="w-3.5 h-3.5" />
-                          )}
-                          <span>Appliquer</span>
-                        </button>
-                      </div>
-
-                      {/* Suggestions rapides */}
-                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                        <span className="text-[10px] text-slate-400">Suggestions :</span>
-                        {['PROMO50', 'DAKAR2026', 'TERANGA20', 'VIP100'].map((sug) => (
-                          <button
-                            key={sug}
-                            type="button"
-                            onClick={() => handleApplyPromo(sug)}
-                            className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-amber-500/20 hover:text-amber-300 hover:border-amber-500/40 border border-slate-700 transition-colors cursor-pointer"
-                          >
-                            {sug}
-                          </button>
-                        ))}
-                      </div>
-
-                      {promoError && (
-                        <p className="text-[11px] text-rose-400 flex items-center gap-1 animate-in fade-in">
-                          <AlertCircle className="w-3 h-3 shrink-0" />
-                          <span>{promoError}</span>
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* PASSERELLE UNIQUE : Money Fusion */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <CreditCard className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Passerelle de paiement sécurisée</span>
-                    </label>
-                    <span className="text-[11px] text-emerald-400 font-bold">100% Sécurisé & Automatisé</span>
-                  </div>
-
-                  <div className="p-4 rounded-2xl border border-blue-500/40 bg-gradient-to-br from-blue-950/40 via-slate-900 to-slate-900 flex items-start gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <QrCode className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-sm font-black text-white">Money Fusion • Mobile Money & QR Code</span>
-                        <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                      </div>
-                      <p className="text-xs text-slate-300 mt-1">
-                        Paiement rapide et déblocage instantané via votre compte Mobile Money ou par scan direct de code QR.
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800/60 font-medium">🌊 Wave</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-800/60 font-medium">🍊 Orange Money</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-950 text-yellow-300 border border-yellow-800/60 font-medium">🟡 MTN / Moov</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800/60 font-medium">📱 QR Code Express</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Main Action Box */}
-                <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950/30 border border-slate-800 space-y-4 shadow-xl">
-                  
-                  {/* Récapitulatif dynamique de la sélection */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80 text-xs">
-                    <div>
-                      <span className="text-slate-400">Formule : </span>
-                      <strong className="text-white font-bold">{selectedFormula.title}</strong>
-                      {appliedPromo && (
-                        <>
-                          <span className="text-slate-500 mx-1.5">•</span>
-                          <span className="text-emerald-400 font-bold">Code {appliedPromo.code} ({appliedPromo.discountLabel})</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {promoDiscount > 0 && (
-                        <span className="text-xs text-slate-400 line-through font-mono">
-                          {basePrice.toLocaleString('fr-FR')} F
-                        </span>
-                      )}
-                      <span className="text-slate-400">Total :</span>
-                      <span className={`text-base font-black font-mono ${isFreeWithPromo ? 'text-emerald-400 font-extrabold' : 'text-emerald-400'}`}>
-                        {isFreeWithPromo ? '0 FCFA (GRATUIT)' : `${payablePrice.toLocaleString('fr-FR')} F CFA`}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Boutons d'action */}
-                  {isFreeWithPromo ? (
-                    <button
-                      type="button"
-                      onClick={handleFreePromoUnlock}
-                      disabled={isPaymentLoading}
-                      className="w-full py-4 px-6 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-3 shadow-lg transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed group bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/25"
-                    >
-                      {isPaymentLoading ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin text-white" />
-                          <span>Validation du déblocage en cours...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-                          <span>Débloquer Gratuitement avec {appliedPromo?.code} (0 FCFA)</span>
-                          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1 text-white" />
-                        </>
-                      )}
-                    </button>
-                  ) : (
-                    <div className="space-y-2.5">
-                      <button
-                        type="button"
-                        onClick={handleCheckoutSubmit}
-                        disabled={isPaymentLoading}
-                        className="w-full py-4 px-6 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-3 shadow-lg transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed group bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white shadow-blue-600/25"
-                      >
-                        {isPaymentLoading ? (
-                          <>
-                            <Loader2 className="w-5 h-5 animate-spin text-white" />
-                            <span>Redirection vers Money Fusion en cours...</span>
-                          </>
-                        ) : (
-                          <>
-                            <QrCode className="w-5 h-5 text-white" />
-                            <span>Payer via Money Fusion ({payablePrice.toLocaleString('fr-FR')} F CFA)</span>
-                            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1 text-white" />
-                          </>
-                        )}
-                      </button>
-
-                      {userBalance >= payablePrice && (
-                        <button
-                          type="button"
-                          onClick={handlePayWithWallet}
-                          disabled={isPayingWithWallet || isPaymentLoading}
-                          className="w-full py-3 px-4 rounded-xl border border-emerald-500/40 bg-emerald-950/30 hover:bg-emerald-900/40 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {isPayingWithWallet ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <CreditCard className="w-4 h-4 text-emerald-400" />
-                          )}
-                          <span>Régler avec mon Solde Dokya ({payablePrice.toLocaleString('fr-FR')} F CFA débités)</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Badges & Description Money Fusion */}
-                  <div className="space-y-2 pt-1">
-                    <p className="text-[11px] text-slate-400 text-center leading-relaxed">
-                      Paiement instantané 100% automatisé via la passerelle certifiée <strong>Money Fusion</strong> (Mobile Money & QR Code). Votre document est débloqué automatiquement dès validation sans envoi de capture.
-                    </p>
-                  </div>
-
-                </div>
-              </div>
-            </>
-          )}
-
-        </div>
-
-        {/* Modal Footer */}
-        <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="text-[11px]">
-              Passerelle Agréée Money Fusion • Chiffrement SSL 256-bit
+            <span className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-800 text-slate-300 border border-slate-700 shrink-0">
+              HD Vectoriel
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[11px] text-slate-400 hover:text-white transition-colors cursor-pointer"
-          >
-            Annuler
-          </button>
+
+          {/* Balance & Price Indicators */}
+          <div className="grid grid-cols-2 gap-3">
+            
+            {/* 1. Solde Actuel */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              hasSufficientBalance 
+                ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-300' 
+                : 'bg-amber-950/20 border-amber-500/40 text-amber-300'
+            }`}>
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 flex items-center gap-1">
+                  <Wallet className="w-3 h-3" />
+                  <span>Votre Solde</span>
+                </span>
+                {hasSufficientBalance ? (
+                  <span className="text-[10px] font-bold text-emerald-400">Suffisant</span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-400">Insuffisant</span>
+                )}
+              </div>
+              <div className="text-lg sm:text-xl font-black text-white">
+                {userBalance.toLocaleString('fr-FR')} <span className="text-xs text-slate-400 font-bold">FCFA</span>
+              </div>
+            </div>
+
+            {/* 2. Prix Déblocage */}
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-slate-200">
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 flex items-center gap-1">
+                  <Tag className="w-3 h-3 text-indigo-400" />
+                  <span>Prix Document</span>
+                </span>
+                {appliedPromo && (
+                  <span className="text-[10px] font-black text-emerald-400">{appliedPromo.discountLabel}</span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                {appliedPromo && promoDiscount > 0 && (
+                  <span className="text-xs font-semibold text-slate-500 line-through">
+                    {basePrice.toLocaleString('fr-FR')}
+                  </span>
+                )}
+                <span className="text-lg sm:text-xl font-black text-white">
+                  {payablePrice === 0 ? '0' : payablePrice.toLocaleString('fr-FR')} <span className="text-xs text-slate-400 font-bold">FCFA</span>
+                </span>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Promo Code Accordion/Box */}
+          <div className="pt-1">
+            {!appliedPromo ? (
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                    placeholder="Code Promo (ex: PETER, VIP100)"
+                    disabled={isCheckingPromo}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 uppercase font-mono tracking-wider"
+                  />
+                  <Tag className="absolute right-3 top-2.5 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPromo()}
+                  disabled={isCheckingPromo || !promoInput.trim()}
+                  className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white text-xs font-bold transition-all cursor-pointer shrink-0"
+                >
+                  {isCheckingPromo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Appliquer'}
+                </button>
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-emerald-300 font-bold">
+                  <Gift className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Code <strong>{appliedPromo.code}</strong> activé ({appliedPromo.discountLabel})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemovePromo}
+                  className="text-slate-400 hover:text-red-400 p-1 transition-colors cursor-pointer"
+                  title="Retirer le code"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            {promoError && (
+              <p className="text-[11px] text-red-400 mt-1 font-medium">{promoError}</p>
+            )}
+          </div>
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300 flex items-start gap-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Action Button Section */}
+          <div className="space-y-2.5 pt-2">
+            
+            {hasSufficientBalance ? (
+              /* SI SOLDE SUFFISANT : Bouton unique de déblocage par solde */
+              <button
+                type="button"
+                onClick={handlePayWithWallet}
+                disabled={isPayingWithWallet || isApproved}
+                className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-black text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-600/20 transition-all cursor-pointer active:scale-98 disabled:opacity-50"
+              >
+                {isPayingWithWallet ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Déblocage en cours...</span>
+                  </>
+                ) : isApproved ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                    <span>Document débloqué avec succès !</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-4 h-4 text-amber-300" />
+                    <span>Débloquer avec mon solde ({payablePrice === 0 ? 'Gratuit' : `${payablePrice.toLocaleString('fr-FR')} FCFA`})</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              /* SI SOLDE INSUFFISANT : Bouton unique de recharge Money Fusion */
+              <div className="space-y-2">
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex items-center justify-between">
+                  <span>Montant manquant pour ce document :</span>
+                  <strong className="text-amber-300 font-black">
+                    {(payablePrice - userBalance).toLocaleString('fr-FR')} FCFA
+                  </strong>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onOpenRechargeModal) {
+                      onOpenRechargeModal();
+                    }
+                  }}
+                  className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-amber-500/20 transition-all cursor-pointer active:scale-98"
+                >
+                  <ArrowUpRight className="w-4 h-4" />
+                  <span>Solde insuffisant : Recharger mon solde</span>
+                </button>
+              </div>
+            )}
+
+            {/* Note de sécurité */}
+            <div className="pt-2 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Paiement sécurisé via votre solde interne Dokya. Aucun frais caché.</span>
+            </div>
+
+          </div>
+
         </div>
 
       </div>
     </div>
   );
 };
-

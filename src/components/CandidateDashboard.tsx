@@ -3,7 +3,7 @@ import {
   User, FileText, CreditCard, Sparkles, Plus, Trash2, Edit3, Save, 
   CheckCircle2, Download, Eye, ExternalLink, RefreshCw, AlertCircle, 
   Briefcase, GraduationCap, Award, Globe, Phone, Mail, MapPin, Linkedin, 
-  Check, ArrowRight, ShieldCheck, Zap, X, Wallet, History, Menu, Crown,
+  Check, ArrowRight, ShieldCheck, Zap, X, Wallet, History, Menu, Crown, Lock, Unlock,
   Search, Filter, Wand2, Receipt, BookOpen, Clock, Package, UserCircle2, FileCheck, LogOut, BookmarkCheck,
   Building2, Users
 } from 'lucide-react';
@@ -2388,7 +2388,15 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 {/* 📲 WHATSAPP DIRECT SHARE BUTTON */}
                 <button
                   type="button"
-                  onClick={() => handleShareWhatsApp(previewDoc)}
+                  onClick={() => {
+                    if (!isAuthorizedForExport(previewDoc)) {
+                      setPaywallTargetDoc(previewDoc);
+                      setPaywallTargetFormat('pdf');
+                      setIsPaywallOpen(true);
+                      return;
+                    }
+                    handleShareWhatsApp(previewDoc);
+                  }}
                   className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
                   title="Partager / Envoyer sur WhatsApp"
                 >
@@ -2428,8 +2436,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             </div>
 
             {/* Modal Body Preview */}
-            <div className="p-4 overflow-y-auto flex-1 bg-slate-950 flex justify-center">
-              <div className="bg-slate-900/60 rounded-xl shadow-2xl p-2 sm:p-4 w-full flex justify-center overflow-x-auto">
+            <div className="p-4 overflow-y-auto flex-1 bg-slate-950 flex justify-center relative">
+              <div className="bg-slate-900/60 rounded-xl shadow-2xl p-2 sm:p-4 w-full flex justify-center overflow-x-auto relative">
                 <A4PreviewContainer>
                   {previewDoc.generationMode === 'devis' || previewDoc.generationMode === 'facture' || previewDoc.generationMode === 'pack_business' ? (
                     <div id="modal-business-preview" className="w-[210mm] min-w-[210mm] max-w-[210mm]">
@@ -2437,11 +2445,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     </div>
                   ) : previewDoc.generationMode === 'ebook' && previewDoc.ebookData ? (
                     <div id="modal-ebook-preview" className="w-[210mm] min-w-[210mm] max-w-[210mm]">
-                      <EbookTemplate data={previewDoc.ebookData} unlocked={true} />
+                      <EbookTemplate data={previewDoc.ebookData} unlocked={isAuthorizedForExport(previewDoc)} />
                     </div>
                   ) : previewTab === 'cv' ? (
                     <div id="modal-cv-preview">
-                      <CVTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} unlocked={true} />
+                      <CVTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} unlocked={isAuthorizedForExport(previewDoc)} />
                     </div>
                   ) : (
                     <div id="modal-letter-preview">
@@ -2449,6 +2457,60 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     </div>
                   )}
                 </A4PreviewContainer>
+
+                {/* OVERLAY DE SÉCURITÉ SI NON DÉBLOQUÉ */}
+                {!isAuthorizedForExport(previewDoc) && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs rounded-xl">
+                    <div className="max-w-md w-full bg-slate-900/95 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-slate-800 text-center space-y-4">
+                      <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                        <Lock className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-black mb-2 border border-amber-500/30">
+                          <span>🔒 Document Protégé</span>
+                        </span>
+                        <h3 className="text-base font-black text-white">
+                          {previewDoc.title || 'Document Professionnel'}
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Le document complet et le téléchargement HD sont disponibles immédiatement après déblocage avec votre solde.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Votre Solde Dokya :</span>
+                        <span className={`font-black ${(profile.balance ?? 0) >= 1000 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {(profile.balance ?? 0).toLocaleString('fr-FR')} FCFA
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 pt-1">
+                        {(profile.balance ?? 0) >= 1000 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaywallTargetDoc(previewDoc);
+                              setPaywallTargetFormat('pdf');
+                              setIsPaywallOpen(true);
+                            }}
+                            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
+                          >
+                            <Unlock className="w-4 h-4 text-amber-300" />
+                            <span>Débloquer avec mon solde (1 000 FCFA)</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setIsRechargeModalOpen(true)}
+                            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
+                          >
+                            <span>⚡ Solde insuffisant : Recharger mon solde</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2529,6 +2591,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         }}
         onBalanceUpdated={(newBal) => {
           setProfile(prev => ({ ...prev, balance: newBal }));
+        }}
+        onOpenRechargeModal={() => {
+          setIsPaywallOpen(false);
+          setIsRechargeModalOpen(true);
         }}
         documentData={paywallTargetDoc}
         contentData={paywallTargetDoc?.content || paywallTargetDoc}

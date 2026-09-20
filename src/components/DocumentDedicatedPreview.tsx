@@ -28,6 +28,7 @@ interface DocumentDedicatedPreviewProps {
   aiData: AIOptimizedData | null;
   userBalance?: number;
   isPaid?: boolean;
+  isUnlocked?: boolean;
   isVipActive?: boolean;
   isEditingDirectly?: boolean;
   setIsEditingDirectly?: (val: boolean) => void;
@@ -58,6 +59,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   aiData,
   userBalance = 0,
   isPaid = false,
+  isUnlocked = false,
   isVipActive = false,
   isEditingDirectly = false,
   onEditForm,
@@ -73,7 +75,7 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
   setPackBusinessSubTab,
   onOpenInterviewPrep
 }) => {
-  const isEffectivePaid = Boolean(isPaid || isVipActive);
+  const isEffectivePaid = Boolean(isPaid || isUnlocked || isVipActive);
   const { pricing } = usePricing();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isBusinessTemplateModalOpen, setIsBusinessTemplateModalOpen] = useState<boolean>(false);

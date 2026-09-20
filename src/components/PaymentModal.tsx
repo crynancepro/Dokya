@@ -1,5 +1,5 @@
 import React from 'react';
-import { DokyaPaymentModal } from './DokyaPaymentModal';
+import { PaywallModal } from './PaywallModal';
 import { TransactionRecord } from '../types';
 
 export interface PaymentModalProps {
@@ -34,34 +34,33 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   userId,
   userEmail,
   userName,
-  isAlreadyPaid = false,
   onPaymentSuccess,
   onOpenRechargeModal,
   onDownloadPDF,
   onDownloadDocx,
-  onOpenInterviewPrep,
   documentData,
   contentData
 }) => {
   return (
-    <DokyaPaymentModal
+    <PaywallModal
       isOpen={isOpen}
       onClose={onClose}
-      mode="document"
       documentTitle={documentTitle}
       documentTypeLabel={documentTypeLabel}
       targetDocId={targetDocId}
-      price={price}
-      isAlreadyPaid={isAlreadyPaid}
+      documentPrice={price}
       userBalance={userBalance}
       userId={userId}
       userEmail={userEmail}
       userName={userName}
-      onPaymentSuccess={onPaymentSuccess}
+      onUnlocked={() => {
+        onPaymentSuccess('wallet');
+      }}
       onOpenRechargeModal={onOpenRechargeModal}
-      onDownloadPDF={onDownloadPDF}
-      onDownloadDocx={onDownloadDocx}
-      onOpenInterviewPrep={onOpenInterviewPrep}
+      onDownloadAction={(format) => {
+        if (format === 'docx' && onDownloadDocx) onDownloadDocx();
+        else if (onDownloadPDF) onDownloadPDF();
+      }}
       documentData={documentData}
       contentData={contentData}
     />

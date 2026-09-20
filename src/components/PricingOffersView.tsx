@@ -180,7 +180,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Générateur de Devis & Factures UEMOA',
         'Support standard WhatsApp'
       ],
-      cta: 'Activer le Pass 7 Jours (2 500 F)'
+      cta: "S'abonner avec mon solde (2 500 FCFA)"
     },
     {
       id: 'monthly' as const,
@@ -201,7 +201,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Suppression de tout filigrane',
         'Support VIP prioritaire 7j/7 sur WhatsApp'
       ],
-      cta: 'Activer le Pass Mensuel (5 000 F)'
+      cta: "S'abonner avec mon solde (5 000 FCFA)"
     },
     {
       id: 'annual' as const,
@@ -220,7 +220,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Assistance dédiée et relecture personnalisée par un expert',
         'Idéal pour consultants, indépendants, RH et demandeurs d\'emploi'
       ],
-      cta: 'Activer le Pass Annuel (35 000 F)'
+      cta: "S'abonner avec mon solde (35 000 FCFA)"
     }
   ];
 
@@ -539,23 +539,29 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                       type="button"
                       onClick={() => {
                         if (isSubscriptionActive) return;
-                        onSubscribePlan(plan.id, discount.finalPrice, plan.title);
+                        if (userBalance < discount.finalPrice) {
+                          onOpenRecharge();
+                        } else {
+                          onSubscribePlan(plan.id, discount.finalPrice, plan.title);
+                        }
                       }}
                       disabled={isSubscriptionActive}
                       className={`w-full py-3.5 px-4 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${
                         isSubscriptionActive
                           ? 'bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed opacity-80'
-                          : plan.popular
-                            ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/20 cursor-pointer active:scale-95'
-                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 cursor-pointer active:scale-95'
+                          : userBalance < discount.finalPrice
+                            ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 shadow-amber-500/20 cursor-pointer active:scale-95'
+                            : plan.popular
+                              ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/20 cursor-pointer active:scale-95'
+                              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 cursor-pointer active:scale-95'
                       }`}
                     >
                       <span>
                         {isSubscriptionActive 
                           ? '👑 Pass VIP Déjà Actif' 
-                          : hasDiscount 
-                            ? `Activer (${discount.finalPrice === 0 ? '0 F' : `${discount.finalPrice.toLocaleString('fr-FR')} F`})`
-                            : plan.cta}
+                          : userBalance < discount.finalPrice
+                            ? 'Solde insuffisant : Recharger mon solde'
+                            : `S'abonner avec mon solde (${displayPrice})`}
                       </span>
                       {!isSubscriptionActive && <ArrowRight className="w-4 h-4 shrink-0" />}
                     </button>
