@@ -36,6 +36,10 @@
       "destination": "/api/moneyfusion/checkout"
     },
     {
+      "source": "/api/moneyfusion/verify",
+      "destination": "/api/moneyfusion/verify"
+    },
+    {
       "source": "/api/webhooks/moneyfusion",
       "destination": "/api/webhooks/moneyfusion"
     },

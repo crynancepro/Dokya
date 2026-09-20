@@ -1,5 +1,4 @@
-import { db } from '../../lib/firebase.js';
-import { doc, updateDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
+import { db, FieldValue } from '../../lib/firebaseAdmin.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -8,175 +7,123 @@ export default async function handler(req: any, res: any) {
 
   try {
     const body = req.body || {};
-    console.log("PAYLOAD MONEY FUSION REÇU (handler) :", JSON.stringify(body));
+    console.log("[Money Fusion Webhook Handler] Payload reçu:", JSON.stringify(body));
 
     const personalInfo = Array.isArray(body.personal_Info) ? (body.personal_Info[0] || {}) : (body.personal_Info || {});
     const metadata = body.metadata || body.customData || {};
 
-    const userId = personalInfo.userId || body.userId || metadata.userId;
-    const docId = personalInfo.docId || body.docId || metadata.docId;
-    const type = personalInfo.type || body.type || metadata.type;
-    const plan = personalInfo.plan || body.plan || personalInfo.planId || body.planId || metadata.plan || metadata.planId;
-    const amount = Number(body.totalPrice || body.amount || personalInfo.amount || metadata.amount || 0);
+    let transactionId = String(body.transactionId || personalInfo.transactionId || metadata.transactionId || '').trim();
+    const token = String(body.token || body.orderId || body.id || '').trim();
+    let userId = String(personalInfo.userId || body.userId || metadata.userId || '').trim();
+    let userEmail = String(personalInfo.userEmail || personalInfo.email || body.email || metadata.userEmail || '').trim();
+    let userName = String(personalInfo.userName || personalInfo.nom || body.nomclient || '').trim();
+    let phoneNumber = String(body.numeroSend || personalInfo.phoneNumber || personalInfo.userPhone || personalInfo.telephone || '').trim();
 
-    if (!userId) {
-      console.error("[Webhook Error]: userId introuvable");
-      return res.status(400).json({ error: "userId introuvable" });
+    let rawAmount = Number(body.totalPrice || body.amount || personalInfo.amount || metadata.amount || 0);
+
+    const searchId = transactionId || token;
+    let existingTx: any = null;
+
+    if (searchId && db && typeof db.collection === 'function') {
+      try {
+        const snap = await db.collection('transactions').doc(searchId).get();
+        if (snap.exists) {
+          existingTx = snap.data();
+          transactionId = searchId;
+        }
+      } catch (_e) {}
+
+      if (!existingTx) {
+        try {
+          const qSnap = await db.collection('transactions').where('transactionId', '==', searchId).limit(1).get();
+          if (!qSnap.empty) {
+            existingTx = qSnap.docs[0].data();
+            transactionId = qSnap.docs[0].id;
+          }
+        } catch (_e) {}
+      }
+    }
+
+    if (existingTx) {
+      if (!userId || userId === 'guest') userId = existingTx.userId || userId;
+      if (!userEmail) userEmail = existingTx.userEmail || userEmail;
+      if (!userName || userName === 'Client Dokya' || userName === 'Utilisateur') userName = existingTx.userName || userName;
+      if (!phoneNumber) phoneNumber = existingTx.phoneNumber || existingTx.userPhone || phoneNumber;
+      if (rawAmount <= 0 && existingTx.amount) rawAmount = Number(existingTx.amount);
+      if (rawAmount <= 0 && existingTx.expectedAmount) rawAmount = Number(existingTx.expectedAmount);
+    }
+
+    // Règle stricte : Ne crédite JAMAIS 0 FCFA
+    const numericAmount = Math.round(Number(rawAmount) || 0);
+    if (numericAmount <= 0) {
+      console.warn(`[Money Fusion Webhook] ATTENTION: Montant détecté à 0 FCFA. Aucun crédit ne sera effectué à 0 FCFA.`);
+      return res.status(200).json({ status: "ignored_zero_amount" });
+    }
+
+    const rawStatus = body.statut ?? body.status ?? body.event ?? '';
+    const statusVal = String(rawStatus).toLowerCase();
+    const isSuccess = statusVal === 'true' || statusVal === 'success' || statusVal === 'paid' || statusVal === 'completed' || statusVal === 'approved' || rawStatus === true || rawStatus === 1 || !rawStatus;
+
+    if (!isSuccess && (statusVal === 'cancel' || statusVal === 'failed' || statusVal === 'refused' || statusVal === 'false')) {
+      console.log(`[Money Fusion Webhook] Statut annulé/échoué (${statusVal}), aucun crédit.`);
+      if (transactionId && db && typeof db.collection === 'function') {
+        await db.collection('transactions').doc(transactionId).set({
+          status: 'FAILED',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+      return res.status(200).json({ status: "success" });
     }
 
     const now = new Date().toISOString();
+    const resolvedTxId = transactionId || token || `MF-${Date.now()}`;
 
-    // TRAITEMENT 1 : RECHARGEMENT DU SOLDE (WALLET)
-    if (type === 'wallet' || (!docId && !plan && amount > 0)) {
-      const userRef = doc(db, 'users', userId);
-      try {
-        await updateDoc(userRef, {
-          walletBalance: increment(amount),
-          balance: increment(amount),
-          solde: increment(amount),
-          lastPaymentAt: now,
-          updatedAt: now
-        });
-      } catch (_e) {
-        await setDoc(userRef, {
-          walletBalance: increment(amount),
-          balance: increment(amount),
-          solde: increment(amount),
-          lastPaymentAt: now,
-          updatedAt: now
-        }, { merge: true });
-      }
-      console.log(`[Webhook] Solde de l'utilisateur ${userId} crédité de ${amount} FCFA`);
-    }
-
-    // TRAITEMENT 2 : DÉBLOCAGE DE DOCUMENT
-    if (docId) {
-      const docRef = doc(db, 'user_documents', docId);
-      try {
-        await updateDoc(docRef, {
-          isUnlocked: true,
-          status: "UNLOCKED",
-          paymentGateway: "Money Fusion",
-          unlocked: true,
-          isPaid: true,
-          unlockedAt: now,
-          updatedAt: now
-        });
-      } catch (_e) {
-        await setDoc(docRef, {
-          isUnlocked: true,
-          status: "UNLOCKED",
-          paymentGateway: "Money Fusion",
-          unlocked: true,
-          isPaid: true,
-          unlockedAt: now,
-          updatedAt: now
-        }, { merge: true });
-      }
-      console.log(`[Webhook] Document ${docId} débloqué pour l'utilisateur ${userId}`);
-
-      if (userId && userId !== 'guest') {
-        const userRef = doc(db, 'users', userId);
-        try {
-          await updateDoc(userRef, {
-            purchasedDocIds: arrayUnion(docId),
-            updatedAt: now
-          });
-        } catch (_uErr) {
-          await setDoc(userRef, {
-            purchasedDocIds: [docId],
-            updatedAt: now
-          }, { merge: true });
-        }
-      }
-    }
-
-    // TRAITEMENT 3 : ABONNEMENT VIP
-    if (type === 'subscription' || plan) {
-      const chosenPlan = plan || "VIP";
-      const userRef = doc(db, 'users', userId);
-      try {
-        await updateDoc(userRef, {
-          isVip: true,
-          subscriptionStatus: "ACTIVE",
-          plan: chosenPlan,
-          vipActivatedAt: now,
-          updatedAt: now
-        });
-      } catch (_e) {
-        await setDoc(userRef, {
-          isVip: true,
-          subscriptionStatus: "ACTIVE",
-          plan: chosenPlan,
-          vipActivatedAt: now,
-          updatedAt: now
-        }, { merge: true });
-      }
-      console.log(`[Webhook] Abonnement VIP (${chosenPlan}) activé pour l'utilisateur ${userId}`);
-    }
-
-    // ENREGISTREMENT DE LA TRANSACTION
-    try {
-      const txId = body.token || body.orderId || `MF_${Date.now()}`;
-      const txRef = doc(db, 'transactions', txId);
-      await setDoc(txRef, {
-        transactionId: txId,
-        userId,
-        amount,
-        type: type || (docId ? 'DOCUMENT_UNLOCK' : (plan ? 'SUBSCRIPTION_PURCHASE' : 'WALLET_RECHARGE')),
-        docId: docId || null,
-        plan: plan || null,
-        status: 'SUCCESS',
-        gateway: 'Money Fusion',
-        createdAt: now,
-        rawPayload: body
+    // 1. Crédit du solde (walletBalance) de l'utilisateur
+    if (userId && userId !== 'guest' && db && typeof db.collection === 'function') {
+      const userRef = db.collection('users').doc(userId);
+      await userRef.set({
+        walletBalance: FieldValue ? FieldValue.increment(numericAmount) : numericAmount,
+        balance: FieldValue ? FieldValue.increment(numericAmount) : numericAmount,
+        solde: FieldValue ? FieldValue.increment(numericAmount) : numericAmount,
+        lastPaymentAt: now,
+        lastPaymentProvider: 'Money Fusion',
+        updatedAt: now
       }, { merge: true });
-    } catch (_tErr) {
-      console.error("[Webhook] Erreur enregistrement transaction:", _tErr);
+      console.log(`[Webhook] Solde de l'utilisateur ${userId} crédité avec succès de +${numericAmount} FCFA`);
     }
 
-    return res.status(200).json({ success: true, message: "Webhook traité avec succès" });
-  } catch (error: any) {
-    console.error("[Webhook Error]:", error);
-    return res.status(500).json({ error: error?.message || 'Erreur serveur webhook' });
-  }
-}
-
-export async function POST(req: any) {
-  try {
-    let body: any = {};
-    if (typeof req.json === 'function') {
-      body = await req.json();
-    } else {
-      body = req.body || {};
+    // 2. Mise à jour de la transaction dans 'transactions' avec status: 'SUCCESS' et le montant réel
+    if (db && typeof db.collection === 'function') {
+      await db.collection('transactions').doc(resolvedTxId).set({
+        id: resolvedTxId,
+        transactionId: resolvedTxId,
+        userId: userId || 'anonymous',
+        userEmail: userEmail || '',
+        userName: userName || 'Utilisateur',
+        phoneNumber: phoneNumber || '',
+        userPhone: phoneNumber || '',
+        type: 'wallet_recharge',
+        amount: numericAmount,
+        expectedAmount: numericAmount,
+        currency: 'XOF',
+        status: 'SUCCESS',
+        paymentGateway: 'Money Fusion',
+        paymentMethod: 'moneyfusion',
+        completedAt: now,
+        updatedAt: now
+      }, { merge: true });
+      console.log(`[Webhook] Transaction ${resolvedTxId} mise à jour à SUCCESS avec montant réel ${numericAmount} FCFA`);
     }
 
-    let resultStatus = 200;
-    let resultPayload: any = { success: true };
-
-    const mockRes = {
-      status: (code: number) => {
-        resultStatus = code;
-        return {
-          json: (data: any) => {
-            resultPayload = data;
-            return data;
-          }
-        };
-      }
-    };
-
-    await handler({ method: 'POST', body }, mockRes);
-
-    return new Response(JSON.stringify(resultPayload), {
-      status: resultStatus,
-      headers: { 'Content-Type': 'application/json' }
+    return res.status(200).json({
+      status: "success",
+      transactionId: resolvedTxId,
+      amount: numericAmount,
+      userId
     });
+
   } catch (err: any) {
-    console.error("[Webhook Money Fusion POST error]:", err);
-    return new Response(JSON.stringify({ error: err?.message || 'Erreur interne webhook' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    console.error("[Webhook Error]:", err);
+    return res.status(200).json({ status: "error", message: err?.message });
   }
 }

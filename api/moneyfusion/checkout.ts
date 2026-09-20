@@ -1,75 +1,135 @@
 /**
  * API Route: /api/moneyfusion/checkout
  * 100% autonome - Compatible Vercel Serverless Function & Next.js App Router
+ * Capture obligatoire du téléphone Mobile Money et montant > 0 FCFA
  */
+
+import { db } from '../../lib/firebaseAdmin.js';
 
 interface MoneyFusionRequestBody {
   amount?: number | string;
-  docId?: string;
-  userId?: string;
+  totalPrice?: number | string;
+  phoneNumber?: string;
   userPhone?: string;
+  userId?: string;
+  userEmail?: string;
   userName?: string;
   customer?: {
     name?: string;
     phone?: string;
     email?: string;
   };
+  type?: string;
   [key: string]: any;
 }
 
 export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
   const {
-    amount = 3000,
-    docId = '',
-    userId = '',
+    amount,
+    totalPrice,
+    phoneNumber = '',
     userPhone = '',
+    userId = '',
+    userEmail = '',
     userName = '',
     customer = {}
   } = body || {};
 
-  const targetAmount = Math.max(100, Math.round(Number(amount) || 3000));
-  const targetDocId = String(docId || '').trim();
+  const rawAmount = amount !== undefined ? amount : (totalPrice !== undefined ? totalPrice : 0);
+  const numericAmount = Number(rawAmount);
+
+  // 1. Validation : numericAmount > 0
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return {
+      status: 400,
+      data: {
+        success: false,
+        error: 'Montant de paiement invalide. Le montant doit être supérieur à 0 FCFA.'
+      }
+    };
+  }
+
+  // 2. Validation : phoneNumber obligatoire
+  const targetPhone = String(phoneNumber || userPhone || customer.phone || '').trim();
+  if (!targetPhone) {
+    return {
+      status: 400,
+      data: {
+        success: false,
+        error: 'Le numéro de téléphone (pour le paiement Mobile Money) est obligatoire.'
+      }
+    };
+  }
+
   const targetUserId = String(userId || 'guest').trim() || 'guest';
-  const targetPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
-  const targetName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
+  const targetUserEmail = String(userEmail || customer.email || '').trim();
+  const targetName = String(userName || customer.name || 'Utilisateur').trim() || 'Utilisateur';
+
+  const paymentId = `MF-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+  const nowIso = new Date().toISOString();
+
+  // 3. Création de la transaction dans Firestore 'transactions' avec statut PENDING
+  if (db && typeof db.collection === 'function') {
+    try {
+      const pendingTx = {
+        transactionId: paymentId,
+        id: paymentId,
+        userId: targetUserId,
+        userEmail: targetUserEmail,
+        userName: targetName,
+        phoneNumber: targetPhone,
+        userPhone: targetPhone,
+        type: 'wallet_recharge',
+        resolvedType: 'wallet',
+        typeLabel: 'Recharge Solde',
+        amount: numericAmount,
+        expectedAmount: numericAmount,
+        currency: 'XOF',
+        status: 'PENDING',
+        paymentGateway: 'Money Fusion',
+        paymentMethod: 'moneyfusion',
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+      await db.collection('transactions').doc(paymentId).set(pendingTx, { merge: true });
+      console.log(`[Checkout API] Transaction PENDING enregistrée dans Firestore: ${paymentId} (${numericAmount} FCFA, tel: ${targetPhone})`);
+    } catch (dbErr: any) {
+      console.warn('[Checkout API] Warning Firestore save:', dbErr?.message);
+    }
+  }
 
   const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
-  const returnUrl = `${appBaseUrl}/dashboard?payment=success&docId=${targetDocId}`;
+  const returnUrl = `${appBaseUrl}/dashboard?payment=success&transactionId=${paymentId}&type=wallet&amount=${numericAmount}`;
   const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
   const apiKey = process.env.MONEYFUSION_API_KEY;
-
   let targetEndpoint = (process.env.MONEYFUSION_API_URL || 'https://api.moneyfusion.net').trim();
   if (targetEndpoint === 'https://api.moneyfusion.net' || targetEndpoint === 'https://api.moneyfusion.net/') {
     targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
   }
 
-  const resolvedUserId = String(userId || 'guest').trim();
-  const resolvedDocId = String(docId || '').trim();
-  const resolvedPlan = String(body.plan || body.planId || '').trim();
-  const resolvedType = String(body.type || (resolvedDocId ? 'document' : (resolvedPlan ? 'subscription' : 'wallet'))).trim();
-  const resolvedAmount = Number(amount) || 3000;
-  const resolvedPhone = String(userPhone || customer.phone || '00000000').trim() || '00000000';
-  const resolvedName = String(userName || customer.name || 'Client Dokya').trim() || 'Client Dokya';
-  const resolvedDescription = body.description || (resolvedDocId ? "Déblocage Document Dokya" : (resolvedPlan ? `Abonnement Dokya ${resolvedPlan}` : "Service Dokya"));
-
+  // 4. Transmission à Money Fusion avec montant exact, numéro de téléphone et métadonnées
   const paymentData = {
-    totalPrice: Number(resolvedAmount),
+    amount: Number(numericAmount),
+    totalPrice: Number(numericAmount),
     article: [
-      { [resolvedDescription || "Service Dokya"]: Number(resolvedAmount) }
+      { "Rechargement Wallet Dokya": Number(numericAmount) }
     ],
     personal_Info: [
-      { 
-        userId: resolvedUserId, 
-        docId: resolvedDocId || "", 
-        type: resolvedType || "wallet", 
-        plan: resolvedPlan || "" 
+      {
+        transactionId: paymentId,
+        userId: targetUserId,
+        userEmail: targetUserEmail,
+        userName: targetName,
+        phoneNumber: targetPhone,
+        amount: Number(numericAmount),
+        type: 'wallet_recharge'
       }
     ],
-    numeroSend: resolvedPhone || "00000000",
-    nomclient: resolvedName || "Client Dokya",
-    return_url: "https://dokya-seven.vercel.app/dashboard?payment=success",
-    webhook_url: "https://dokya-seven.vercel.app/api/webhooks/moneyfusion"
+    numeroSend: targetPhone,
+    nomclient: targetName,
+    return_url: returnUrl,
+    webhook_url: webhookUrl
   };
 
   if (apiKey || process.env.MONEYFUSION_API_URL) {
@@ -94,22 +154,30 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
             data: {
               success: true,
               url: checkoutUrl,
-              token: data.token || null
+              token: data.token || paymentId,
+              transactionId: paymentId,
+              amount: numericAmount,
+              provider: 'moneyfusion'
             }
           };
         }
       }
+      console.warn('[Checkout API] Échec réponse Money Fusion:', data);
     } catch (err: any) {
-      console.error('[Money Fusion Process Checkout Error]:', err);
+      console.error('[Checkout API] Erreur appel Money Fusion:', err?.message);
     }
   }
 
-  const simulatedUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}status=approved&unlocked=true&ref=MF_${Date.now()}`;
+  // Redirection sécurisée
+  const fallbackUrl = `${returnUrl}&token=${paymentId}&status=success`;
   return {
     status: 200,
     data: {
       success: true,
-      url: simulatedUrl,
+      url: fallbackUrl,
+      token: paymentId,
+      transactionId: paymentId,
+      amount: numericAmount,
       simulated: true
     }
   };
@@ -117,35 +185,25 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
 
 export default async function handler(req: any, res?: any) {
   if (!res || typeof res.status !== 'function') {
-    const body = req && typeof req.json === 'function' ? await req.json().catch(() => ({})) : {};
+    const body = await req.json().catch(() => ({}));
     const result = await processMoneyFusionCheckout(body);
     return new Response(JSON.stringify(result.data), {
       status: result.status,
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
     });
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-KEY');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
 
-  let body = req.body;
-  if (typeof body === 'string') {
-    try {
-      body = JSON.parse(body);
-    } catch {
-      body = {};
-    }
-  }
-
-  const result = await processMoneyFusionCheckout(body || {});
+  const result = await processMoneyFusionCheckout(req.body || {});
   return res.status(result.status).json(result.data);
-}
-
-export async function POST(req: any) {
-  return handler(req);
 }

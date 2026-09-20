@@ -2656,8 +2656,8 @@ async function handlePaymentConfirmation(params: {
   if (existingTxData) {
     if (!userId || userId === 'guest') userId = existingTxData.userId || userId;
     if (!userEmail) userEmail = existingTxData.userEmail || userEmail;
-    if (!userName || userName === 'Client Dokya') userName = existingTxData.userName || userName;
-    if (!userPhone) userPhone = existingTxData.userPhone || userPhone;
+    if (!userName || userName === 'Client Dokya' || userName === 'Utilisateur') userName = existingTxData.userName || userName;
+    if (!userPhone) userPhone = existingTxData.phoneNumber || existingTxData.userPhone || userPhone;
     if (!docId) docId = existingTxData.docId || existingTxData.targetDocId || docId;
     if (!plan) plan = existingTxData.plan || existingTxData.planId || plan;
     if (!type) type = existingTxData.type || type;
@@ -2684,16 +2684,38 @@ async function handlePaymentConfirmation(params: {
     txId = `MF-${Date.now()}`;
   }
 
-  const numericAmount = Math.max(0, Number(amount) || 0);
+  // Règle absolue : Ne crédite JAMAIS 0 FCFA !
+  let numericAmount = Number(amount || 0);
+  if ((isNaN(numericAmount) || numericAmount <= 0) && existingTxData?.amount) {
+    numericAmount = Number(existingTxData.amount || 0);
+  }
+  if ((isNaN(numericAmount) || numericAmount <= 0) && existingTxData?.expectedAmount) {
+    numericAmount = Number(existingTxData.expectedAmount || 0);
+  }
 
-  // 2. Mettre à jour la transaction dans Firestore à status: 'SUCCESS' (ou 'COMPLETED')
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    console.warn(`[handlePaymentConfirmation] REFUS : Montant détecté à 0 FCFA pour txId: ${txId}. Aucun crédit ne sera effectué à 0 FCFA.`);
+    return {
+      success: false,
+      transactionId: txId,
+      amount: 0,
+      error: 'Montant invalide ou 0 FCFA'
+    };
+  }
+
+  const finalPhone = String(userPhone || (existingTxData as any)?.phoneNumber || (existingTxData as any)?.userPhone || '').trim();
+  const finalUserName = String(userName && userName !== 'Client Dokya' && userName !== 'Utilisateur' ? userName : (existingTxData?.userName || 'Utilisateur')).trim();
+  const finalUserEmail = String(userEmail || existingTxData?.userEmail || '').trim();
+
+  // 2. Mettre à jour la transaction dans Firestore à status: 'SUCCESS'
   const updatedTxRecord: any = {
     id: txId,
     transactionId: txId,
     userId: userId || 'anonymous',
-    userEmail: userEmail || '',
-    userName: userName || 'Client Dokya',
-    userPhone: userPhone || '',
+    userEmail: finalUserEmail,
+    userName: finalUserName,
+    phoneNumber: finalPhone,
+    userPhone: finalPhone,
     type: resolvedType === 'wallet' ? 'wallet_recharge' : (resolvedType === 'document' ? 'document_purchase' : 'subscription_purchase'),
     typeLabel: resolvedType === 'document' ? 'Achat Document' : (resolvedType === 'subscription' ? 'Abonnement VIP' : 'Recharge Solde'),
     docId: docId || null,
@@ -2703,7 +2725,7 @@ async function handlePaymentConfirmation(params: {
     amount: numericAmount,
     expectedAmount: numericAmount,
     currency: 'XOF',
-    status: 'SUCCESS', // Statut SUCCESS requis
+    status: 'SUCCESS', // Statut SUCCESS strict
     aiStatus: adminEmail ? 'MANUALLY_VALIDATED' : 'VALIDATED',
     paymentGateway: 'Money Fusion',
     paymentMethod: paymentMethod || 'moneyfusion',
@@ -2872,6 +2894,7 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
     const {
       amount,
       totalPrice,
+      phoneNumber,
       docId = '',
       userId = '',
       userPhone = '',
@@ -2896,11 +2919,20 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
     const rawAmount = amount !== undefined ? amount : (totalPrice !== undefined ? totalPrice : 0);
     const numericAmount = Number(rawAmount || 0);
     
-    // Vérifie que numericAmount > 0
+    // 1. Vérifie que numericAmount > 0
     if (isNaN(numericAmount) || numericAmount <= 0) {
       return res.status(400).json({
         success: false,
         error: 'Montant de paiement invalide. Le montant doit être supérieur à 0 FCFA.'
+      });
+    }
+
+    // 2. Vérifie que phoneNumber est renseigné
+    const targetPhone = String(phoneNumber || userPhone || customer?.phone || '').trim();
+    if (!targetPhone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Le numéro de téléphone (pour le paiement Mobile Money) est obligatoire.'
       });
     }
 
@@ -2921,7 +2953,6 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
 
     const targetUserId = String(userId || metadata.userId || 'guest').trim() || 'guest';
     const targetUserEmail = String(userEmail || email || customer?.email || metadata?.userEmail || '').trim();
-    const targetPhone = String(userPhone || customer?.phone || '00000000').trim() || '00000000';
     const targetName = String(userName || customer?.name || 'Utilisateur').trim() || 'Utilisateur';
     const targetPromoCode = String(promoCode || metadata.promoCode || '').trim().toUpperCase();
     const targetTitle = String(title || documentTitle || 'Document sans titre').trim();
@@ -2967,6 +2998,7 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       userId: targetUserId,
       userEmail: targetUserEmail,
       userName: targetName || "Utilisateur",
+      phoneNumber: targetPhone,
       userPhone: targetPhone,
       type: txType,
       resolvedType: resolvedType,
@@ -3277,11 +3309,13 @@ app.all('/api/moneyfusion/verify', async (req, res) => {
     let docId = String(params.docId || '').trim();
     let userId = String(params.userId || '').trim();
     let userEmail = String(params.userEmail || params.email || '').trim();
+    let userName = String(params.userName || '').trim();
+    let phoneNumber = String(params.phoneNumber || params.userPhone || '').trim();
     let type = String(params.type || '').trim().toLowerCase();
     let plan = String(params.plan || params.planId || '').trim();
     let amount = Number(params.amount || 0);
 
-    console.log('[Server /api/moneyfusion/verify]', { token, transactionId, docId, userId, type, plan, amount });
+    console.log('[Server /api/moneyfusion/verify]', { token, transactionId, docId, userId, type, plan, amount, phoneNumber });
 
     // Si token fourni, tenter vérification API Money Fusion
     if (token && !token.startsWith('MF_') && !token.startsWith('MF-')) {
@@ -3295,10 +3329,13 @@ app.all('/api/moneyfusion/verify', async (req, res) => {
             const pInfo = Array.isArray(pData.personal_Info) ? (pData.personal_Info[0] || {}) : (pData.personal_Info || {});
             if (!userId) userId = String(pInfo.userId || '').trim();
             if (!userEmail) userEmail = String(pInfo.userEmail || pInfo.email || '').trim();
+            if (!userName) userName = String(pInfo.userName || pData.nomclient || '').trim();
+            if (!phoneNumber) phoneNumber = String(pData.numeroSend || pInfo.phoneNumber || '').trim();
             if (!docId) docId = String(pInfo.docId || '').trim();
             if (!plan) plan = String(pInfo.planId || pInfo.plan || '').trim();
             if (!type) type = String(pInfo.type || '').trim().toLowerCase();
             if (!amount && pData.Montant) amount = Number(pData.Montant);
+            if (!amount && pData.totalPrice) amount = Number(pData.totalPrice);
           }
         }
       } catch (e: any) {
@@ -3306,28 +3343,31 @@ app.all('/api/moneyfusion/verify', async (req, res) => {
       }
     }
 
-    // Exécution immédiate du traitement unifié (Validation Firestore status: 'SUCCESS' + Actions A, B, C)
+    // Exécution immédiate du traitement unifié (Validation Firestore status: 'SUCCESS' + Solde utilisateur)
     const result = await handlePaymentConfirmation({
       transactionId: transactionId || token,
       token,
       userId,
       userEmail,
+      userName,
+      userPhone: phoneNumber,
       docId,
       plan,
       type,
       amount
     });
 
+    const realAmount = Number(result?.amount || amount || 0);
+
     return res.json({
       success: true,
-      verified: true,
+      amount: realAmount,
       status: 'SUCCESS',
-      transactionId: result.transactionId,
-      docId: result.docId,
-      userId: result.userId,
-      amount: result.amount,
-      type: result.type,
-      message: 'Paiement confirmé et document/solde débloqué avec succès'
+      transactionId: result.transactionId || transactionId || token,
+      docId: result.docId || docId,
+      userId: result.userId || userId,
+      type: result.type || type,
+      message: 'Paiement confirmé et solde mis à jour avec succès'
     });
   } catch (err: any) {
     console.error('[Verify Route Error]:', err);

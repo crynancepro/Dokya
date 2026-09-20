@@ -3272,9 +3272,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           methodBadge = { label: 'Carte / QR', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
                         }
 
-                        const userName = (tx as any).userName || (tx as any).userEmail?.split('@')[0] || 'Client Dokya';
-                        const userEmail = (tx as any).userEmail || tx.userId || 'Email inconnu';
-                        const userPhone = tx.senderPhone || (tx as any).phone || (tx.extractedData?.sender_phone);
+                        const userName = (tx as any).userName || (tx as any).user_name || (tx as any).name || (tx as any).userEmail?.split('@')[0] || 'Client Dokya';
+                        const userEmail = (tx as any).userEmail || (tx as any).user_email || (tx as any).email || (tx.userId && !tx.userId.startsWith('guest') ? tx.userId : 'Email inconnu');
+                        const userPhone = (tx as any).phoneNumber || (tx as any).phone_number || (tx as any).userPhone || (tx as any).user_phone || tx.senderPhone || (tx as any).phone || (tx.extractedData?.sender_phone);
 
                         return (
                           <tr 
@@ -3294,17 +3294,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
                             </td>
 
-                            {/* 2. Utilisateur (Nom / Email) */}
+                            {/* 2. Utilisateur (Nom, Email, Téléphone) */}
                             <td className="py-3.5 px-3">
-                              <div className="font-bold text-slate-200 text-xs truncate max-w-[160px]" title={userName}>
+                              <div className="font-bold text-white text-xs truncate max-w-[170px]" title={userName}>
                                 {userName}
                               </div>
-                              <div className="text-[11px] text-slate-400 truncate max-w-[160px]" title={userEmail}>
+                              <div className="text-[11px] text-slate-400 truncate max-w-[170px]" title={userEmail}>
                                 {userEmail}
                               </div>
-                              {userPhone && (
-                                <div className="text-[10px] text-emerald-400/90 font-mono mt-0.5">
-                                  {userPhone}
+                              {userPhone ? (
+                                <div className="text-[10px] text-emerald-400 font-mono mt-0.5 flex items-center gap-1">
+                                  <Phone className="w-2.5 h-2.5 shrink-0" />
+                                  <span>{userPhone}</span>
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-slate-500 italic mt-0.5">
+                                  Tél non renseigné
                                 </div>
                               )}
                             </td>
@@ -4113,23 +4118,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                       <div>
-                        <span className="text-slate-400 block mb-1">Nom / Client :</span>
-                        <span className="font-bold text-white">
-                          {(selectedTxForInspection as any).userName || (selectedTxForInspection as any).userEmail?.split('@')[0] || 'Client Dokya'}
+                        <span className="text-slate-400 block mb-1">Nom / Client (userName) :</span>
+                        <span className="font-bold text-white text-sm">
+                          {(selectedTxForInspection as any).userName || (selectedTxForInspection as any).user_name || (selectedTxForInspection as any).userEmail?.split('@')[0] || 'Client Dokya'}
                         </span>
                       </div>
 
                       <div>
-                        <span className="text-slate-400 block mb-1">Adresse Email :</span>
-                        <span className="font-mono text-slate-200">
-                          {(selectedTxForInspection as any).userEmail || selectedTxForInspection.userId}
+                        <span className="text-slate-400 block mb-1">Adresse Email (userEmail) :</span>
+                        <span className="font-mono text-slate-200 text-xs select-all">
+                          {(selectedTxForInspection as any).userEmail || (selectedTxForInspection as any).user_email || selectedTxForInspection.userId}
                         </span>
                       </div>
 
                       <div>
-                        <span className="text-slate-400 block mb-1">Téléphone / Contact :</span>
-                        <span className="font-mono text-emerald-400 font-semibold">
-                          {selectedTxForInspection.senderPhone || (selectedTxForInspection as any).phone || (selectedTxForInspection.extractedData?.sender_phone) || 'Non spécifié'}
+                        <span className="text-slate-400 block mb-1">Numéro de Téléphone (phoneNumber) :</span>
+                        <span className="font-mono text-emerald-400 font-bold select-all">
+                          {(selectedTxForInspection as any).phoneNumber || (selectedTxForInspection as any).phone_number || (selectedTxForInspection as any).userPhone || (selectedTxForInspection as any).user_phone || selectedTxForInspection.senderPhone || (selectedTxForInspection as any).phone || (selectedTxForInspection.extractedData?.sender_phone) || 'Non spécifié'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 block mb-1">Montant Réel (amount) :</span>
+                        <span className="font-mono text-emerald-400 font-black text-sm">
+                          {Math.abs(Number(selectedTxForInspection.amount || selectedTxForInspection.expectedAmount || 0)).toLocaleString('fr-FR')} FCFA
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 block mb-1">Statut Transaction (status) :</span>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black ${
+                          isApproved 
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                            : isPending 
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                        }`}>
+                          {selectedTxForInspection.status || (isApproved ? 'SUCCESS' : isPending ? 'PENDING' : 'FAILED')}
                         </span>
                       </div>
 

@@ -614,39 +614,35 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     if (activeMode !== 'recharge') {
       return handlePayWithWallet();
     }
-    setIsPaymentLoading(true);
     setErrorMessage(null);
+
+    const rawPhoneDigits = senderPhoneNumber.replace(/\s+/g, '').replace(/\D/g, '');
+    if (!rawPhoneDigits) {
+      setErrorMessage("Le numéro de téléphone (pour le paiement Mobile Money) est obligatoire.");
+      return;
+    }
+
+    setIsPaymentLoading(true);
 
     try {
       const user = auth.currentUser;
       const cleanAmount = Math.max(100, Math.round(Number(payablePrice) || 3000));
       const targetUserId = user?.uid || userId || 'guest';
       const targetUserName = user?.displayName || userName || 'Client Dokya';
-      const targetPhone = senderPhoneNumber ? `${selectedCountry.dialCode}${senderPhoneNumber.replace(/\s+/g, '')}` : ((user as any)?.phoneNumber || '');
+      const targetPhone = `${selectedCountry.dialCode} ${senderPhoneNumber.trim()}`;
 
-      // Transmission du montant et des métadonnées dans /api/moneyfusion/checkout pour recharge
+      // Transmission obligatoire de { amount, phoneNumber, userId, userEmail, userName }
       const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: cleanAmount,
-          totalPrice: cleanAmount,
-          docId: '',
-          planId: '',
-          plan: '',
-          type: 'wallet',
+          phoneNumber: targetPhone,
+          userPhone: targetPhone,
           userId: targetUserId,
           userEmail: user?.email || userEmail || '',
-          userPhone: targetPhone,
           userName: targetUserName,
-          title: "Recharge Dokya Wallet",
-          personal_Info: [{
-            userId: targetUserId,
-            docId: "",
-            type: 'wallet',
-            plan: '',
-            amount: cleanAmount
-          }]
+          type: 'wallet'
         })
       });
 
@@ -1350,6 +1346,46 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                               <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
                               <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN / Moov</span>
                               <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">📱 QR Code</span>
+                            </div>
+
+                            {/* Champ obligatoire : Numéro de téléphone Mobile Money */}
+                            <div className="mt-4 pt-3.5 border-t border-blue-500/20">
+                              <label className="block text-xs font-bold text-slate-200 mb-1.5 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <Phone className="w-3.5 h-3.5 text-blue-400" />
+                                  <span>Numéro de téléphone (pour le paiement Mobile Money) <span className="text-rose-400">*</span></span>
+                                </span>
+                                <span className="text-[10px] text-blue-300 font-medium">Requis</span>
+                              </label>
+                              <div className="flex gap-2">
+                                <select
+                                  value={selectedCountry.code}
+                                  onChange={(e) => {
+                                    const found = AFRICAN_COUNTRIES.find(c => c.code === e.target.value);
+                                    if (found) setSelectedCountry(found);
+                                  }}
+                                  className="px-2.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:border-blue-500 outline-hidden shrink-0 cursor-pointer"
+                                >
+                                  {AFRICAN_COUNTRIES.map((c) => (
+                                    <option key={c.code} value={c.code} className="bg-slate-900 text-white">
+                                      {c.flag} {c.dialCode}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="tel"
+                                  placeholder="Ex: 77 123 45 67"
+                                  value={senderPhoneNumber}
+                                  onChange={(e) => {
+                                    setSenderPhoneNumber(e.target.value);
+                                    if (errorMessage) setErrorMessage(null);
+                                  }}
+                                  className="flex-1 px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold !text-white !placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-hidden caret-blue-500"
+                                />
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                Saisissez le numéro Mobile Money (Wave, Orange, MTN, Free) qui effectuera le débit.
+                              </p>
                             </div>
                           </div>
                         </div>
