@@ -1,87 +1,169 @@
-import admin from 'firebase-admin';
-import { initializeApp, getApps, getApp, cert } from 'firebase-admin/app';
-import { getFirestore, FieldValue, Firestore } from 'firebase-admin/firestore';
-import { getAuth, Auth } from 'firebase-admin/auth';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  collection,
+  query,
+  where,
+  limit,
+  orderBy,
+  getDocs,
+  increment as firestoreIncrement,
+  arrayUnion as firestoreArrayUnion,
+  arrayRemove as firestoreArrayRemove,
+  serverTimestamp as firestoreServerTimestamp,
+  deleteField as firestoreDeleteField,
+  Firestore,
+  DocumentSnapshot,
+  QuerySnapshot,
+  WhereFilterOp,
+  OrderByDirection
+} from 'firebase/firestore';
+import { getAuth, type Auth } from 'firebase/auth';
 
-// Compatibilité ESM / CommonJS pour admin
-if (!(admin as any).credential) {
-  (admin as any).credential = {
-    cert: (credentials: any) => {
-      try {
-        return cert(credentials);
-      } catch (e) {
-        return credentials;
-      }
+const FIRESTORE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0865957742';
+const FIRESTORE_DATABASE_ID = 'ai-studio-gnrateurdecvlett-49cc73ad-7657-4218-be85-c050974ca976';
+const FIRESTORE_API_KEY = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDrIGI9XiDRwq8Q7WDEHcbmhQGzy38skc4';
+const FIRESTORE_APP_ID = process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || '1:416474571173:web:07add45cea04518ffe084c';
+
+const firebaseConfig = {
+  projectId: FIRESTORE_PROJECT_ID,
+  apiKey: FIRESTORE_API_KEY,
+  appId: FIRESTORE_APP_ID,
+  firestoreDatabaseId: FIRESTORE_DATABASE_ID
+};
+
+const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+const rawFirestore: Firestore = getFirestore(app, FIRESTORE_DATABASE_ID);
+
+function wrapDocSnap(snap: DocumentSnapshot) {
+  const isEx = snap.exists();
+  return {
+    id: snap.id,
+    exists: isEx,
+    ref: snap.ref,
+    data: () => snap.data() || {}
+  };
+}
+
+function createDocRef(raw: Firestore, colPath: string, docId: string) {
+  const dRef = doc(raw, colPath, docId);
+  return {
+    id: docId,
+    path: `${colPath}/${docId}`,
+    async get() {
+      const snap = await getDoc(dRef);
+      return wrapDocSnap(snap);
+    },
+    async set(data: any, options: { merge?: boolean } = {}) {
+      return await setDoc(dRef, data, { merge: options?.merge !== false });
+    },
+    async update(data: any) {
+      return await updateDoc(dRef, data);
+    },
+    async delete() {
+      return await deleteDoc(dRef);
+    },
+    collection(subColName: string) {
+      return createColRef(raw, `${colPath}/${docId}/${subColName}`);
     }
   };
 }
 
-if (!(admin as any).apps) {
-  Object.defineProperty(admin, 'apps', {
-    get: () => getApps()
-  });
-}
-
-const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0865957742';
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const privateKey = process.env.FIREBASE_PRIVATE_KEY
-  ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-  : undefined;
-const databaseId = process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-gnrateurdecvlett-49cc73ad-7657-4218-be85-c050974ca976';
-
-let app: any;
-if (!getApps().length) {
-  try {
-    if (clientEmail && privateKey) {
-      app = initializeApp({
-        credential: cert({
-          projectId,
-          clientEmail,
-          privateKey,
-        } as any),
-      });
-    } else {
-      app = initializeApp({
-        projectId,
-      });
+function createColRef(raw: Firestore, colPath: string) {
+  const cRef = collection(raw, colPath);
+  return {
+    path: colPath,
+    doc(docId?: string) {
+      const id = docId || ('id_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
+      return createDocRef(raw, colPath, id);
+    },
+    async add(data: any) {
+      const res = await addDoc(cRef, data);
+      return { id: res.id };
+    },
+    async get() {
+      const snap = await getDocs(cRef);
+      return {
+        empty: snap.empty,
+        size: snap.size,
+        docs: snap.docs.map(wrapDocSnap)
+      };
+    },
+    where(field: string, op: WhereFilterOp, value: any) {
+      return this.buildQuery([{ type: 'where', field, op, value }]);
+    },
+    limit(n: number) {
+      return this.buildQuery([{ type: 'limit', value: n }]);
+    },
+    orderBy(field: string, dir: OrderByDirection = 'asc') {
+      return this.buildQuery([{ type: 'orderBy', field, dir }]);
+    },
+    buildQuery(clauses: any[] = []) {
+      const self = this;
+      const currentClauses = [...clauses];
+      return {
+        where(field: string, op: WhereFilterOp, value: any) {
+          return self.buildQuery([...currentClauses, { type: 'where', field, op, value }]);
+        },
+        limit(n: number) {
+          return self.buildQuery([...currentClauses, { type: 'limit', value: n }]);
+        },
+        orderBy(field: string, dir: OrderByDirection = 'asc') {
+          return self.buildQuery([...currentClauses, { type: 'orderBy', field, dir }]);
+        },
+        async get() {
+          const constraints: any[] = currentClauses.map(c => {
+            if (c.type === 'where') return where(c.field, c.op, c.value);
+            if (c.type === 'limit') return limit(c.value);
+            if (c.type === 'orderBy') return orderBy(c.field, c.dir);
+            return null;
+          }).filter(Boolean);
+          const q = query(cRef, ...constraints);
+          const snap = await getDocs(q);
+          return {
+            empty: snap.empty,
+            size: snap.size,
+            docs: snap.docs.map(wrapDocSnap)
+          };
+        }
+      };
     }
-  } catch (error) {
-    console.error("Erreur d'initialisation Firebase Admin:", error);
-    try {
-      app = getApps().length > 0 ? getApp() : initializeApp({ projectId });
-    } catch (_fallbackErr) {
-      // Ignorer
-    }
-  }
-} else {
-  app = getApp();
+  };
 }
 
-let firestoreInstance: Firestore;
-try {
-  if (databaseId && databaseId !== '(default)') {
-    firestoreInstance = getFirestore(app, databaseId);
-  } else {
-    firestoreInstance = getFirestore(app);
-  }
-} catch (e) {
-  try {
-    firestoreInstance = getFirestore();
-  } catch (err2: any) {
-    console.error('Erreur récupération Firestore Admin:', err2?.message);
-    firestoreInstance = {} as any;
-  }
+export function createDbAdapter(raw: Firestore = rawFirestore): any {
+  return {
+    collection: (colName: string) => createColRef(raw, colName),
+    doc: (colName: string, docId: string) => createDocRef(raw, colName, docId)
+  };
 }
 
-if (!(admin as any).firestore) {
-  (admin as any).firestore = (appInstance?: any) => (appInstance ? getFirestore(appInstance) : (firestoreInstance || getFirestore()));
-  (admin as any).firestore.FieldValue = FieldValue;
-} else if (!(admin as any).firestore.FieldValue) {
-  (admin as any).firestore.FieldValue = FieldValue;
-}
+export const dbAdmin: any = createDbAdapter(rawFirestore);
+export const db: any = dbAdmin;
 
-export const dbAdmin: Firestore = firestoreInstance || (admin as any).firestore();
-export const db: Firestore = dbAdmin;
-export { FieldValue };
-export const auth: Auth | undefined = app ? getAuth(app) : undefined;
-export default admin;
+export const FieldValue: any = {
+  increment: (n: number) => firestoreIncrement(n),
+  arrayUnion: (...elements: any[]) => firestoreArrayUnion(...elements),
+  arrayRemove: (...elements: any[]) => firestoreArrayRemove(...elements),
+  serverTimestamp: () => firestoreServerTimestamp(),
+  delete: () => firestoreDeleteField()
+};
+
+export const auth: Auth = getAuth(app);
+
+const adminCompat: any = {
+  firestore: () => dbAdmin,
+  auth: () => auth,
+  apps: [app],
+  app: () => app
+};
+
+adminCompat.firestore.FieldValue = FieldValue;
+
+export default adminCompat;

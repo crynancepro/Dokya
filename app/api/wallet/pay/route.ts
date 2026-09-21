@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
-import { db, FieldValue } from '../../../../lib/firebaseAdmin.js';
+import { NextRequest, NextResponse } from 'next/server';
+import { db, FieldValue } from '@/lib/firebaseAdmin';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const {

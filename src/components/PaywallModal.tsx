@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import confetti from 'canvas-confetti';
 import { 
   X, CheckCircle2, ShieldCheck, 
   Loader2, Sparkles, AlertCircle, Lock,
@@ -209,21 +208,28 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   // Trigger unlock when approved
   const triggerUnlockSuccess = () => {
     setIsApproved(true);
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-    } catch (_cErr) {}
+    if (typeof window !== 'undefined') {
+      import('canvas-confetti').then((module) => {
+        const confetti = module.default;
+        confetti({
+          particleCount: 100,
+          spread: 80,
+          origin: { y: 0.6 },
+          colors: ['#10b981', '#6366f1', '#fbbf24', '#f43f5e', '#3b82f6']
+        });
+      }).catch(() => {});
+    }
 
+    // 1. Débloque instantanément l'affichage du document et active le bouton de téléchargement HD
+    onUnlocked();
+
+    // 2. Ferme la modale de paiement et déclenche l'export HD si demandé
     setTimeout(() => {
-      onUnlocked();
+      onClose();
       if (onDownloadAction && targetFormat) {
         onDownloadAction(targetFormat);
       }
-      onClose();
-    }, 1200);
+    }, 350);
   };
 
   // Listen to profile updates (e.g. if user is credited or unlocked in background)
@@ -296,20 +302,23 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         body: JSON.stringify({
           userId: currentUid,
           itemType: 'document',
+          documentId: effectiveDocId,
           itemId: effectiveDocId,
+          docId: effectiveDocId,
           price: payablePrice,
+          amount: payablePrice,
           userEmail: userEmail || auth.currentUser?.email || 'candidat@dokya.sn',
           userName: userName || auth.currentUser?.displayName || 'Client Dokya'
         })
       });
 
-      const payData = await payRes.json();
-      if (!payData.success) {
-        if (payData.reason === 'INSUFFICIENT_FUNDS') {
-          setErrorMessage(payData.message || `Solde insuffisant. Veuillez recharger votre solde.`);
+      const payData = await payRes.json().catch(() => ({}));
+      if (!payRes.ok || !payData.success) {
+        if (payData.reason === 'INSUFFICIENT_FUNDS' || payData.error === 'Solde insuffisant') {
+          setErrorMessage(payData.message || `Solde insuffisant. Votre solde est inférieur au montant requis (${payablePrice.toLocaleString('fr-FR')} FCFA). Veuillez recharger votre solde.`);
           return;
         }
-        throw new Error(payData.error || 'Erreur lors du paiement par solde.');
+        throw new Error(payData.error || payData.message || 'Erreur lors du paiement par solde.');
       }
 
       // 3. Record transaction in client Firestore for instant reactivity

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import confetti from 'canvas-confetti';
 import { 
   X, Crown, CheckCircle2, ShieldCheck, 
   Loader2, AlertCircle, Wallet, Tag, ArrowUpRight, Sparkles 
@@ -84,13 +83,16 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       }
 
       // 2. Confetti animation
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-      } catch (_e) {}
+      if (typeof window !== 'undefined') {
+        import('canvas-confetti').then((module) => {
+          const confetti = module.default;
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+        }).catch(() => {});
+      }
 
       // 3. Build subscription object
       const sub: UserSubscription = {

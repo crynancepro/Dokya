@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import confetti from 'canvas-confetti';
 import { 
   X, 
   Wallet, 
@@ -508,13 +507,16 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           documentsGeneratedCount: 0
         };
 
-        try {
-          confetti({
-            particleCount: 70,
-            spread: 60,
-            origin: { y: 0.6 }
-          });
-        } catch (_cErr) {}
+        if (typeof window !== 'undefined') {
+          import('canvas-confetti').then((module) => {
+            const confetti = module.default;
+            confetti({
+              particleCount: 70,
+              spread: 60,
+              origin: { y: 0.6 }
+            });
+          }).catch(() => {});
+        }
 
         setTimeout(() => {
           setIsAiScanning(false);
@@ -543,8 +545,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           body: JSON.stringify({
             userId: userId || 'guest',
             itemType: 'document',
+            documentId: targetDocIdToPay,
             itemId: targetDocIdToPay,
+            docId: targetDocIdToPay,
             price: payablePrice,
+            amount: payablePrice,
             userEmail: userEmail || 'candidat@dokya.sn',
             userName: userName || 'Candidat Dokya'
           })
@@ -577,13 +582,16 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           senderPhone: fullPhone
         };
 
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 }
-          });
-        } catch (_cErr) {}
+        if (typeof window !== 'undefined') {
+          import('canvas-confetti').then((module) => {
+            const confetti = module.default;
+            confetti({
+              particleCount: 80,
+              spread: 70,
+              origin: { y: 0.6 }
+            });
+          }).catch(() => {});
+        }
 
         setTimeout(() => {
           setIsAiScanning(false);

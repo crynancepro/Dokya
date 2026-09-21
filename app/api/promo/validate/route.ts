@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { db } from '../../../../lib/firebaseAdmin.js';
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/firebaseAdmin';
 
 const DEFAULT_PROMOS = [
   {
@@ -94,10 +94,38 @@ const DEFAULT_PROMOS = [
   }
 ];
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { code, amount = 1000, documentTitle } = body;
+    return handleValidation(body);
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, valid: false, error: err?.message || 'Erreur lors de la validation du code promo.' },
+      { status: 200 }
+    );
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const params = {
+      code: searchParams.get('code') || '',
+      amount: searchParams.get('amount') || 1000,
+      documentTitle: searchParams.get('documentTitle') || ''
+    };
+    return handleValidation(params);
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, valid: false, error: err?.message || 'Erreur lors de la validation du code promo.' },
+      { status: 200 }
+    );
+  }
+}
+
+async function handleValidation(params: { code?: string; amount?: any; documentTitle?: string }) {
+  try {
+    const { code, amount = 1000, documentTitle } = params;
 
     if (!code || typeof code !== 'string' || !code.trim()) {
       return NextResponse.json(
@@ -218,8 +246,4 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   }
-}
-
-export async function GET(req: Request) {
-  return POST(req);
 }

@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import confetti from 'canvas-confetti';
 import { CheckCircle2, Download, FileText, Sparkles, X, Trophy, ArrowRight } from 'lucide-react';
 
 export interface VictoryModalProps {
@@ -27,35 +26,46 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    try {
-      // Premier tir central explosif
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#3b82f6']
-      });
+    let timer: NodeJS.Timeout | null = null;
 
-      // Deuxième cascade de fleurs/confettis depuis les deux côtés
-      const timer = setTimeout(() => {
-        confetti({
-          particleCount: 50,
-          angle: 60,
-          spread: 60,
-          origin: { x: 0.1, y: 0.7 },
-          colors: ['#10b981', '#6366f1', '#fbbf24', '#f43f5e']
-        });
-        confetti({
-          particleCount: 50,
-          angle: 120,
-          spread: 60,
-          origin: { x: 0.9, y: 0.7 },
-          colors: ['#10b981', '#6366f1', '#fbbf24', '#f43f5e']
-        });
-      }, 250);
+    const runConfetti = async () => {
+      try {
+        if (typeof window === 'undefined') return;
+        const confetti = (await import('canvas-confetti')).default;
 
-      return () => clearTimeout(timer);
-    } catch (_e) {}
+        // Premier tir central explosif
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#3b82f6']
+        });
+
+        // Deuxième cascade de fleurs/confettis depuis les deux côtés
+        timer = setTimeout(() => {
+          confetti({
+            particleCount: 50,
+            angle: 60,
+            spread: 60,
+            origin: { x: 0.1, y: 0.7 },
+            colors: ['#10b981', '#6366f1', '#fbbf24', '#f43f5e']
+          });
+          confetti({
+            particleCount: 50,
+            angle: 120,
+            spread: 60,
+            origin: { x: 0.9, y: 0.7 },
+            colors: ['#10b981', '#6366f1', '#fbbf24', '#f43f5e']
+          });
+        }, 250);
+      } catch (_e) {}
+    };
+
+    runConfetti();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
