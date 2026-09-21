@@ -1,8 +1,6 @@
-'use client';
-
 import React from 'react';
-import RootApp from '../src/RootApp';
+import ClientApp from './ClientApp';
 
 export default function Page() {
-  return <RootApp />;
+  return <ClientApp />;
 }

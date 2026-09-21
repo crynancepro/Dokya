@@ -5,9 +5,6 @@ const nextConfig: NextConfig = {
     // Empêche les erreurs de typage non-bloquantes d'interrompre le build de production Vercel
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   images: {
     remotePatterns: [
       {

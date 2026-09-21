@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyPayment } from '../../../../api/moneyfusion/verify';
+import { verifyPayment } from '@/api/moneyfusion/verify';
 
 export async function GET(req: Request) {
   return handleRequest(req);
