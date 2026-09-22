@@ -99,7 +99,7 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
   }
 
   const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VITE_APP_URL || 'https://dokya-seven.vercel.app').replace(/\/$/, '');
-  const returnUrl = `${appBaseUrl}/dashboard?payment=success&transactionId=${paymentId}&type=wallet&amount=${numericAmount}`;
+  const returnUrl = `${appBaseUrl}/dashboard?payment=return&transactionId=${paymentId}&type=wallet&amount=${numericAmount}`;
   const webhookUrl = `${appBaseUrl}/api/webhooks/moneyfusion`;
 
   const apiKey = process.env.MONEYFUSION_API_KEY;
@@ -149,6 +149,21 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
       if (response.ok) {
         const checkoutUrl = data.url || (data.token ? `https://pay.moneyfusion.net/checkout/${data.token}` : null);
         if (checkoutUrl) {
+          // Sauvegarder le token Money Fusion officiel dans la transaction Firestore
+          if (db && typeof db.collection === 'function') {
+            try {
+              await db.collection('transactions').doc(paymentId).set({
+                token: data.token || null,
+                tokenPay: data.token || null,
+                checkoutUrl: checkoutUrl,
+                status: 'PENDING',
+                isProcessed: false,
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+            } catch (_e) {}
+          }
+
+          console.log(`[Checkout API] Guichet Money Fusion obtenu avec succès: ${checkoutUrl} (token: ${data.token})`);
           return {
             status: 200,
             data: {
@@ -163,22 +178,30 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
         }
       }
       console.warn('[Checkout API] Échec réponse Money Fusion:', data);
+      return {
+        status: 400,
+        data: {
+          success: false,
+          error: data.message || "Échec de l'initialisation du paiement chez Money Fusion."
+        }
+      };
     } catch (err: any) {
       console.error('[Checkout API] Erreur appel Money Fusion:', err?.message);
+      return {
+        status: 502,
+        data: {
+          success: false,
+          error: "Erreur de communication avec le guichet Money Fusion. Veuillez réessayer."
+        }
+      };
     }
   }
 
-  // Redirection sécurisée
-  const fallbackUrl = `${returnUrl}&token=${paymentId}&status=success`;
   return {
-    status: 200,
+    status: 500,
     data: {
-      success: true,
-      url: fallbackUrl,
-      token: paymentId,
-      transactionId: paymentId,
-      amount: numericAmount,
-      simulated: true
+      success: false,
+      error: "Service Money Fusion non configuré sur le serveur."
     }
   };
 }

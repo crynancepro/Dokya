@@ -3216,8 +3216,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </tr>
                     ) : (
                       filteredTransactions.map((tx) => {
-                        const isApproved = tx.status === 'APPROVED' || tx.status === 'MANUALLY_VALIDATED' || tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED';
-                        const isRejected = tx.status === 'REJECTED' || tx.status === 'REJECTED_BY_ADMIN' || tx.status === 'REJECTED_BY_AI' || tx.status === 'failed' || tx.status === 'cancel';
+                        const isApproved = tx.status === 'SUCCESS' || tx.status === 'APPROVED' || tx.status === 'MANUALLY_VALIDATED' || tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED';
+                        const isRejected = tx.status === 'REJECTED' || tx.status === 'FAILED' || tx.status === 'REJECTED_BY_ADMIN' || tx.status === 'REJECTED_BY_AI' || tx.status === 'failed' || tx.status === 'cancel';
                         const isPending = !isApproved && !isRejected;
 
                         const amountXOF = Math.abs(Number(tx.amount || tx.expectedAmount || 0));

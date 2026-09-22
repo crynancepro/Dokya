@@ -470,9 +470,6 @@ async function handleVerifyCheckout(payload: any, res: NextApiResponse) {
   const token = String(payload.token || payload.paymentId || '').trim();
   let transactionId = String(payload.transactionId || '').trim();
   let userId = String(payload.userId || '').trim();
-  let userEmail = String(payload.userEmail || '').trim();
-  let userName = String(payload.userName || '').trim();
-  let phoneNumber = String(payload.phoneNumber || payload.userPhone || '').trim();
   let amount = Number(payload.amount || 0);
 
   const searchId = transactionId || token;
@@ -498,93 +495,19 @@ async function handleVerifyCheckout(payload: any, res: NextApiResponse) {
     }
   }
 
-  // Héritage des données existantes
-  if (txRecord) {
-    if (!userId || userId === 'guest') userId = txRecord.userId || userId;
-    if (!userEmail) userEmail = txRecord.userEmail || userEmail;
-    if (!userName || userName === 'Client Dokya' || userName === 'Utilisateur') userName = txRecord.userName || userName;
-    if (!phoneNumber) phoneNumber = txRecord.phoneNumber || txRecord.userPhone || phoneNumber;
-    if (!amount || isNaN(amount) || amount <= 0) {
-      amount = Number(txRecord.amount || txRecord.expectedAmount || 0);
-    }
-  }
-
-  // Vérification auprès des passerelles Money Fusion si token distant
-  let isVerified = false;
-  let mfAmount = 0;
-  if (token && !token.startsWith('MF_') && !token.startsWith('MF-')) {
-    const checkEndpoints = [
-      `https://pay.moneyfusion.net/paiementNotif/${token}`,
-      `https://api.moneyfusion.net/api/v1/payments/${token}`
-    ];
-    for (const url of checkEndpoints) {
-      try {
-        const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
-        if (resp.ok) {
-          const resData: any = await resp.json();
-          const pData = resData.data || {};
-          const status = String(pData.statut || resData.statut || '').toLowerCase();
-          if (status === 'paid' || status === 'completed' || status === 'success' || status === 'approved' || resData.statut === true) {
-            isVerified = true;
-            const pInfo = Array.isArray(pData.personal_Info) ? (pData.personal_Info[0] || {}) : (pData.personal_Info || {});
-            if (!userId || userId === 'guest') userId = String(pInfo.userId || '').trim();
-            if (!userEmail) userEmail = String(pInfo.userEmail || pInfo.email || '').trim();
-            if (!userName) userName = String(pInfo.userName || pData.nomclient || '').trim();
-            if (!phoneNumber) phoneNumber = String(pData.numeroSend || pInfo.phoneNumber || '').trim();
-            if (pData.totalPrice || pData.amount || pInfo.amount) {
-              mfAmount = Number(pData.totalPrice || pData.amount || pInfo.amount || 0);
-            }
-            break;
-          }
-        }
-      } catch (_err) {}
-    }
-  } else if (token) {
-    isVerified = true;
-  }
-
-  const realAmount = mfAmount > 0 ? mfAmount : (amount > 0 ? amount : 0);
-  const nowIso = new Date().toISOString();
-  const finalTxId = transactionId || token || `TX-${Date.now()}`;
-
-  // Mise à jour de la transaction et du solde si utilisateur identifié
-  if (db && typeof db.collection === 'function') {
-    try {
-      await db.collection('transactions').doc(finalTxId).set({
-        id: finalTxId,
-        transactionId: finalTxId,
-        token: token || null,
-        userId: userId || 'guest',
-        userEmail: userEmail || 'client@dokya.sn',
-        userName: userName || 'Client Dokya',
-        phoneNumber: phoneNumber || null,
-        amount: realAmount,
-        currency: 'FCFA',
-        status: 'SUCCESS',
-        isVerified: true,
-        completedAt: nowIso,
-        updatedAt: nowIso
-      }, { merge: true });
-
-      if (userId && userId !== 'guest' && realAmount > 0) {
-        const userDocRef = db.collection('users').doc(userId);
-        await userDocRef.set({
-          walletBalance: FieldValue ? FieldValue.increment(realAmount) : realAmount,
-          lastRechargeAt: nowIso,
-          updatedAt: nowIso
-        }, { merge: true });
-      }
-    } catch (_dbErr) {
-      console.warn('[handleVerifyCheckout] Erreur écriture Firestore:', _dbErr);
-    }
-  }
+  // RÈGLE D'OR : La vérification / page de retour lit UNIQUEMENT la transaction Firestore.
+  // Ne crédite AUCUN solde (seul le Webhook officiel effectue le crédit unique).
+  const finalAmount = Number(txRecord?.amount || txRecord?.expectedAmount || amount || 0);
+  const status = txRecord?.status || 'PENDING';
+  const isPaid = status === 'SUCCESS' || txRecord?.isProcessed === true;
 
   return res.status(200).json({
     success: true,
-    amount: realAmount,
-    status: 'SUCCESS',
-    transactionId: finalTxId,
-    userId: userId || null,
-    message: "Paiement validé avec succès"
+    paid: isPaid,
+    status: status,
+    amount: finalAmount,
+    transactionId: transactionId || searchId,
+    userId: txRecord?.userId || userId || null,
+    message: isPaid ? "Paiement validé avec succès" : "Paiement en cours de traitement"
   });
 }

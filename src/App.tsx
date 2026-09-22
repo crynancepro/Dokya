@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   CVFormData, 
   AIOptimizedData, 
@@ -438,7 +438,12 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
     }
   };
 
-  // Traitement du retour après paiement Money Fusion (Return URL)
+  // Ensemble mémorisé pour éviter tout double traitement lors du cycle de vie du composant
+  const processedPaymentTokensRef = useRef<Set<string>>(new Set<string>());
+
+  // Traitement sécurisé du retour après paiement Money Fusion (Return URL)
+  // RÈGLE D'OR : Aucun solde n'est crédité en local côté client.
+  // La page interroge le serveur (/api/moneyfusion/verify) et synchronise le solde certifié depuis Firestore.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -447,7 +452,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       let status = searchParams.get('status') || '';
       let paymentParam = searchParams.get('payment') || '';
       let token = searchParams.get('token') || searchParams.get('paymentId') || searchParams.get('orderId') || '';
-      let reference = searchParams.get('reference') || searchParams.get('orderReference') || searchParams.get('ref') || '';
+      let reference = searchParams.get('reference') || searchParams.get('orderReference') || searchParams.get('ref') || searchParams.get('transactionId') || '';
       let amountParam = Number(searchParams.get('amount') || 0);
       let returnDocId = searchParams.get('docId') || '';
       let returnPlan = searchParams.get('plan') || '';
@@ -467,273 +472,115 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         status = hashParams.get('status') || status;
         paymentParam = hashParams.get('payment') || paymentParam;
         token = hashParams.get('token') || hashParams.get('paymentId') || token;
-        reference = hashParams.get('reference') || hashParams.get('orderReference') || hashParams.get('ref') || reference;
+        reference = hashParams.get('reference') || hashParams.get('orderReference') || hashParams.get('ref') || hashParams.get('transactionId') || reference;
         amountParam = Number(hashParams.get('amount') || amountParam);
         returnDocId = hashParams.get('docId') || returnDocId;
         returnPlan = hashParams.get('plan') || returnPlan;
         returnType = hashParams.get('type') || returnType;
       }
 
-      const isPaymentSuccess = paymentParam === 'success' || 
-        status === 'success' || 
-        status === 'approved' || 
-        searchParams.get('unlocked') === 'true' || 
-        Boolean(token) ||
-        (reference && status !== 'cancel');
+      // Cas annulation
+      if (status === 'cancel') {
+        const cleanPath = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanPath || '/');
+        setErrorMessage('Le paiement Money Fusion a été interrompu ou annulé. Vous pouvez réessayer à tout moment.');
+        setTimeout(() => setErrorMessage(null), 5000);
+        return;
+      }
 
-      if (isPaymentSuccess) {
-        const uid = auth.currentUser?.uid || currentUser?.uid;
+      const paymentKey = token || reference;
+      if (!paymentKey && paymentParam !== 'return' && paymentParam !== 'success') {
+        return;
+      }
 
-        // 1. Appel direct de secours vers l'API de vérification backend sécurisée
-        fetch('/api/payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'verify_checkout',
-            token,
-            paymentId: token,
-            docId: returnDocId,
-            userId: uid,
-            amount: amountParam,
-            type: returnType,
-            plan: returnPlan,
-            status: 'success'
-          })
-        }).catch(err => console.warn('[Payment Verify Request Warn]:', err));
+      const dedupeKey = paymentKey || `RETURN_${returnDocId || 'WALLET'}_${amountParam}`;
+      if (processedPaymentTokensRef.current.has(dedupeKey)) {
+        return;
+      }
+      processedPaymentTokensRef.current.add(dedupeKey);
 
-        // 2. Synchronisation directe de secours dans Firestore côté client (sécurisée par les identifiants de l'utilisateur connecté)
-        if (uid && uid !== 'guest') {
-          const nowIso = new Date().toISOString();
+      // Nettoie immédiatement l'URL pour empêcher toute réexécution ultérieure
+      const cleanPath = window.location.pathname;
+      if (returnDocId) {
+        window.history.replaceState({}, document.title, `/documents/${returnDocId}`);
+      } else {
+        window.history.replaceState({}, document.title, cleanPath || '/dashboard');
+      }
 
-          // A. Rechargement de Solde
-          if (returnType === 'wallet' || reference?.includes('WALLET') || (!returnDocId && !returnPlan && amountParam > 0)) {
-            const incrementAmount = amountParam > 0 ? amountParam : 3000;
-            setDoc(doc(db, 'users', uid), {
-              walletBalance: increment(incrementAmount),
-              balance: increment(incrementAmount),
-              solde: increment(incrementAmount),
-              lastPaymentAt: nowIso,
-              lastPaymentProvider: 'Money Fusion',
-              updatedAt: nowIso
-            }, { merge: true }).catch(e => console.error('[Client Firestore Wallet Sync Error]:', e));
-          }
+      const uid = auth.currentUser?.uid || currentUser?.uid;
 
-          // B. Déblocage de Document
-          if (returnDocId) {
-            setDoc(doc(db, 'user_documents', returnDocId), {
-              isUnlocked: true,
-              status: "UNLOCKED",
-              paymentGateway: "Money Fusion",
-              unlocked: true,
-              isPaid: true,
-              unlockedAt: nowIso,
-              updatedAt: nowIso
-            }, { merge: true }).catch(e => console.error('[Client Firestore Doc Sync Error]:', e));
+      // Interroge l'API serveur sécurisée pour vérifier la confirmation réelle
+      fetch(`/api/moneyfusion/verify?token=${encodeURIComponent(paymentKey)}&transactionId=${encodeURIComponent(paymentKey)}&userId=${encodeURIComponent(uid || '')}&amount=${amountParam}&type=${encodeURIComponent(returnType)}`)
+        .then(res => res.json())
+        .then(async (data) => {
+          if (data && data.paid) {
+            console.log('[App] Paiement confirmé à 100% par le serveur.');
 
-            setDoc(doc(db, 'users', uid), {
-              purchasedDocIds: arrayUnion(returnDocId),
-              lastPaymentAt: nowIso,
-              updatedAt: nowIso
-            }, { merge: true }).catch(e => console.error('[Client Firestore User Docs Sync Error]:', e));
-          }
-
-          // C. Abonnement VIP
-          if (returnType === 'subscription' || returnPlan) {
-            const activePlan = returnPlan || 'PASS_VIP';
-            const durationDays = activePlan === 'annual' ? 365 : (activePlan === 'weekly' ? 7 : 30);
-            const expiresDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
-
-            setDoc(doc(db, 'users', uid), {
-              isVip: true,
-              subscriptionStatus: 'ACTIVE',
-              plan: activePlan,
-              vipActivatedAt: nowIso,
-              lastPaymentAt: nowIso,
-              updatedAt: nowIso,
-              subscription: {
-                planId: activePlan,
-                status: 'ACTIVE',
-                activatedAt: nowIso,
-                expiresAt: expiresDate,
-                autoRenew: false
+            // Recharger les données certifiées depuis Firestore
+            if (uid && uid !== 'guest') {
+              const freshProfile = await fetchUserData(uid);
+              if (freshProfile && typeof freshProfile.walletBalance === 'number') {
+                setUserBalance(freshProfile.walletBalance);
+              } else if (typeof data.newBalance === 'number') {
+                setUserBalance(data.newBalance);
               }
-            }, { merge: true }).catch(e => console.error('[Client Firestore VIP Sync Error]:', e));
-          }
-
-          // D. Mettre à jour la transaction correspondante dans la collection 'transactions' à status: 'SUCCESS' avec le montant exact
-          const txKey = token || reference || (returnDocId ? `TX-${returnDocId}` : `TX-${Date.now()}`);
-          if (txKey) {
-            setDoc(doc(db, 'transactions', txKey), {
-              id: txKey,
-              transactionId: txKey,
-              status: 'SUCCESS',
-              aiStatus: 'COMPLETED',
-              amount: amountParam > 0 ? amountParam : 1000,
-              type: returnType === 'wallet' ? 'wallet' : returnType === 'subscription' ? 'subscription' : 'document',
-              userId: uid,
-              docId: returnDocId || null,
-              plan: returnPlan || null,
-              updatedAt: nowIso
-            }, { merge: true }).catch(e => console.warn('[Client Firestore Tx Update Error]:', e));
-          }
-        }
-
-        // 3. Déclenche immédiatement un rechargement des données utilisateur depuis Firestore (fetchUserData() / refetchProfile())
-        const reloadUserData = async () => {
-          const currentUid = auth.currentUser?.uid || currentUser?.uid || uid;
-          if (currentUid && currentUid !== 'guest') {
-            try {
-              const freshProfile = await fetchUserData(currentUid);
-              if (freshProfile) {
-                if (typeof freshProfile.walletBalance === 'number') {
-                  setUserBalance(freshProfile.walletBalance);
-                }
-                if (freshProfile.subscription) {
-                  setUserSubscription(freshProfile.subscription);
-                }
-                if (freshProfile.isVip) {
-                  setUserSubscription(prev => ({
-                    planId: (freshProfile as any).plan || prev?.planId || 'PASS_VIP',
-                    status: 'ACTIVE',
-                    activatedAt: (freshProfile as any).vipActivatedAt || new Date().toISOString(),
-                    expiresAt: prev?.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                    autoRenew: false
-                  }));
-                }
-                if (returnDocId && freshProfile.purchasedDocIds?.includes(returnDocId)) {
-                  setIsCurrentDocPaid(true);
-                }
+              if (freshProfile?.subscription) {
+                setUserSubscription(freshProfile.subscription);
               }
-            } catch (err) {
-              console.warn('[reloadUserData Error]:', err);
+            } else if (typeof data.newBalance === 'number') {
+              setUserBalance(data.newBalance);
             }
-          }
-        };
 
-        reloadUserData();
-        setTimeout(reloadUserData, 600);
-        setTimeout(reloadUserData, 1500);
-        setTimeout(reloadUserData, 3000);
-
-        // 4. Si type === 'wallet' : Affiche une notification Toast : "Votre solde a été crédité avec succès !"
-        if (returnType === 'wallet' || reference?.includes('WALLET') || reference?.includes('RECHARGE') || (!returnDocId && !returnPlan && amountParam > 0)) {
-          if (amountParam > 0) {
-            setUserBalance(prev => prev + amountParam);
-          }
-          setSuccessMessage("✅ Votre solde a été crédité avec succès !");
-        } 
-        // 5. Si type === 'subscription' : Active l'état VIP localement
-        else if (returnType === 'subscription' || returnPlan) {
-          const activePlan = returnPlan || 'PASS_VIP';
-          setUserSubscription({
-            planId: activePlan,
-            status: 'ACTIVE',
-            activatedAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            autoRenew: false
-          });
-          setSuccessMessage("👑 Félicitations ! Votre abonnement VIP est maintenant actif.");
-        }
-
-        // 6. Si docId est présent : Marque le document comme débloqué dans l'état local React et ouvre la vue de visualisation de CE document précis
-        if (returnDocId) {
-          setIsCurrentDocPaid(true);
-          setCurrentDocId(returnDocId);
-          if (returnType !== 'wallet' && returnType !== 'subscription' && !returnPlan) {
-            setSuccessMessage("🎉 Paiement validé ! Votre document est débloqué et prêt au téléchargement.");
-            setIsVictoryModalOpen(true);
-          }
-
-          // Charger les données complètes de ce document précis depuis Firestore
-          getDoc(doc(db, 'user_documents', returnDocId)).then((snap) => {
-            if (snap.exists()) {
-              const docData: any = snap.data();
-              if (docData.title) {
-                setVictoryDocTitle(docData.title);
-              }
-              if (docData.formData) {
-                setFormData(docData.formData);
-              }
-              if (docData.aiData) {
-                setAiData(docData.aiData);
-              }
-              if (docData.businessDocData) {
-                setBusinessDocData(docData.businessDocData);
-              }
-              if (docData.ebookData) {
-                setEbookData(docData.ebookData);
-              }
-              const effectiveType = docData.type || docData.documentType || returnType;
-              if (effectiveType === 'letter' || docData.formData?.generationMode === 'letter_only') {
-                setActiveTab('letter_preview');
-              } else if (effectiveType === 'devis') {
-                setActiveTab('devis_preview');
-              } else if (effectiveType === 'facture') {
-                setActiveTab('facture_preview');
-              } else if (effectiveType === 'pack_business') {
-                setActiveTab('pack_business_preview');
-              } else if (effectiveType === 'ebook') {
-                setActiveTab('ebook_preview');
-              } else {
-                setActiveTab('cv_preview');
-              }
-            } else {
-              // Fallback selon le type
-              if (returnType === 'letter' || activeTab === 'letter' || activeTab === 'letter_preview') {
-                setActiveTab('letter_preview');
-              } else if (returnType === 'devis' || activeTab === 'devis' || activeTab === 'devis_preview') {
-                setActiveTab('devis_preview');
-              } else if (returnType === 'facture' || activeTab === 'facture' || activeTab === 'facture_preview') {
-                setActiveTab('facture_preview');
-              } else if (returnType === 'pack_business' || activeTab === 'pack_business' || activeTab === 'pack_business_preview') {
-                setActiveTab('pack_business_preview');
-              } else if (returnType === 'ebook' || activeTab === 'ebook' || activeTab === 'ebook_preview') {
-                setActiveTab('ebook_preview');
-              } else {
-                setActiveTab('cv_preview');
-              }
+            if (returnType === 'wallet' || (!returnDocId && !returnPlan)) {
+              setSuccessMessage("✅ Paiement Money Fusion validé ! Votre solde a été mis à jour.");
+            } else if (returnType === 'subscription' || returnPlan) {
+              setSuccessMessage("👑 Félicitations ! Votre abonnement VIP est maintenant actif.");
+            } else if (returnDocId) {
+              setIsCurrentDocPaid(true);
+              setSuccessMessage("🎉 Paiement validé ! Votre document est débloqué.");
+              setIsVictoryModalOpen(true);
             }
-          }).catch(() => {
-            if (returnType === 'letter' || activeTab === 'letter' || activeTab === 'letter_preview') {
+          } else {
+            console.log('[App] Paiement Money Fusion en cours de traitement par l\'opérateur.');
+            setSuccessMessage("⏳ Paiement en cours de validation par votre opérateur Mobile Money. Votre solde sera actualisé dès réception de la confirmation.");
+          }
+          setTimeout(() => setSuccessMessage(null), 6000);
+        })
+        .catch(err => {
+          console.warn('[App] Erreur vérification paiement:', err);
+        });
+
+      // Gestion du document retourné
+      if (returnDocId) {
+        setCurrentDocId(returnDocId);
+        getDoc(doc(db, 'user_documents', returnDocId)).then((snap) => {
+          if (snap.exists()) {
+            const docData: any = snap.data();
+            if (docData.title) setVictoryDocTitle(docData.title);
+            if (docData.formData) setFormData(docData.formData);
+            if (docData.aiData) setAiData(docData.aiData);
+            if (docData.businessDocData) setBusinessDocData(docData.businessDocData);
+            if (docData.ebookData) setEbookData(docData.ebookData);
+            const effectiveType = docData.type || docData.documentType || returnType;
+            if (effectiveType === 'letter' || docData.formData?.generationMode === 'letter_only') {
               setActiveTab('letter_preview');
-            } else if (returnType === 'devis' || activeTab === 'devis' || activeTab === 'devis_preview') {
+            } else if (effectiveType === 'devis') {
               setActiveTab('devis_preview');
-            } else if (returnType === 'facture' || activeTab === 'facture' || activeTab === 'facture_preview') {
+            } else if (effectiveType === 'facture') {
               setActiveTab('facture_preview');
-            } else if (returnType === 'pack_business' || activeTab === 'pack_business' || activeTab === 'pack_business_preview') {
+            } else if (effectiveType === 'pack_business') {
               setActiveTab('pack_business_preview');
-            } else if (returnType === 'ebook' || activeTab === 'ebook' || activeTab === 'ebook_preview') {
+            } else if (effectiveType === 'ebook') {
               setActiveTab('ebook_preview');
             } else {
               setActiveTab('cv_preview');
             }
-          });
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        } else {
-          setActiveTab('dashboard');
-          setIsCurrentDocPaid(true);
-          if (!returnType && !returnPlan) {
-            setSuccessMessage("✅ Paiement Money Fusion validé avec succès !");
           }
-        }
-
-        setTimeout(() => setSuccessMessage(null), 6000);
-
-        // 7. Nettoie l'URL sans recharger la page ou redirige vers /documents/:docId
-        if (returnDocId) {
-          window.history.replaceState({}, document.title, `/documents/${returnDocId}`);
-        } else {
-          const cleanPath = window.location.pathname;
-          const cleanHash = window.location.hash ? window.location.hash.split('?')[0] : '';
-          const cleanUrl = (cleanPath.endsWith('/') && cleanHash ? cleanPath.slice(0, -1) : cleanPath) + cleanHash;
-          window.history.replaceState({}, document.title, cleanUrl || '/');
-        }
-      } else if (status === 'cancel') {
-        setErrorMessage('Le paiement Money Fusion a été interrompu ou annulé. Vous pouvez réessayer à tout moment.');
-        setTimeout(() => setErrorMessage(null), 5000);
+        }).catch(() => {});
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (_e) {}
-  }, [currentUser, activeTab]);
+  }, []);
 
   // -------------------------------------------------------------
   // Open Payment Modal Handlers for each service

@@ -13,6 +13,7 @@ import {
   limit,
   orderBy,
   getDocs,
+  runTransaction as firestoreRunTransaction,
   increment as firestoreIncrement,
   arrayUnion as firestoreArrayUnion,
   arrayRemove as firestoreArrayRemove,
@@ -140,7 +141,8 @@ function createColRef(raw: Firestore, colPath: string) {
 export function createDbAdapter(raw: Firestore = rawFirestore): any {
   return {
     collection: (colName: string) => createColRef(raw, colName),
-    doc: (colName: string, docId: string) => createDocRef(raw, colName, docId)
+    doc: (colName: string, docId: string) => createDocRef(raw, colName, docId),
+    runTransaction: (fn: any) => firestoreRunTransaction(raw, fn)
   };
 }
 
@@ -156,6 +158,129 @@ export const FieldValue: any = {
 };
 
 export const auth: Auth = getAuth(app);
+
+/**
+ * Exécution ATOMIQUE et IDEMPOTENTE du crédit de portefeuille avec verrou Firestore
+ * Garantit qu'une transaction n'est créditée qu'une et UNE SEULE FOIS,
+ * même si Money Fusion envoie plusieurs webhooks en parallèle simultanément.
+ */
+export async function executeAtomicPaymentCredit({
+  searchId,
+  effectiveUserId,
+  effectiveAmount,
+  userEmail = '',
+  userName = '',
+  phoneNumber = ''
+}: {
+  searchId: string;
+  effectiveUserId: string;
+  effectiveAmount: number;
+  userEmail?: string;
+  userName?: string;
+  phoneNumber?: string;
+}) {
+  const numericAmount = Math.max(0, Math.round(Number(effectiveAmount) || 0));
+  if (numericAmount <= 0) {
+    return { alreadyProcessed: false, success: false, reason: 'Montant nul ou invalide' };
+  }
+
+  // 1. Localiser l'ID réel du document dans Firestore
+  let targetDocId = searchId;
+  const directDocRef = doc(rawFirestore, 'transactions', searchId);
+  const directSnap = await getDoc(directDocRef);
+  if (!directSnap.exists()) {
+    try {
+      const q = query(collection(rawFirestore, 'transactions'), where('transactionId', '==', searchId), limit(1));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        targetDocId = qSnap.docs[0].id;
+      } else {
+        const qToken = query(collection(rawFirestore, 'transactions'), where('token', '==', searchId), limit(1));
+        const qTokenSnap = await getDocs(qToken);
+        if (!qTokenSnap.empty) {
+          targetDocId = qTokenSnap.docs[0].id;
+        } else {
+          const qTokenPay = query(collection(rawFirestore, 'transactions'), where('tokenPay', '==', searchId), limit(1));
+          const qPaySnap = await getDocs(qTokenPay);
+          if (!qPaySnap.empty) {
+            targetDocId = qPaySnap.docs[0].id;
+          }
+        }
+      }
+    } catch (_e) {}
+  }
+
+  const txDocRef = doc(rawFirestore, 'transactions', targetDocId);
+  const nowIso = new Date().toISOString();
+
+  // 2. Transaction Firestore ACID : Toutes les lectures d'abord, puis toutes les écritures
+  return await firestoreRunTransaction(rawFirestore, async (transaction) => {
+    const txSnap = await transaction.get(txDocRef);
+
+    // Si la transaction a DÉJÀ été créditée/traitée (statut SUCCESS ou isProcessed: true)
+    if (txSnap.exists()) {
+      const txData = txSnap.data();
+      if (txData?.status === 'SUCCESS' || txData?.isProcessed === true) {
+        console.log(`[Atomic Lock] Transaction ${targetDocId} déjà traitée (isProcessed: true). Double crédit neutralisé.`);
+        return { alreadyProcessed: true, success: true, transactionId: targetDocId };
+      }
+    }
+
+    let userSnap = null;
+    let userDocRef = null;
+    if (effectiveUserId && effectiveUserId !== 'guest') {
+      userDocRef = doc(rawFirestore, 'users', effectiveUserId);
+      userSnap = await transaction.get(userDocRef);
+    }
+
+    // Écritures :
+    // A) Mise à jour de la transaction à SUCCESS + isProcessed: true
+    transaction.set(txDocRef, {
+      id: targetDocId,
+      transactionId: targetDocId,
+      userId: effectiveUserId || 'anonymous',
+      userEmail: userEmail || (txSnap.exists() ? txSnap.data()?.userEmail : '') || '',
+      userName: userName || (txSnap.exists() ? txSnap.data()?.userName : '') || 'Utilisateur',
+      phoneNumber: phoneNumber || (txSnap.exists() ? txSnap.data()?.phoneNumber : '') || '',
+      type: 'wallet_recharge',
+      resolvedType: 'wallet',
+      amount: numericAmount,
+      expectedAmount: numericAmount,
+      currency: 'XOF',
+      status: 'SUCCESS',
+      isProcessed: true,
+      paidAt: nowIso,
+      processedAt: nowIso,
+      completedAt: nowIso,
+      updatedAt: nowIso,
+      paymentGateway: 'Money Fusion',
+      paymentMethod: 'moneyfusion'
+    }, { merge: true });
+
+    // B) Mise à jour unique du solde utilisateur
+    if (userDocRef && userSnap) {
+      const prevBal = userSnap.exists() ? Number(userSnap.data()?.walletBalance ?? userSnap.data()?.balance ?? 0) : 0;
+      const validPrev = isNaN(prevBal) ? 0 : prevBal;
+      const newBal = validPrev + numericAmount;
+
+      transaction.set(userDocRef, {
+        walletBalance: newBal,
+        balance: newBal,
+        solde: newBal,
+        lastPaymentAt: nowIso,
+        lastPaymentProvider: 'Money Fusion',
+        updatedAt: nowIso
+      }, { merge: true });
+
+      console.log(`[Atomic Lock] Solde crédité avec succès pour ${effectiveUserId}: ${validPrev} -> ${newBal} FCFA (+${numericAmount})`);
+      return { alreadyProcessed: false, success: true, newBalance: newBal, transactionId: targetDocId };
+    }
+
+    return { alreadyProcessed: false, success: true, transactionId: targetDocId };
+  });
+}
+
+export { rawFirestore, firestoreRunTransaction as runTransaction, doc as rawDocRef };
 
 const adminCompat: any = {
   firestore: () => dbAdmin,

@@ -1,4 +1,7 @@
-import { db, FieldValue } from '../../lib/firebaseAdmin.js';
+import adminCompat, { db, FieldValue, executeAtomicPaymentCredit } from '../../lib/firebaseAdmin.js';
+import { verifyMoneyFusionWithOfficialApi } from '../../lib/moneyFusionVerify.js';
+
+const admin = adminCompat;
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -13,7 +16,7 @@ export default async function handler(req: any, res: any) {
     const metadata = body.metadata || body.customData || {};
 
     let transactionId = String(body.transactionId || personalInfo.transactionId || metadata.transactionId || '').trim();
-    const token = String(body.token || body.orderId || body.id || '').trim();
+    const token = String(body.token || body.tokenPay || body.orderId || body.id || '').trim();
     let userId = String(personalInfo.userId || body.userId || metadata.userId || '').trim();
     let userEmail = String(personalInfo.userEmail || personalInfo.email || body.email || metadata.userEmail || '').trim();
     let userName = String(personalInfo.userName || personalInfo.nom || body.nomclient || '').trim();
@@ -22,108 +25,123 @@ export default async function handler(req: any, res: any) {
     let rawAmount = Number(body.totalPrice || body.amount || personalInfo.amount || metadata.amount || 0);
 
     const searchId = transactionId || token;
-    let existingTx: any = null;
+    if (!searchId) {
+      return res.status(400).json({ error: "Identifiant de transaction manquant." });
+    }
 
-    if (searchId && db && typeof db.collection === 'function') {
+    // 1. Récupère la transaction existante dans Firestore
+    let transactionRef = db.collection('transactions').doc(searchId);
+    let transactionDoc = await transactionRef.get();
+
+    if (!transactionDoc.exists) {
       try {
-        const snap = await db.collection('transactions').doc(searchId).get();
-        if (snap.exists) {
-          existingTx = snap.data();
-          transactionId = searchId;
+        const qSnap = await db.collection('transactions').where('transactionId', '==', searchId).limit(1).get();
+        if (!qSnap.empty) {
+          transactionDoc = qSnap.docs[0];
+          transactionRef = transactionDoc.ref;
+          transactionId = transactionDoc.id;
+        } else if (token) {
+          const qToken = await db.collection('transactions').where('token', '==', token).limit(1).get();
+          if (!qToken.empty) {
+            transactionDoc = qToken.docs[0];
+            transactionRef = transactionDoc.ref;
+            transactionId = transactionDoc.id;
+          }
         }
       } catch (_e) {}
+    }
 
-      if (!existingTx) {
-        try {
-          const qSnap = await db.collection('transactions').where('transactionId', '==', searchId).limit(1).get();
-          if (!qSnap.empty) {
-            existingTx = qSnap.docs[0].data();
-            transactionId = qSnap.docs[0].id;
-          }
-        } catch (_e) {}
+    const transaction = transactionDoc.exists ? transactionDoc.data() : null;
+
+    // 2. VÉRIFICATION D'IDEMPOTENCE IMMÉDIATE (RÈGLE ABSOLUE) :
+    if (transaction && (transaction.status === 'SUCCESS' || transaction.isProcessed === true)) {
+      console.log(`[Webhook] Transaction ${searchId} déjà traitée (SUCCESS / isProcessed: true). Annulation immédiate du doublon.`);
+      return res.status(200).json({ message: "Transaction déjà traitée, aucun crédit ajouté" });
+    }
+
+    // 3. VÉRIFICATION STRICTE ET DIRECTE AUPRÈS DE L'API OFFICIELLE MONEY FUSION :
+    // Ne jamais se fier uniquement au boolean statut:true qui indique seulement la réussite de la requête HTTP.
+    // L'argent n'est crédité que si et seulement si statut === 'paid' / 'success' avec montant > 0.
+    const queryToken = token || transaction?.token || transaction?.tokenPay || searchId;
+    let isConfirmedPaid = false;
+    let validatedAmount = 0;
+
+    if (queryToken) {
+      const mfCheck = await verifyMoneyFusionWithOfficialApi(queryToken);
+      if (mfCheck.isPaid) {
+        isConfirmedPaid = true;
+        validatedAmount = mfCheck.amount;
+        console.log(`[Webhook] Paiement certifié PAYÉ par l'API officielle Money Fusion pour ${queryToken} (${validatedAmount} FCFA)`);
+      } else if (mfCheck.isFailed) {
+        if (transactionDoc.exists) {
+          await transactionRef.update({
+            status: 'FAILED',
+            isProcessed: false,
+            updatedAt: new Date().toISOString()
+          }).catch(() => {});
+        }
+        return res.status(200).json({ message: "Transaction échouée chez Money Fusion" });
+      } else {
+        console.log(`[Webhook] API Money Fusion confirme statut en attente (${mfCheck.status}) pour ${queryToken}. AUCUN CRÉDIT EFFECTUÉ.`);
       }
     }
 
-    if (existingTx) {
-      if (!userId || userId === 'guest') userId = existingTx.userId || userId;
-      if (!userEmail) userEmail = existingTx.userEmail || userEmail;
-      if (!userName || userName === 'Client Dokya' || userName === 'Utilisateur') userName = existingTx.userName || userName;
-      if (!phoneNumber) phoneNumber = existingTx.phoneNumber || existingTx.userPhone || phoneNumber;
-      if (rawAmount <= 0 && existingTx.amount) rawAmount = Number(existingTx.amount);
-      if (rawAmount <= 0 && existingTx.expectedAmount) rawAmount = Number(existingTx.expectedAmount);
-    }
+    // Repli de secours STRICT sur le payload si l'API officielle était indisponible
+    if (!isConfirmedPaid) {
+      const payloadData = body.data || body;
+      const explicitStatus = String(payloadData.statut || '').trim().toLowerCase();
+      const payloadAmount = Number(payloadData.Montant || payloadData.amount || 0);
+      const hasTxNumber = Boolean(payloadData.numeroTransaction);
 
-    // Règle stricte : Ne crédite JAMAIS 0 FCFA
-    const numericAmount = Math.round(Number(rawAmount) || 0);
-    if (numericAmount <= 0) {
-      console.warn(`[Money Fusion Webhook] ATTENTION: Montant détecté à 0 FCFA. Aucun crédit ne sera effectué à 0 FCFA.`);
-      return res.status(200).json({ status: "ignored_zero_amount" });
-    }
-
-    const rawStatus = body.statut ?? body.status ?? body.event ?? '';
-    const statusVal = String(rawStatus).toLowerCase();
-    const isSuccess = statusVal === 'true' || statusVal === 'success' || statusVal === 'paid' || statusVal === 'completed' || statusVal === 'approved' || rawStatus === true || rawStatus === 1 || !rawStatus;
-
-    if (!isSuccess && (statusVal === 'cancel' || statusVal === 'failed' || statusVal === 'refused' || statusVal === 'false')) {
-      console.log(`[Money Fusion Webhook] Statut annulé/échoué (${statusVal}), aucun crédit.`);
-      if (transactionId && db && typeof db.collection === 'function') {
-        await db.collection('transactions').doc(transactionId).set({
-          status: 'FAILED',
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
+      if ((explicitStatus === 'paid' || explicitStatus === 'success' || explicitStatus === 'completed') && (payloadAmount > 0 || hasTxNumber)) {
+        isConfirmedPaid = true;
+        validatedAmount = payloadAmount;
       }
-      return res.status(200).json({ status: "success" });
     }
 
-    const now = new Date().toISOString();
-    const resolvedTxId = transactionId || token || `MF-${Date.now()}`;
-
-    // 1. Crédit du solde (walletBalance) de l'utilisateur
-    if (userId && userId !== 'guest' && db && typeof db.collection === 'function') {
-      const userRef = db.collection('users').doc(userId);
-      await userRef.set({
-        walletBalance: FieldValue ? FieldValue.increment(numericAmount) : numericAmount,
-        balance: FieldValue ? FieldValue.increment(numericAmount) : numericAmount,
-        solde: FieldValue ? FieldValue.increment(numericAmount) : numericAmount,
-        lastPaymentAt: now,
-        lastPaymentProvider: 'Money Fusion',
-        updatedAt: now
-      }, { merge: true });
-      console.log(`[Webhook] Solde de l'utilisateur ${userId} crédité avec succès de +${numericAmount} FCFA`);
+    // Si le paiement n'est pas 100% confirmé : STOP IMMÉDIAT SANS CRÉDITER
+    if (!isConfirmedPaid) {
+      return res.status(200).json({
+        message: "Notification Money Fusion reçue. En attente de paiement confirmé par l'opérateur, aucun crédit ajouté."
+      });
     }
 
-    // 2. Mise à jour de la transaction dans 'transactions' avec status: 'SUCCESS' et le montant réel
-    if (db && typeof db.collection === 'function') {
-      await db.collection('transactions').doc(resolvedTxId).set({
-        id: resolvedTxId,
-        transactionId: resolvedTxId,
-        userId: userId || 'anonymous',
-        userEmail: userEmail || '',
-        userName: userName || 'Utilisateur',
-        phoneNumber: phoneNumber || '',
-        userPhone: phoneNumber || '',
-        type: 'wallet_recharge',
-        amount: numericAmount,
-        expectedAmount: numericAmount,
-        currency: 'XOF',
-        status: 'SUCCESS',
-        paymentGateway: 'Money Fusion',
-        paymentMethod: 'moneyfusion',
-        completedAt: now,
-        updatedAt: now
-      }, { merge: true });
-      console.log(`[Webhook] Transaction ${resolvedTxId} mise à jour à SUCCESS avec montant réel ${numericAmount} FCFA`);
+    // 4. LE PAIEMENT EST 100% CONFIRMÉ (statut 'paid' / 'success') :
+    const effectiveUserId = (transaction?.userId && transaction.userId !== 'guest') ? transaction.userId : userId;
+    const effectiveAmount = Math.round(Number(validatedAmount || transaction?.amount || transaction?.expectedAmount || rawAmount || 0));
+
+    if (effectiveAmount <= 0) {
+      console.warn(`[Money Fusion Webhook] Montant détecté à 0 FCFA pour ${searchId}. Aucun crédit.`);
+      return res.status(200).json({ message: "Montant nul, aucun crédit ajouté" });
     }
 
+    // 5. EXÉCUTION ATOMIQUE AVEC VERROU FIRESTORE :
+    // runTransaction garantit que même si Money Fusion bombarde plusieurs webhooks simultanément,
+    // UNE SEULE requête obtiendra le verrou et créditera le solde.
+    const atomicResult = await executeAtomicPaymentCredit({
+      searchId: transactionId || searchId,
+      effectiveUserId,
+      effectiveAmount,
+      userEmail: userEmail || transaction?.userEmail || '',
+      userName: userName || transaction?.userName || 'Client Dokya',
+      phoneNumber: phoneNumber || transaction?.phoneNumber || ''
+    });
+
+    if (atomicResult.alreadyProcessed) {
+      console.log(`[Webhook] Idempotence atomique : Transaction ${searchId} déjà traitée par une requête parallèle concurrente.`);
+      return res.status(200).json({ message: "Transaction déjà traitée, aucun crédit ajouté" });
+    }
+
+    console.log(`[Webhook] Transaction ${searchId} validée et solde crédité de +${effectiveAmount} FCFA avec succès (atomique).`);
     return res.status(200).json({
-      status: "success",
-      transactionId: resolvedTxId,
-      amount: numericAmount,
-      userId
+      success: true,
+      message: "Solde crédité avec succès",
+      newBalance: atomicResult.newBalance
     });
 
   } catch (err: any) {
     console.error("[Webhook Error]:", err);
-    return res.status(200).json({ status: "error", message: err?.message });
+    return res.status(500).json({ error: err?.message || 'Erreur interne de traitement' });
   }
 }
+
