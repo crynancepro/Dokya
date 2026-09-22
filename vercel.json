@@ -4,6 +4,26 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/payment",
+      "destination": "/api/payment"
+    },
+    {
+      "source": "/api/wallet/pay",
+      "destination": "/api/payment"
+    },
+    {
+      "source": "/api/promo/validate",
+      "destination": "/api/payment"
+    },
+    {
+      "source": "/api/promo/valider",
+      "destination": "/api/payment"
+    },
+    {
+      "source": "/api/moneyfusion/verify",
+      "destination": "/api/payment"
+    },
+    {
       "source": "/api/pricing",
       "destination": "/api/pricing"
     },
@@ -17,7 +37,7 @@
     },
     {
       "source": "/api/admin/codes-promo",
-      "destination": "/api/admin/codes-promo"
+      "destination": "/api/admin/promo-codes"
     },
     {
       "source": "/api/admin/stats",
@@ -36,28 +56,8 @@
       "destination": "/api/moneyfusion/checkout"
     },
     {
-      "source": "/api/moneyfusion/verify",
-      "destination": "/api/moneyfusion/verify"
-    },
-    {
       "source": "/api/webhooks/moneyfusion",
       "destination": "/api/webhooks/moneyfusion"
-    },
-    {
-      "source": "/api/wallet/pay",
-      "destination": "/api/wallet/pay"
-    },
-    {
-      "source": "/api/promo/validate",
-      "destination": "/api/promo/validate"
-    },
-    {
-      "source": "/api/promo/valider",
-      "destination": "/api/promo/valider"
-    },
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
     },
     {
       "source": "/((?!api/).*)",

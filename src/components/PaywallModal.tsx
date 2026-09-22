@@ -295,11 +295,12 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         console.warn('[PaywallModal pre-save document warn]:', dbErr);
       }
 
-      // 2. Call server-side /api/wallet/pay
-      const payRes = await fetch('/api/wallet/pay', {
+      // 2. Call server-side consolidated /api/payment with action: 'wallet_pay'
+      const payRes = await fetch('/api/payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          action: 'wallet_pay',
           userId: currentUid,
           itemType: 'document',
           documentId: effectiveDocId,

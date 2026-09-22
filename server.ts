@@ -4709,6 +4709,36 @@ const handleRedeemPromoCode = (req: express.Request, res: express.Response) => {
 app.post('/api/promo/redeem', handleRedeemPromoCode);
 app.post('/api/promo-codes/redeem', handleRedeemPromoCode);
 
+// Route consolidée unique /api/payment (Vercel Hobby & Local)
+app.all('/api/payment', async (req, res) => {
+  try {
+    const payload = { ...(req.query || {}), ...(req.body || {}) };
+    let action = String(payload.action || payload.type || '').trim().toLowerCase();
+    if (!action) {
+      if (payload.code || payload.promoCode) action = 'validate_promo';
+      else if (payload.token || payload.paymentId) action = 'verify_checkout';
+      else if (payload.documentId || payload.docId || payload.itemId || payload.userId) action = 'wallet_pay';
+    }
+
+    if (action === 'validate_promo' || action === 'promo_validate' || action === 'promo') {
+      return handleValidatePromoCode(req, res);
+    } else if (action === 'verify_checkout' || action === 'verify_payment' || action === 'verify') {
+      const mfVerifyHandler = (app as any)._router.stack.find((l: any) => l.route?.path === '/api/moneyfusion/verify')?.route?.stack[0]?.handle;
+      if (mfVerifyHandler) return mfVerifyHandler(req, res);
+    } else if (action === 'wallet_pay' || action === 'pay_wallet' || action === 'wallet') {
+      const walletHandler = (app as any)._router.stack.find((l: any) => l.route?.path === '/api/wallet/pay')?.route?.stack[0]?.handle;
+      if (walletHandler) return walletHandler(req, res);
+    }
+
+    return res.status(400).json({
+      success: false,
+      error: "Action inconnue ou non spécifiée ('wallet_pay', 'validate_promo', 'verify_checkout')."
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Erreur interne de paiement' });
+  }
+});
+
 // 11. Audit Logs Endpoint
 app.get('/api/admin/audit-logs', requireAdmin, (req, res) => {
   try {

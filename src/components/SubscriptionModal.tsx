@@ -58,11 +58,12 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     const expiresDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
     try {
-      // 1. Call server-side /api/wallet/pay
-      const res = await fetch('/api/wallet/pay', {
+      // 1. Call server-side consolidated /api/payment with action: 'wallet_pay'
+      const res = await fetch('/api/payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          action: 'wallet_pay',
           userId: effectiveUid,
           itemType: 'subscription',
           itemId: planId,

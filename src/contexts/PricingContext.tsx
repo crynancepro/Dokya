@@ -293,10 +293,10 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     // First try backend API validation for authoritative check & usage counter
     try {
-      const response = await fetch('/api/promo/validate', {
+      const response = await fetch('/api/payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: cleanCode, amount: orderAmount, documentTitle })
+        body: JSON.stringify({ action: 'validate_promo', code: cleanCode, amount: orderAmount, documentTitle })
       });
 
       if (response.ok && response.status !== 405) {

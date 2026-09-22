@@ -485,10 +485,11 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         const uid = auth.currentUser?.uid || currentUser?.uid;
 
         // 1. Appel direct de secours vers l'API de vérification backend sécurisée
-        fetch('/api/moneyfusion/verify', {
+        fetch('/api/payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            action: 'verify_checkout',
             token,
             paymentId: token,
             docId: returnDocId,
@@ -498,7 +499,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
             plan: returnPlan,
             status: 'success'
           })
-        }).catch(err => console.warn('[Money Fusion Verify Request Warn]:', err));
+        }).catch(err => console.warn('[Payment Verify Request Warn]:', err));
 
         // 2. Synchronisation directe de secours dans Firestore côté client (sécurisée par les identifiants de l'utilisateur connecté)
         if (uid && uid !== 'guest') {

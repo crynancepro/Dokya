@@ -475,10 +475,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
         const subDurationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
         const subEndDate = new Date(Date.now() + subDurationDays * 24 * 60 * 60 * 1000).toISOString();
 
-        const payRes = await fetch('/api/wallet/pay', {
+        const payRes = await fetch('/api/payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            action: 'wallet_pay',
             userId: userId || 'guest',
             itemType: 'subscription',
             itemId: effectivePlanId,
@@ -539,10 +540,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       } else {
         // Document purchase via wallet with /api/wallet/pay
         const targetDocIdToPay = targetDocId || `doc-${Date.now()}`;
-        const payRes = await fetch('/api/wallet/pay', {
+        const payRes = await fetch('/api/payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            action: 'wallet_pay',
             userId: userId || 'guest',
             itemType: 'document',
             documentId: targetDocIdToPay,
