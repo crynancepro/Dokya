@@ -19,8 +19,9 @@ export interface Experience {
   location: string;
   startDate: string;
   endDate: string;
-  current: boolean;
-  description: string;
+  current?: boolean;
+  description?: string;
+  optimizedDescription?: string[];
 }
 
 export interface Education {
@@ -54,8 +55,8 @@ export interface EbookCoverProposal {
   author: string;
   genreBadge?: string;
   tagline?: string;
-  artStyle: 'photorealistic' | 'illustration' | 'minimalist' | 'abstract';
-  artStyleLabel: string;
+  artStyle?: 'photorealistic' | 'illustration' | 'minimalist' | 'abstract' | string;
+  artStyleLabel?: string;
   paletteName: string;
   bgGradient: string;
   bgPattern?: 'grid' | 'dots' | 'radial' | 'minimal' | 'waves' | 'mesh' | 'gold_frame' | 'geometric' | 'stars' | 'watercolor' | 'marble';
@@ -77,8 +78,8 @@ export interface EbookBackCoverProposal {
   authorBio: string;
   keyTakeaways: string[];
   quoteOrCallToAction: string;
-  artStyle: 'photorealistic' | 'illustration' | 'minimalist' | 'abstract';
-  artStyleLabel: string;
+  artStyle?: 'photorealistic' | 'illustration' | 'minimalist' | 'abstract' | string;
+  artStyleLabel?: string;
   paletteName?: string;
   isbnNumber?: string;
   barcodeDigits?: string;
@@ -245,6 +246,20 @@ export interface BusinessDocData {
   discountPercent: number;
   depositAmount?: number; // Acompte versé en FCFA
   themeStyle?: 'indigo' | 'emerald' | 'amber' | 'slate';
+  themeColor?: string;
+  templateStyle?: string;
+  companyName?: string;
+  companyAddress?: string;
+  companyPhone?: string;
+  companyEmail?: string;
+  companyNinea?: string;
+  clientName?: string;
+  clientAddress?: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  clientNinea?: string;
+  paymentMethod?: string;
+  paymentDetails?: string;
   signatoryName?: string;
   signatoryRole?: string;
   signatureDate?: string;
@@ -388,6 +403,7 @@ export interface CVFormData {
   letterTone?: 'Formelle' | 'Dynamique' | 'Convaincante' | 'Chaleureuse';
   templateStyle?: TemplateStyle;
   themeColor?: string;
+  aiOptimizedData?: any;
 
   // Visual & Manual Customization Tools (Canva-like)
   fontSize?: 'small' | 'normal' | 'large';
@@ -610,6 +626,7 @@ export function formatRemainingSubscriptionTime(sub?: UserSubscription | any): s
 export interface CandidateProfile {
   uid: string;
   email: string;
+  phone?: string;
   displayName?: string;
   personalInfo: PersonalInfo;
   experiences: Experience[];
@@ -618,7 +635,9 @@ export interface CandidateProfile {
   languages: Language[];
   credits: number;
   balance: number; // Solde utilisateur en FCFA (ex: 3 000 FCFA)
-  subscriptionStatus: 'free' | 'pro' | 'unlimited';
+  walletBalance?: number;
+  purchasedDocIds?: string[];
+  subscriptionStatus: 'free' | 'pro' | 'unlimited' | 'pending';
   subscription?: UserSubscription;
   referralCode?: string; // Code unique de parrainage (ex: "PETER25")
   referredBy?: string; // UID du parrain si inscrit via affiliation
@@ -671,6 +690,8 @@ export interface TransactionRecord {
   userEmail?: string;
   userName?: string;
   userPhone?: string;
+  title?: string;
+  network?: string;
   type: 'recharge' | 'document_purchase' | 'subscription_purchase' | 'debit' | 'admin_adjustment' | 'DIRECT_PURCHASE' | 'WALLET_RECHARGE' | 'SUBSCRIPTION_PURCHASE' | 'VIP_PASS' | string;
   amount: number; // e.g. +3000 FCFA for recharge, -1000 FCFA for purchase
   expectedAmount?: number;
@@ -708,6 +729,7 @@ export interface TransactionRecord {
   extractedData?: {
     recipient_phone?: string;
     recipient_name?: string;
+    sender_phone?: string;
     amount?: number;
     expectedAmount?: number;
     transaction_id?: string;
@@ -916,6 +938,7 @@ export interface InterviewPrepData {
   questions: InterviewQuestionItem[];
   behavioralTips: string[]; // 4-6 conseils de posture, communication non-verbale & négociation
   suggestedQuestionsToAskRecruiter: string[]; // 4-5 questions stratégiques intelligentes à poser en fin d'entretien
+  questionsToAskRecruiter?: string[];
   strengthsSummary?: string[]; // Synthèse des atouts majeurs détectés
 }
 
@@ -929,6 +952,7 @@ export interface AffiliateCommission {
   referrerCode?: string;
   referredUserId: string; // UID du client apporté
   referredUserName: string;
+  referredUserEmail?: string;
   serviceTitle?: string;
   totalAmount: number; // Montant payé par le client (ex: 5 000 FCFA)
   affiliateCommission: number; // Part de l'affilié (ex: 20% = 1 000 FCFA)
@@ -951,6 +975,7 @@ export interface AffiliatePayoutRequest {
   amount: number; // minimum 2 000 FCFA
   status: 'PENDING' | 'PAID' | 'REJECTED';
   requestedAt: string;
+  createdAt?: string;
   paidAt?: string;
   rejectedAt?: string;
   adminNote?: string;

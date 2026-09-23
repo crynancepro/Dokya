@@ -3100,14 +3100,40 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
             console.log('[Money Fusion Checkout] URL générée avec succès par l\'API Money Fusion:', checkoutUrl);
             try {
               const db = getServerAdminDb();
+              const nowIso = new Date().toISOString();
+              const mfToken = String(data.token || '').trim();
               await db.collection('transactions').doc(transactionId).set({
-                token: data.token || null,
-                tokenPay: data.token || null,
+                token: mfToken || null,
+                tokenPay: mfToken || null,
                 checkoutUrl: checkoutUrl,
                 status: 'PENDING',
                 isProcessed: false,
-                updatedAt: new Date().toISOString()
+                createdAt: nowIso,
+                updatedAt: nowIso
               }, { merge: true });
+
+              if (mfToken && mfToken !== transactionId) {
+                await db.collection('transactions').doc(mfToken).set({
+                  id: mfToken,
+                  transactionId: transactionId,
+                  linkedTxId: transactionId,
+                  token: mfToken,
+                  tokenPay: mfToken,
+                  userId: userId || 'anonymous',
+                  userEmail: userEmail || '',
+                  userName: userName || 'Client Dokya',
+                  phoneNumber: userPhone || '',
+                  amount: numericAmount,
+                  expectedAmount: numericAmount,
+                  currency: 'XOF',
+                  type: 'wallet_recharge',
+                  status: 'PENDING',
+                  isProcessed: false,
+                  checkoutUrl: checkoutUrl,
+                  createdAt: nowIso,
+                  updatedAt: nowIso
+                }, { merge: true });
+              }
             } catch (_e) {}
 
             return res.json({
@@ -3274,7 +3300,7 @@ app.post('/api/webhooks/moneyfusion', async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Solde crédité avec succès",
-      newBalance: atomicResult.newBalance
+      newBalance: (atomicResult as any).newBalance
     });
 
   } catch (error: any) {
@@ -3413,28 +3439,18 @@ app.all('/api/moneyfusion/verify', async (req, res) => {
     let isPaid = status === 'SUCCESS' || txData?.isProcessed === true;
     let currentNewBalance: number | undefined = undefined;
 
-    // Si pas encore marqué SUCCESS dans Firestore, interroge l'API officielle Money Fusion
+    // Si pas encore marqué SUCCESS dans Firestore, interroge l'API officielle Money Fusion en lecture seule
     const queryToken = token || txData?.token || txData?.tokenPay || transactionId;
     if (!isPaid && queryToken) {
       try {
         const mfCheck = await verifyMoneyFusionWithOfficialApi(queryToken);
         if (mfCheck.isPaid) {
-          const effectiveUserId = (txData?.userId && txData.userId !== 'guest') ? txData.userId : userId;
-          const effectiveAmount = Math.round(Number(mfCheck.amount || finalAmount || 0));
-
-          const atomicResult = await executeAtomicPaymentCredit({
-            searchId,
-            effectiveUserId,
-            effectiveAmount,
-            userEmail: txData?.userEmail || '',
-            userName: txData?.userName || 'Utilisateur',
-            phoneNumber: txData?.phoneNumber || ''
-          });
-
+          // STRICTEMENT EN LECTURE SEULE :
+          // Le webhook officiel (/api/webhooks/moneyfusion) est le SEUL habilité à créditer le solde via executeAtomicPaymentCredit.
+          // Ici, on signale simplement paid: true pour l'affichage de confirmation à l'utilisateur.
           isPaid = true;
           status = 'SUCCESS';
-          currentNewBalance = atomicResult.newBalance;
-          console.log(`[Verify Route] Paiement validé par API officielle Money Fusion et crédité avec succès pour ${searchId}`);
+          console.log(`[Verify Route - Lecture Seule] Paiement confirmé PAYÉ par API officielle Money Fusion pour ${queryToken}. Affichage UI validé.`);
         }
       } catch (mfErr: any) {
         console.warn('[Verify Route] Erreur vérification API Money Fusion:', mfErr?.message);

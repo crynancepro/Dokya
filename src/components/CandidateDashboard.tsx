@@ -294,16 +294,16 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         const liveBalance = (remoteProfile as any).walletBalance ?? (remoteProfile as any).balance ?? 0;
         const isVip = isUserVipActive(remoteProfile.subscription) || remoteProfile.subscription?.status === 'active' || (remoteProfile.subscription?.status as any) === 'ACTIVE';
         setProfile(prev => {
-          const updated = {
+          const updated: CandidateProfile = {
             ...prev,
             uid: remoteProfile.uid,
             email: remoteProfile.email || prev.email,
             balance: liveBalance,
-            subscription: remoteProfile.subscription,
-            subscriptionStatus: isVip ? ('unlimited' as const) : ('free' as const),
+            subscription: remoteProfile.subscription as any,
+            subscriptionStatus: isVip ? 'unlimited' : 'free',
             subscriptionPlan: remoteProfile.subscription?.planId,
             subscriptionExpiresAt: remoteProfile.subscription?.expiresAt || undefined
-          };
+          } as CandidateProfile;
           try {
             localStorage.setItem(getLocalProfileKey(user.uid), JSON.stringify(updated));
           } catch (_e) {}
@@ -353,36 +353,27 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Handle wallet recharge completion safely
+  // Handle wallet recharge completion safely (source de vérité serveur uniquement)
   const handleRechargeSuccess = async (addedAmount: number, tx: TransactionRecord) => {
     try {
-      const newBalance = (profile.balance ?? 0) + addedAmount;
-      const updatedProfile: CandidateProfile = {
-        ...profile,
-        balance: newBalance,
-        updatedAt: new Date().toISOString()
-      };
-      setProfile(updatedProfile);
-      try {
-        localStorage.setItem(getLocalProfileKey(user?.uid), JSON.stringify(updatedProfile));
-      } catch (_e) {}
-
-      const updatedTxs = [tx, ...transactions];
+      const updatedTxs = [tx, ...transactions.filter(t => t.id !== tx.id)];
       setTransactions(updatedTxs);
       try {
         localStorage.setItem(getLocalTransactionsKey(user?.uid), JSON.stringify(updatedTxs));
       } catch (_e) {}
 
-      if (user) {
+      if (user?.uid) {
         try {
-          await saveCandidateProfile(updatedProfile);
+          const freshProfile = await fetchUserProfile(user.uid);
+          if (freshProfile && typeof freshProfile.walletBalance === 'number') {
+            setProfile(prev => ({
+              ...prev,
+              balance: freshProfile.walletBalance,
+              walletBalance: freshProfile.walletBalance
+            }));
+          }
         } catch (e) {
-          console.warn('[Save Candidate Profile Warn]:', e);
-        }
-        try {
-          await saveTransactionRecord(tx);
-        } catch (e) {
-          console.warn('[Save Tx Record Warn]:', e);
+          console.warn('[handleRechargeSuccess Profile Refresh Warn]:', e);
         }
       }
     } catch (err) {
@@ -1928,6 +1919,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           'Structurez vos exemples selon la méthode STAR (Situation, Tâche, Action, Résultat).',
                           'Prenez 2 secondes de réflexion avant de répondre aux questions complexes.'
                         ],
+                        suggestedQuestionsToAskRecruiter: [
+                          'Quelles seront les priorités stratégiques des 3 premiers mois pour ce poste ?',
+                          'Comment est organisée l\'équipe au quotidien ?'
+                        ],
                         questionsToAskRecruiter: [
                           'Quelles seront les priorités stratégiques des 3 premiers mois pour ce poste ?',
                           'Comment est organisée l\'équipe au quotidien ?'
@@ -2320,7 +2315,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                {onOpenInterviewPrepDocument && (previewDoc.generationMode === 'cv_only' || previewDoc.generationMode === 'full') && (
+                {onOpenInterviewPrepDocument && (previewDoc.generationMode === 'cv_only' || (previewDoc.generationMode as string) === 'full' || previewDoc.generationMode === 'full_pack') && (
                   <button
                     type="button"
                     onClick={() => {
@@ -2363,12 +2358,17 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           'Structurez systématiquement vos réponses selon la logique Situation, Tâche, Action, Résultat (STAR).',
                           'Parlez d\'une voix posée en marquant de courtes pauses pour valoriser vos propos clés.'
                         ],
+                        suggestedQuestionsToAskRecruiter: [
+                          'Quels sont les trois premiers défis prioritaires attendus pour la personne qui prendra ce poste ?',
+                          'Comment définiriez-vous la culture interne et la dynamique de travail au sein de votre équipe ?',
+                          'Quelles sont les perspectives d\'évolution à moyen terme associées à cette opportunité ?'
+                        ],
                         questionsToAskRecruiter: [
                           'Quels sont les trois premiers défis prioritaires attendus pour la personne qui prendra ce poste ?',
                           'Comment définiriez-vous la culture interne et la dynamique de travail au sein de votre équipe ?',
                           'Quelles sont les perspectives d\'évolution à moyen terme associées à cette opportunité ?'
                         ],
-                        profileStrengths: [
+                        strengthsSummary: [
                           'Excellente capacité d\'adaptation opérationnelle',
                           'Sens éprouvé de l\'organisation et du respect des délais',
                           'Communication fluide et leadership d\'équipe'
@@ -2401,9 +2401,24 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   title="Partager / Envoyer sur WhatsApp"
                 >
                   <span className="text-sm">📲</span>
-                  <span className="hidden sm:inline">Partager / Envoyer sur WhatsApp</span>
-                  <span className="sm:hidden">WhatsApp</span>
+                  <span className="hidden sm:inline">WhatsApp</span>
                 </button>
+
+                {!isAuthorizedForExport(previewDoc) && (
+                  <button
+                    onClick={() => {
+                      setPaywallTargetDoc(previewDoc);
+                      setPaywallTargetFormat('pdf');
+                      setIsPaywallOpen(true);
+                    }}
+                    type="button"
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 ring-2 ring-emerald-400/30"
+                    title="Payer et débloquer pour télécharger"
+                  >
+                    <CreditCard className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Payer (1 000 FCFA)</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => handleExportWithPaywallProtection(previewDoc, 'pdf', true)}
@@ -2457,60 +2472,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     </div>
                   )}
                 </A4PreviewContainer>
-
-                {/* OVERLAY DE SÉCURITÉ SI NON DÉBLOQUÉ */}
-                {!isAuthorizedForExport(previewDoc) && (
-                  <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs rounded-xl">
-                    <div className="max-w-md w-full bg-slate-900/95 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-slate-800 text-center space-y-4">
-                      <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                        <Lock className="w-7 h-7" />
-                      </div>
-                      <div>
-                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-black mb-2 border border-amber-500/30">
-                          <span>🔒 Document Protégé</span>
-                        </span>
-                        <h3 className="text-base font-black text-white">
-                          {previewDoc.title || 'Document Professionnel'}
-                        </h3>
-                        <p className="text-xs text-slate-400 mt-1">
-                          Le document complet et le téléchargement HD sont disponibles immédiatement après déblocage avec votre solde.
-                        </p>
-                      </div>
-
-                      <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                        <span className="text-slate-400">Votre Solde Dokya :</span>
-                        <span className={`font-black ${(profile.balance ?? 0) >= 1000 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                          {(profile.balance ?? 0).toLocaleString('fr-FR')} FCFA
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 pt-1">
-                        {(profile.balance ?? 0) >= 1000 ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPaywallTargetDoc(previewDoc);
-                              setPaywallTargetFormat('pdf');
-                              setIsPaywallOpen(true);
-                            }}
-                            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
-                          >
-                            <Unlock className="w-4 h-4 text-amber-300" />
-                            <span>Débloquer avec mon solde (1 000 FCFA)</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setIsRechargeModalOpen(true)}
-                            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
-                          >
-                            <span>⚡ Solde insuffisant : Recharger mon solde</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 

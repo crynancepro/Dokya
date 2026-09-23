@@ -120,6 +120,7 @@ export default async function handler(req: any, res: any) {
     // UNE SEULE requête obtiendra le verrou et créditera le solde.
     const atomicResult = await executeAtomicPaymentCredit({
       searchId: transactionId || searchId,
+      token: token || queryToken || transaction?.token || '',
       effectiveUserId,
       effectiveAmount,
       userEmail: userEmail || transaction?.userEmail || '',
@@ -136,7 +137,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       success: true,
       message: "Solde crédité avec succès",
-      newBalance: atomicResult.newBalance
+      newBalance: (atomicResult as any).newBalance
     });
 
   } catch (err: any) {

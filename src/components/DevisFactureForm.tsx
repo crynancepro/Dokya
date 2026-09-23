@@ -405,7 +405,7 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
       const result = await saveOrUpdateBusinessDocument(currentUid, docId, updatedDoc);
       onChange(updatedDoc);
       const isInvoice = data.type === 'facture';
-      const isQuoteAccepted = data.type === 'devis' && (data.quoteStatus === 'accepted' || data.quoteStatus === 'ACCEPTE');
+      const isQuoteAccepted = data.type === 'devis' && ((data.quoteStatus as string) === 'accepted' || data.quoteStatus === 'ACCEPTE');
       const hasItems = (data.items || []).length > 0;
       if ((isInvoice || isQuoteAccepted) && hasItems) {
         setDocSaveSuccessMsg(`Document ${data.docNumber || docId} enregistré & stock inventaire mis à jour automatiquement !`);

@@ -1377,7 +1377,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handlePurgeReceipts = async () => {
     setIsPurgingReceipts(true);
     try {
-      const res = await purgeExpiredPaymentReceipts(transactionsList);
+      const res = await purgeExpiredPaymentReceipts(transactionsList as any);
       if (res.purgedCount > 0) {
         setSuccessMsg(`🧹 ${res.purgedCount} reçu(s) (+24h) purgé(s) du stockage avec succès. Historique comptable conservé.`);
       } else {
@@ -4287,7 +4287,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex items-start justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3.5">
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg uppercase ${
-                  inspectingCandidate.role === 'superadmin' || inspectingCandidate.role === 'admin'
+                  (inspectingCandidate.role as string) === 'superadmin' || inspectingCandidate.role === 'admin'
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                     : inspectingCandidate.status === 'suspended'
                     ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
@@ -4309,11 +4309,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         Compte Actif
                       </span>
                     )}
-                    {inspectingCandidate.subscription === 'unlimited' ? (
+                    {inspectingCandidate.subscriptionStatus === 'unlimited' || inspectingCandidate.subscription?.status === 'ACTIVE' ? (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
                         VIP Illimité
                       </span>
-                    ) : inspectingCandidate.subscription === 'pro' ? (
+                    ) : inspectingCandidate.subscriptionStatus === 'pro' || inspectingCandidate.subscription?.planId === 'pro' ? (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30">
                         Pack Pro
                       </span>

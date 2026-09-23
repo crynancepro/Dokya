@@ -62,9 +62,23 @@ appleProvider.addScope("email");
 appleProvider.addScope("name");
 
 export const DEFAULT_PLATFORM_PRICING = {
-  singleDocPrice: 1999,
+  cvOnlyPrice: 1000,
+  letterOnlyPrice: 1000,
+  fullPackPrice: 1399,
+  devisPrice: 1000,
+  facturePrice: 1000,
+  businessPackPrice: 1499,
+  ebookPrice: 1500,
+  unlimitedPassPrice: 3499,
+  unlimitedPassMonthlyPrice: 3499,
+  unlimitedPassAnnualPrice: 39999,
+  recruiterSearchPrice: 10000,
+  singleDocPrice: 1000,
   vipMonthlyPrice: 3499,
-  vipAnnualPrice: 24999
+  vipAnnualPrice: 39999,
+  currency: 'FCFA',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  updatedBy: 'system'
 };
 
 export const refetchProfile = async (uid?: string) => fetchUserProfile(uid);

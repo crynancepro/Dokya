@@ -1057,7 +1057,7 @@ export const AdminAffiliationView: React.FC<AdminAffiliationViewProps> = ({ admi
                       
                       {/* Date */}
                       <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
-                        {new Date(req.createdAt).toLocaleDateString('fr-FR', {
+                        {new Date(req.createdAt || req.requestedAt || Date.now()).toLocaleDateString('fr-FR', {
                           day: '2-digit',
                           month: 'short',
                           year: 'numeric',

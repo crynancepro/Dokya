@@ -152,14 +152,40 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
           // Sauvegarder le token Money Fusion officiel dans la transaction Firestore
           if (db && typeof db.collection === 'function') {
             try {
+              const nowIso = new Date().toISOString();
+              const mfToken = String(data.token || '').trim();
               await db.collection('transactions').doc(paymentId).set({
-                token: data.token || null,
-                tokenPay: data.token || null,
+                token: mfToken || null,
+                tokenPay: mfToken || null,
                 checkoutUrl: checkoutUrl,
                 status: 'PENDING',
                 isProcessed: false,
-                updatedAt: new Date().toISOString()
+                createdAt: nowIso,
+                updatedAt: nowIso
               }, { merge: true });
+
+              if (mfToken && mfToken !== paymentId) {
+                await db.collection('transactions').doc(mfToken).set({
+                  id: mfToken,
+                  transactionId: paymentId,
+                  linkedTxId: paymentId,
+                  token: mfToken,
+                  tokenPay: mfToken,
+                  userId: targetUserId,
+                  userEmail: targetUserEmail,
+                  userName: targetName,
+                  phoneNumber: targetPhone,
+                  amount: numericAmount,
+                  expectedAmount: numericAmount,
+                  currency: 'XOF',
+                  type: 'wallet_recharge',
+                  status: 'PENDING',
+                  isProcessed: false,
+                  checkoutUrl: checkoutUrl,
+                  createdAt: nowIso,
+                  updatedAt: nowIso
+                }, { merge: true });
+              }
             } catch (_e) {}
           }
 

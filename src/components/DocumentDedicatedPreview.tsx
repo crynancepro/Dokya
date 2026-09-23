@@ -388,16 +388,42 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
               </>
             ) : (
               /* ================================================================= */
-              /* UNPAID STATE: PROMINENT PAY TO UNLOCK BUTTON                     */
+              /* UNPAID STATE: PROMINENT PAY BUTTON IN TOP RIGHT                  */
               /* ================================================================= */
               <>
+                {/* Format buttons that trigger payment modal */}
                 <button
                   type="button"
                   onClick={onPayToUnlock}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer active:scale-95 animate-pulse"
+                  className="hidden md:flex px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all items-center gap-1.5 cursor-pointer"
+                  title="Payer pour télécharger le PDF"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>PDF (.pdf)</span>
+                </button>
+
+                {onExportDocx && (
+                  <button
+                    type="button"
+                    onClick={onPayToUnlock}
+                    className="hidden md:flex px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all items-center gap-1.5 cursor-pointer"
+                    title="Payer pour télécharger le Word (.docx)"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Word (.docx)</span>
+                  </button>
+                )}
+
+                {/* Main Payer Button in Top Right */}
+                <button
+                  type="button"
+                  id="btn-preview-pay"
+                  onClick={onPayToUnlock}
+                  className="px-4 sm:px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer active:scale-95 ring-2 ring-emerald-400/40"
+                  title="Payer et débloquer le téléchargement officiel"
                 >
                   <CreditCard className="w-4 h-4 text-amber-300" />
-                  <span>Payer & Télécharger ({(meta.price || 0).toLocaleString('fr-FR')} FCFA)</span>
+                  <span>Payer ({(meta.price || 0).toLocaleString('fr-FR')} FCFA)</span>
                 </button>
               </>
             )}
@@ -405,13 +431,12 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
             {/* 📲 WHATSAPP DIRECT SHARE BUTTON (REQUIS) */}
             <button
               type="button"
-              onClick={handleShareWhatsApp}
+              onClick={isEffectivePaid ? handleShareWhatsApp : onPayToUnlock}
               className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition-all cursor-pointer active:scale-95 shrink-0"
               title="Partager ou envoyer directement ce document sur WhatsApp"
             >
               <span className="text-sm">📲</span>
-              <span className="hidden sm:inline">Partager / Envoyer sur WhatsApp</span>
-              <span className="sm:hidden">WhatsApp</span>
+              <span className="hidden sm:inline">WhatsApp</span>
             </button>
 
 
@@ -699,9 +724,8 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
         <div 
           className="transition-all duration-300 w-full flex justify-center"
           style={{
-            filter: !isEffectivePaid ? 'blur(6px)' : 'none',
-            userSelect: !isEffectivePaid ? 'none' : 'auto',
-            pointerEvents: !isEffectivePaid ? 'none' : 'auto'
+            userSelect: 'auto',
+            pointerEvents: 'auto'
           }}
         >
           <A4PreviewContainer zoomLevel={zoomLevel}>
@@ -745,63 +769,6 @@ export const DocumentDedicatedPreview: React.FC<DocumentDedicatedPreviewProps> =
 
           </A4PreviewContainer>
         </div>
-
-        {/* OVERLAY DE SÉCURISATION DU CONTENU LORSQUE NON DÉBLOQUÉ */}
-        {!isEffectivePaid && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-xs rounded-3xl">
-            <div className="max-w-md w-full bg-white/95 backdrop-blur-md rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-200/90 text-center space-y-4 animate-in zoom-in-95 duration-200">
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 shadow-inner">
-                <Lock className="w-8 h-8" />
-              </div>
-
-              <div>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-black mb-2">
-                  <span>🔒</span>
-                  <span>Document Protégé • Déblocage Requis</span>
-                </span>
-                <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                  {meta.title}
-                </h3>
-                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
-                  Le contenu complet et le téléchargement haute définition (PDF & Word) sont réservés après déblocage.
-                </p>
-              </div>
-
-              {/* Indicateur de solde */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs">
-                <span className="text-slate-600 font-medium">Votre solde Dokya :</span>
-                <span className={`font-black ${userBalance >= (meta.price || 0) ? 'text-emerald-700' : 'text-amber-700'}`}>
-                  {userBalance.toLocaleString('fr-FR')} FCFA
-                </span>
-              </div>
-
-              {/* Actions de déblocage */}
-              <div className="space-y-2 pt-1">
-                <button
-                  type="button"
-                  onClick={onPayToUnlock}
-                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
-                >
-                  <Unlock className="w-4 h-4 text-amber-300" />
-                  <span>Débloquer avec mon solde ({(meta.price || 0).toLocaleString('fr-FR')} FCFA)</span>
-                </button>
-
-                {userBalance < (meta.price || 0) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onOpenRechargeModal) onOpenRechargeModal();
-                      else onPayToUnlock();
-                    }}
-                    className="w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <span>⚡ Solde insuffisant : Recharger mon solde</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ========================================================================= */}

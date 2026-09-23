@@ -11,6 +11,7 @@ export interface CVTemplateProps {
   style?: TemplateStyle;
   primaryColor?: string;
   isUnlocked?: boolean;
+  unlocked?: boolean;
   isPaid?: boolean;
   isEditingDirectly?: boolean;
   onFormDataChange?: (updated: CVFormData) => void;
@@ -23,12 +24,13 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
   style = 'moderne',
   primaryColor = '#4f46e5',
   isUnlocked,
+  unlocked: propUnlocked,
   isPaid,
   isEditingDirectly = false,
   onFormDataChange,
 }) => {
   const formData = propFormData || propData || ({} as CVFormData);
-  const unlocked = isPaid !== undefined ? isPaid : (isUnlocked ?? true);
+  const unlocked = isPaid !== undefined ? isPaid : (propUnlocked !== undefined ? propUnlocked : (isUnlocked ?? true));
   const personalInfo = formData?.personalInfo || { firstName: '', lastName: '', email: '', phone: '', address: '', city: 'Dakar', country: 'Sénégal', targetJob: '', linkedin: '', portfolio: '', photoUrl: '' };
   const experiences = formData?.experiences || [];
   const education = formData?.education || [];
@@ -499,7 +501,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
                                 if (!onFormDataChange) return;
                                 const newLangs = [...formData.languages];
                                 if (newLangs[i]) {
-                                  newLangs[i] = { ...newLangs[i], level: newLevel };
+                                  newLangs[i] = { ...newLangs[i], level: newLevel as any };
                                   onFormDataChange({ ...formData, languages: newLangs });
                                 }
                               })}

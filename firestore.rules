@@ -72,8 +72,13 @@ service cloud.firestore {
 
     // Profil candidat
     match /user_profiles/{userId} {
-      allow read: if true;
-      allow write, delete: if isOwner(userId) || isAdmin() || isSignedIn();
+      allow read, write: if true;
+      allow delete: if isOwner(userId) || isAdmin() || isSignedIn();
+    }
+
+    // Verrous de paiement atomiques (anti-doublon et anti-collision)
+    match /payment_locks/{lockId} {
+      allow read, write: if true;
     }
 
     // 2. Documents & CV générés (déblocage immédiat par webhooks)

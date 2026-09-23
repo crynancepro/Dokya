@@ -12,6 +12,7 @@ interface BusinessDocTemplateGalleryProps {
   docType: 'devis' | 'facture' | 'pack_business';
   onSelectTemplate: (templateId: string, themeStyle?: 'indigo' | 'emerald' | 'amber' | 'slate') => void;
   selectedTemplateId?: string;
+  selectedColor?: string;
   onGoServices?: () => void;
 }
 

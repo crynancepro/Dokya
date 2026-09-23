@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CVFormData, Experience, Education, Language, CoverLetterType, GenerationMode, TemplateStyle, CandidateProfile } from '../types';
+import { CVFormData, Experience, Education, Language, CoverLetterType, GenerationMode, TemplateStyle, CandidateProfile, PersonalInfo } from '../types';
 import { ALL_CV_TEMPLATES } from '../data/cvTemplatesList';
 import { 
   User, Briefcase, GraduationCap, Award, Sparkles, 
@@ -255,7 +255,7 @@ export const StepForm: React.FC<StepFormProps> = ({
       personalInfo: {
         ...(formData?.personalInfo || {}),
         [field]: value
-      }
+      } as PersonalInfo
     });
   };
 

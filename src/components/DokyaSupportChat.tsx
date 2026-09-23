@@ -31,9 +31,12 @@ import {
 import { DokyaLogo } from './DokyaLogo';
 
 interface DokyaSupportChatProps {
-  user: FirebaseUser | null;
+  user?: FirebaseUser | null;
+  currentUser?: FirebaseUser | null;
   userProfile?: CandidateProfile;
   className?: string;
+  onBack?: () => void;
+  onClose?: () => void;
 }
 
 // Audio Player Component with WhatsApp-style visual representation
@@ -127,9 +130,13 @@ export const VoiceAudioPlayer: React.FC<{ src: string; durationSec?: number }> =
 
 export const DokyaSupportChat: React.FC<DokyaSupportChatProps> = ({
   user,
+  currentUser,
   userProfile,
-  className = ''
+  className = '',
+  onBack,
+  onClose
 }) => {
+  const activeUser = user || currentUser || null;
   const [conversation, setConversation] = useState<SupportConversation | null>(null);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -147,7 +154,7 @@ export const DokyaSupportChat: React.FC<DokyaSupportChatProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const userId = user?.uid || 'guest_user';
+  const userId = activeUser?.uid || 'guest_user';
   const userName = userProfile?.personalInfo?.firstName 
     ? `${userProfile.personalInfo.firstName} ${userProfile.personalInfo.lastName || ''}`.trim()
     : user?.displayName || 'Candidat Dokya';

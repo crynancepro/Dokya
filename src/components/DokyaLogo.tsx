@@ -42,7 +42,7 @@ export const DokyaLogo: React.FC<DokyaLogoProps> = ({
       >
         {!imgError ? (
           <img
-            src={dokyaLogoImg}
+            src={typeof dokyaLogoImg === 'string' ? dokyaLogoImg : (dokyaLogoImg as any)?.src || ''}
             alt="Dokya AI"
             className="w-full h-full object-cover rounded-2xl"
             onError={() => setImgError(true)}

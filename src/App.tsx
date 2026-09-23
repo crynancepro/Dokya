@@ -525,7 +525,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
                 setUserBalance(data.newBalance);
               }
               if (freshProfile?.subscription) {
-                setUserSubscription(freshProfile.subscription);
+                setUserSubscription(freshProfile.subscription as any);
               }
             } else if (typeof data.newBalance === 'number') {
               setUserBalance(data.newBalance);
@@ -1173,7 +1173,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   };
 
   const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name || !!ebookData?.title;
-  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || activeTab === 'business' || activeTab === 'clients' || activeTab === 'help' || activeTab === 'support';
+  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || (activeTab as string) === 'business' || (activeTab as string) === 'clients' || activeTab === 'help' || activeTab === 'support';
   const isLandingView = activeTab === 'landing';
   const isTemplatesView = activeTab === 'templates';
 
@@ -1290,7 +1290,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       {/* 2. MAIN WORKSPACE */}
       {isDashboardView ? (
         <CandidateDashboard
-          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : activeTab === 'entretiens' ? 'entretiens' : activeTab === 'business' || activeTab === 'clients' ? 'business' : activeTab === 'help' || activeTab === 'support' ? 'help' : 'dashboard_home'}
+          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : (activeTab as string) === 'entretiens' ? 'entretiens' : (activeTab as string) === 'business' || (activeTab as string) === 'clients' ? 'business' : activeTab === 'help' || activeTab === 'support' ? 'help' : 'dashboard_home'}
           onApplyProfileToEditor={handleApplyProfileToEditor}
           onLoadDocumentToEditor={handleLoadDocumentToEditor}
           onSelectService={handleSelectService}
@@ -1494,7 +1494,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         {/* ========================================================================= */}
         {activeTab === 'letter_gallery' && (
           <LetterTemplateGallery
-            selectedStyleId={formData.templateStyle}
+            selectedStyleId={formData.templateStyle as any}
             selectedLetterType={formData.letterType}
             onSelectTemplate={handleSelectLetterTemplate}
             onGoServices={() => navigateToView('dashboard')}
