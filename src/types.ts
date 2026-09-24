@@ -347,12 +347,35 @@ export interface BusinessInvoice {
   updatedAt?: any;
 }
 
+export type LetterCategory = 
+  | 'candidature' // Candidature & Carrière (Motivation, Stage, Démission, Recommandation)
+  | 'administration' // Administration & Formalités (Demande d'explication, Demande de congé, Visa, Procuration, Résiliation)
+  | 'business' // Business & Commercial (Proposition commerciale, Relance de paiement, Partenariat)
+  | 'sur_mesure'; // Sur-Mesure / Autre (Saisie totalement libre du sujet)
+
 export type CoverLetterType = 
+  // Candidature & Carrière
   | 'offre' // Réponse à une offre d'emploi
   | 'spontanee' // Candidature spontanée
+  | 'motivation' // Lettre de motivation classique
   | 'stage' // Demande de stage / alternance
+  | 'demission' // Lettre de démission
+  | 'recommandation' // Recommandation / Réseau
   | 'reconversion' // Reconversion professionnelle
-  | 'recommandation'; // Recommandation / Réseau
+  // Administration & Formalités
+  | 'demande_explication' // Réponse à demande d'explication
+  | 'demande_conge' // Demande de congé annuel / exceptionnel
+  | 'visa' // Demande de visa / attestation consulaire
+  | 'procuration' // Procuration officielle
+  | 'resiliation' // Résiliation de contrat / bail / abonnement
+  // Business & Commercial
+  | 'proposition_commerciale' // Proposition commerciale / devis d'accompagnement
+  | 'relance_paiement' // Relance de paiement / facture impayée
+  | 'partenariat' // Demande de partenariat stratégique
+  // Sur-Mesure / Autre
+  | 'sur_mesure' // Saisie totalement libre du sujet
+  | 'autre'
+  | string;
 
 export type CoverLetterStyle = 
   | 'moderne_epuree'
@@ -381,10 +404,13 @@ export interface FreeTextBlock {
 
 export interface CVFormData {
   generationMode?: GenerationMode; // 'full' (CV + Lettre) or 'letter_only' (Lettre de motivation seule)
+  letterCategory?: LetterCategory; // Catégorie universelle de lettre
   letterType?: CoverLetterType; // Type de lettre sélectionné
-  targetCompany?: string; // Nom de l'entreprise cible
+  targetCompany?: string; // Nom de l'entreprise cible ou Destinataire
+  letterSubject?: string; // Objet de la lettre (pour administration, business ou sur-mesure)
   letterInstructions?: string; // Contexte & Consignes particulières pour la lettre
   highlightsSummary?: string; // Résumé rapide des points forts / expériences (rétrocompatibilité)
+  letterTone?: LetterTone; // Ton de rédaction de la lettre
   
   // Conditional fields
   diplomaOrSchool?: string; // Si Stage / Alternance: Diplôme préparé / École
@@ -400,7 +426,6 @@ export interface CVFormData {
   customSections?: CustomSection[];
   freeTextBlocks?: FreeTextBlock[];
   targetSector?: string;
-  letterTone?: 'Formelle' | 'Dynamique' | 'Convaincante' | 'Chaleureuse';
   templateStyle?: TemplateStyle;
   themeColor?: string;
   aiOptimizedData?: any;

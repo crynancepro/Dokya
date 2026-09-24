@@ -23,7 +23,7 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
   userId,
   userEmail,
   userName,
-  initialAmount = 3000,
+  initialAmount = 500,
   onRechargeSuccess,
   onSuccess
 }) => {
@@ -41,7 +41,7 @@ export const RechargeWalletModal: React.FC<RechargeWalletModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       mode="recharge"
-      initialRechargeAmount={initialAmount}
+      initialRechargeAmount={Math.max(300, initialAmount)}
       userBalance={effectiveBalance}
       userId={userId}
       userEmail={userEmail}

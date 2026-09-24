@@ -15,8 +15,8 @@ export interface VictoryModalProps {
 export const VictoryModal: React.FC<VictoryModalProps> = ({
   isOpen,
   onClose,
-  title = "Félicitations ! Votre document est débloqué 🎉",
-  subtitle = "Votre document est désormais validé, accessible en lecture complète et disponible au téléchargement illimité.",
+  title = "Félicitations, votre document est débloqué",
+  subtitle = "Votre document est désormais débloqué. Vous pouvez le télécharger au format de votre choix.",
   documentTitle,
   onDownloadAction,
   onViewDocumentAction,

@@ -525,12 +525,20 @@ export async function exportLetterToDocx(formData: CVFormData, aiData?: AIOptimi
   );
 
   // Recipient / Date
+  const recipientHeader = formData.letterCategory === 'administration'
+    ? "À l'attention de l'Administration\n"
+    : formData.letterCategory === 'business'
+    ? "À l'attention du Destinataire / Client\n"
+    : formData.letterCategory === 'sur_mesure'
+    ? "À l'attention du Destinataire\n"
+    : "À l'attention du Responsable des Recrutements\n";
+
   docChildren.push(
     new Paragraph({
       alignment: AlignmentType.RIGHT,
       spacing: { after: 300 },
       children: [
-        new TextRun({ text: `À l'attention du Responsable des Recrutements\n`, bold: true, size: 18, color: '1E293B' }),
+        new TextRun({ text: recipientHeader, bold: true, size: 18, color: '1E293B' }),
         ...(formData.targetCompany ? [new TextRun({ text: `${formData.targetCompany}\n`, bold: true, size: 20, color: '4F46E5' })] : []),
         new TextRun({ text: `Fait à ${personalInfo.city || 'Dakar'}, le ${todayDate}`, size: 18, color: '64748B' }),
       ],
@@ -612,7 +620,8 @@ export async function exportLetterToDocx(formData: CVFormData, aiData?: AIOptimi
 
   // Pack and Download
   const blob = await Packer.toBlob(doc);
-  const fileName = `Lettre_Motivation_${fullName.replace(/[\s\/\\]+/g, '_')}.docx`;
+  const cleanCat = formData.letterCategory ? formData.letterCategory.toUpperCase() : 'OFFICIELLE';
+  const fileName = `Lettre_${cleanCat}_${fullName.replace(/[\s\/\\]+/g, '_')}.docx`;
 
   const downloadAnchor = document.createElement('a');
   const url = URL.createObjectURL(blob);

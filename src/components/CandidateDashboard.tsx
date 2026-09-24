@@ -56,6 +56,7 @@ interface CandidateDashboardProps {
   onOpenInterviewPrepDocument?: (prepData: InterviewPrepData) => void;
   onLoadBusinessDocToEditor?: (data: BusinessDocData, docId?: string) => void;
   onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture', business?: UserBusiness) => void;
+  onOpenDedicatedPreview?: (docItem: SavedUserDocument) => void;
 }
 
 export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
@@ -68,7 +69,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   initialTab = 'dashboard_home',
   onOpenInterviewPrepDocument,
   onLoadBusinessDocToEditor,
-  onOpenInvoiceGenerator
+  onOpenInvoiceGenerator,
+  onOpenDedicatedPreview
 }) => {
   const [user, setUser] = useState<FirebaseUser | null>(auth.currentUser);
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab | string>(initialTab);
@@ -662,6 +664,12 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         suggestedQuestionsToAskRecruiter: []
       };
       onOpenInterviewPrepDocument(prepData);
+      return;
+    }
+
+    // Redirection directe vers l'aperçu dédié plein écran du document concerné
+    if (onOpenDedicatedPreview) {
+      onOpenDedicatedPreview(docItem);
       return;
     }
 
@@ -1425,12 +1433,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => {
-                              setPreviewDoc(docItem);
-                              setPreviewTab(docItem.generationMode === 'letter_only' ? 'letter' : 'cv');
-                            }}
+                            onClick={() => handleDocumentClick(docItem)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                            title="Aperçu"
+                            title="Consulter le document en plein écran"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -1716,25 +1721,28 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                               <span>Word</span>
                             </button>
 
-                            {/* WhatsApp Direct Share */}
-                            <button
-                              type="button"
-                              onClick={() => handleShareWhatsApp(docItem)}
-                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                              title="Partager directement ce document sur WhatsApp"
-                            >
-                              <span className="text-xs">📲</span>
-                              <span className="hidden sm:inline">WhatsApp</span>
-                            </button>
+                            {/* WhatsApp Direct Share (Strictement disponible après paiement) */}
+                            {isUnlocked && (
+                              <button
+                                type="button"
+                                onClick={() => handleShareWhatsApp(docItem)}
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                                title="Partager directement ce document sur WhatsApp"
+                              >
+                                <span className="text-xs">📲</span>
+                                <span className="hidden sm:inline">WhatsApp</span>
+                              </button>
+                            )}
 
-                            {/* Preview */}
+                            {/* Consulter le document du projet */}
                             <button
                               type="button"
                               onClick={() => handleDocumentClick(docItem)}
-                              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                              title={isUnlocked ? "Consulter le document complet" : "Débloquer / Acheter le document"}
+                              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                              title="Consulter le document du projet en plein écran"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Consulter le document du projet</span>
                             </button>
                           </div>
                         )}
@@ -2266,7 +2274,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               profile={profile}
               onRefresh={handleRefreshAll}
               isLoading={isLoading}
-              onOpenDocumentPreview={(doc) => setPreviewDoc(doc)}
+              onOpenDocumentPreview={(doc) => handleDocumentClick(doc)}
               onOpenInterviewPrep={(prepData) => {
                 if (onOpenInterviewPrepDocument) {
                   onOpenInterviewPrepDocument(prepData);
@@ -2385,24 +2393,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   </button>
                 )}
 
-                {/* 📲 WHATSAPP DIRECT SHARE BUTTON */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isAuthorizedForExport(previewDoc)) {
-                      setPaywallTargetDoc(previewDoc);
-                      setPaywallTargetFormat('pdf');
-                      setIsPaywallOpen(true);
-                      return;
-                    }
-                    handleShareWhatsApp(previewDoc);
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
-                  title="Partager / Envoyer sur WhatsApp"
-                >
-                  <span className="text-sm">📲</span>
-                  <span className="hidden sm:inline">WhatsApp</span>
-                </button>
+                {/* 📲 WHATSAPP DIRECT SHARE BUTTON (DISPONIBLE APRÈS PAIEMENT) */}
+                {isAuthorizedForExport(previewDoc) && (
+                  <button
+                    type="button"
+                    onClick={() => handleShareWhatsApp(previewDoc)}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+                    title="Partager / Envoyer sur WhatsApp"
+                  >
+                    <span className="text-sm">📲</span>
+                    <span className="hidden sm:inline">WhatsApp</span>
+                  </button>
+                )}
 
                 {!isAuthorizedForExport(previewDoc) && (
                   <button
@@ -2539,8 +2541,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         }}
         onDownloadAction={(format) => {
           if (paywallTargetDoc) {
-            setVictoryDocTitle(paywallTargetDoc.title || 'Document Professionnel');
-            setIsVictoryModalOpen(true);
             if (format === 'pdf') {
               setPreviewDoc(paywallTargetDoc);
               setPreviewTab(paywallTargetDoc.generationMode === 'letter_only' ? 'letter' : 'cv');
@@ -2580,10 +2580,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         onViewDocumentAction={() => {
           setIsVictoryModalOpen(false);
           if (paywallTargetDoc) {
-            setPreviewDoc(paywallTargetDoc);
+            if (onOpenDedicatedPreview) {
+              onOpenDedicatedPreview(paywallTargetDoc);
+            } else {
+              setPreviewDoc(paywallTargetDoc);
+            }
           }
         }}
-        actionButtonLabel="Voir le document"
+        actionButtonLabel="Consulter mon document"
       />
 
 

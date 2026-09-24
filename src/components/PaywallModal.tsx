@@ -223,12 +223,10 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     // 1. Débloque instantanément l'affichage du document et active le bouton de téléchargement HD
     onUnlocked();
 
-    // 2. Ferme la modale de paiement et déclenche l'export HD si demandé
+    // 2. Ferme la modale de paiement sans déclencher de téléchargement automatique
+    // L'utilisateur télécharge lui-même en cliquant sur le format de son choix
     setTimeout(() => {
       onClose();
-      if (onDownloadAction && targetFormat) {
-        onDownloadAction(targetFormat);
-      }
     }, 350);
   };
 

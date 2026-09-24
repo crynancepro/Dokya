@@ -207,7 +207,7 @@ export function validateBusinessDoc(docData: BusinessDocData): FormValidationRep
 }
 
 /**
- * Intelligent validation for Cover Letters
+ * Intelligent validation for Cover & Universal Letters
  */
 export function validateLetterForm(formData: CVFormData): FormValidationReport {
   let score = 0;
@@ -215,6 +215,7 @@ export function validateLetterForm(formData: CVFormData): FormValidationReport {
   const suggestions: string[] = [];
 
   const p = formData?.personalInfo || ({} as any);
+  const isCandidature = !formData.letterCategory || formData.letterCategory === 'candidature';
 
   if (p.firstName?.trim() && p.lastName?.trim()) {
     score += 20;
@@ -222,25 +223,36 @@ export function validateLetterForm(formData: CVFormData): FormValidationReport {
     missingCrucialFields.push('Nom & Prénom');
   }
 
-  if (p.targetJob?.trim()) {
+  const subjectOrJob = (formData.letterSubject || p.targetJob || '').trim();
+  if (subjectOrJob) {
     score += 25;
   } else {
-    missingCrucialFields.push('Poste visé');
-    suggestions.push('Précisez le poste convoité.');
+    if (isCandidature) {
+      missingCrucialFields.push('Poste visé');
+      suggestions.push('Précisez le poste convoité.');
+    } else {
+      missingCrucialFields.push('Objet de la lettre');
+      suggestions.push('Indiquez l\'objet précis de votre lettre.');
+    }
   }
 
   if (formData.targetCompany?.trim()) {
     score += 25;
   } else {
-    missingCrucialFields.push('Entreprise destinataire');
-    suggestions.push('Indiquez le nom de l\'entreprise cible.');
+    if (isCandidature) {
+      missingCrucialFields.push('Entreprise destinataire');
+      suggestions.push('Indiquez le nom de l\'entreprise cible.');
+    } else {
+      missingCrucialFields.push('Destinataire');
+      suggestions.push('Indiquez le destinataire de la lettre (Direction, Client, etc.).');
+    }
   }
 
   const instructions = (formData.letterInstructions || formData.highlightsSummary || '').trim();
-  if (instructions.length >= 20) {
+  if (instructions.length >= 15) {
     score += 30;
   } else {
-    suggestions.push('Ajoutez des consignes ou points forts spécifiques pour personnaliser l\'accroche.');
+    suggestions.push('Ajoutez des consignes ou un contexte spécifique pour personnaliser la lettre.');
   }
 
   let status: 'optimal' | 'sufficient' | 'thin' = 'thin';
@@ -269,7 +281,7 @@ export function validateLetterForm(formData: CVFormData): FormValidationReport {
     missingCrucialFields,
     suggestions,
     aiEnrichmentAvailable: true,
-    aiEnrichmentMessage: 'L\'IA rédigera une lettre complète et percutante de 300+ mots au format VOUS / MOI / NOUS.'
+    aiEnrichmentMessage: 'L\'IA rédigera une lettre officielle complète, conforme et percutante selon les normes.'
   };
 }
 

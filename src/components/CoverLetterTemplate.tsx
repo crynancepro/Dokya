@@ -134,12 +134,20 @@ export const CoverLetterTemplate: React.FC<CoverLetterTemplateProps> = ({
             {/* Recipient Details (Right Aligned) */}
             <div className="text-left sm:text-right space-y-1 text-xs self-start sm:self-auto bg-slate-50 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none w-full sm:w-auto border sm:border-none border-slate-100">
               <p className="font-extrabold text-slate-900 text-xs sm:text-sm uppercase tracking-wide">
-                À l'attention de la Direction des Recrutements
+                {formData.letterCategory === 'administration'
+                  ? "À l'attention de l'Administration"
+                  : formData.letterCategory === 'business'
+                  ? "À l'attention du Destinataire / Client"
+                  : formData.letterCategory === 'sur_mesure'
+                  ? "À l'attention du Destinataire"
+                  : "À l'attention de la Direction des Recrutements"}
               </p>
               {formData.targetCompany ? (
                 <p className="font-black text-indigo-700 text-sm sm:text-base">{formData.targetCompany}</p>
               ) : (
-                <p className="font-bold text-slate-800 text-xs sm:text-sm">Direction des Ressources Humaines</p>
+                <p className="font-bold text-slate-800 text-xs sm:text-sm">
+                  {formData.letterCategory === 'administration' ? 'Service Administratif Compétent' : 'Direction Générale'}
+                </p>
               )}
               <p className="text-slate-600 font-medium">{city}, {country}</p>
               <p className="text-slate-500 font-medium pt-1">

@@ -105,14 +105,66 @@ export function oklabToRgb(lStr: string, aStr: string, bStr: string, alphaStr?: 
 }
 
 /**
- * Replaces all unsupported CSS color functions (oklch, oklab, color-mix, light-dark, lab) in a string
+ * Cache for 2D canvas context used for native browser color parsing.
+ */
+let _canvasColorCtx: CanvasRenderingContext2D | null = null;
+function getCanvasColorContext(): CanvasRenderingContext2D | null {
+  if (typeof document === 'undefined') return null;
+  if (!_canvasColorCtx) {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 1;
+      c.height = 1;
+      _canvasColorCtx = c.getContext('2d');
+    } catch {
+      return null;
+    }
+  }
+  return _canvasColorCtx;
+}
+
+/**
+ * Universal color parser that converts modern CSS colors (OKLCH, OKLAB, color-mix, color(), etc.)
+ * to standard #rrggbb, rgb(...) or rgba(...) strings safe for html2canvas.
+ */
+export function parseCssColorToRgbString(colorStr: string): string {
+  if (!colorStr || colorStr === 'transparent' || colorStr === 'inherit' || colorStr === 'initial' || colorStr === 'currentColor') {
+    return colorStr || 'transparent';
+  }
+  // Try native canvas context conversion first (handles all modern CSS Color Level 4 in modern browsers)
+  try {
+    const ctx = getCanvasColorContext();
+    if (ctx) {
+      ctx.fillStyle = '#000000';
+      ctx.fillStyle = colorStr;
+      const normalized = ctx.fillStyle;
+      if (
+        normalized && 
+        typeof normalized === 'string' && 
+        !normalized.includes('oklch') && 
+        !normalized.includes('oklab') && 
+        !normalized.includes('color-mix') &&
+        !normalized.includes('light-dark') &&
+        !normalized.includes('lab(')
+      ) {
+        return normalized;
+      }
+    }
+  } catch {
+    // Fallback below
+  }
+  return replaceUnsupportedColorsInString(colorStr);
+}
+
+/**
+ * Replaces all unsupported CSS color functions (oklch, oklab, color-mix, light-dark, lab, lch, color) in a string
  * with valid rgb()/rgba() equivalents using balanced parenthesis matching.
  */
 export function replaceUnsupportedColorsInString(cssText: string): string {
   if (!cssText) return cssText;
 
   let result = cssText;
-  const colorFuncRegex = /(oklch|oklab|color-mix|light-dark|lab)\s*\(/gi;
+  const colorFuncRegex = /(oklch|oklab|color-mix|light-dark|lab|lch|color)\s*\(/gi;
 
   let safetyCounter = 0;
   let match;
@@ -154,6 +206,15 @@ export function replaceUnsupportedColorsInString(cssText: string): string {
             replacement = 'currentColor';
           }
         }
+      } else if (funcName === 'color') {
+        const nums = fullExpr.match(/[-+]?[\d.]+%?/g);
+        if (nums && nums.length >= 3) {
+          const r = Math.min(255, Math.max(0, Math.round(parseFloat(nums[0]) * 255)));
+          const g = Math.min(255, Math.max(0, Math.round(parseFloat(nums[1]) * 255)));
+          const b = Math.min(255, Math.max(0, Math.round(parseFloat(nums[2]) * 255)));
+          const a = nums[3] ? parseFloat(nums[3]) : 1;
+          replacement = a < 0.999 ? `rgba(${r}, ${g}, ${b}, ${a})` : `rgb(${r}, ${g}, ${b})`;
+        }
       } else if (funcName === 'light-dark') {
         replacement = 'currentColor';
       }
@@ -177,17 +238,23 @@ export function replaceOklchInString(cssText: string): string {
  */
 export function sanitizeDocumentStyles(targetDoc: Document = document): void {
   // 1. Sanitize all style elements
-  const styleTags = Array.from(targetDoc.querySelectorAll('style'));
-  styleTags.forEach((styleTag) => {
-    if (styleTag.textContent && (
-      styleTag.textContent.includes('oklch') || 
-      styleTag.textContent.includes('oklab') || 
-      styleTag.textContent.includes('color-mix') || 
-      styleTag.textContent.includes('light-dark')
-    )) {
-      styleTag.textContent = replaceUnsupportedColorsInString(styleTag.textContent);
-    }
-  });
+  try {
+    const styleTags = Array.from(targetDoc.querySelectorAll('style'));
+    styleTags.forEach((styleTag) => {
+      if (styleTag.textContent && (
+        styleTag.textContent.includes('oklch') || 
+        styleTag.textContent.includes('oklab') || 
+        styleTag.textContent.includes('color-mix') || 
+        styleTag.textContent.includes('light-dark') ||
+        styleTag.textContent.includes('lab(') ||
+        styleTag.textContent.includes('color(')
+      )) {
+        styleTag.textContent = replaceUnsupportedColorsInString(styleTag.textContent);
+      }
+    });
+  } catch {
+    // Ignore
+  }
 
   // 2. Iterate stylesheet rules if available
   try {
@@ -201,14 +268,16 @@ export function sanitizeDocumentStyles(targetDoc: Document = document): void {
               rule.cssText.includes('oklch') || 
               rule.cssText.includes('oklab') || 
               rule.cssText.includes('color-mix') || 
-              rule.cssText.includes('light-dark')
+              rule.cssText.includes('light-dark') ||
+              rule.cssText.includes('lab(') ||
+              rule.cssText.includes('color(')
             )) {
               if ('style' in rule && (rule as CSSStyleRule).style) {
                 const styleObj = (rule as CSSStyleRule).style;
                 for (let i = 0; i < styleObj.length; i++) {
                   const propName = styleObj[i];
                   const val = styleObj.getPropertyValue(propName);
-                  if (val && (val.includes('oklch') || val.includes('oklab') || val.includes('color-mix') || val.includes('light-dark'))) {
+                  if (val && (val.includes('oklch') || val.includes('oklab') || val.includes('color-mix') || val.includes('light-dark') || val.includes('lab(') || val.includes('color('))) {
                     styleObj.setProperty(propName, replaceUnsupportedColorsInString(val), styleObj.getPropertyPriority(propName));
                   }
                 }
@@ -225,18 +294,24 @@ export function sanitizeDocumentStyles(targetDoc: Document = document): void {
   }
 
   // 3. Sanitize all elements with inline style attributes
-  const elementsWithStyle = Array.from(targetDoc.querySelectorAll('[style]'));
-  elementsWithStyle.forEach((el) => {
-    const currentStyle = el.getAttribute('style');
-    if (currentStyle && (
-      currentStyle.includes('oklch') || 
-      currentStyle.includes('oklab') || 
-      currentStyle.includes('color-mix') || 
-      currentStyle.includes('light-dark')
-    )) {
-      el.setAttribute('style', replaceUnsupportedColorsInString(currentStyle));
-    }
-  });
+  try {
+    const elementsWithStyle = Array.from(targetDoc.querySelectorAll('[style]'));
+    elementsWithStyle.forEach((el) => {
+      const currentStyle = el.getAttribute('style');
+      if (currentStyle && (
+        currentStyle.includes('oklch') || 
+        currentStyle.includes('oklab') || 
+        currentStyle.includes('color-mix') || 
+        currentStyle.includes('light-dark') ||
+        currentStyle.includes('lab(') ||
+        currentStyle.includes('color(')
+      )) {
+        el.setAttribute('style', replaceUnsupportedColorsInString(currentStyle));
+      }
+    });
+  } catch {
+    // Ignore
+  }
 }
 
 /**
@@ -245,7 +320,7 @@ export function sanitizeDocumentStyles(targetDoc: Document = document): void {
  * and strips interactive editor overlays, hover badges, and outline borders for pristine PDF exports.
  */
 export function sanitizeClonedDocumentForHtml2Canvas(clonedDoc: Document, targetId?: string): void {
-  // 1. Inject PDF Print Reset CSS into cloned document head
+  // 1. Inject PDF Print Reset CSS into cloned document head with Tailwind variable neutralization
   try {
     const styleEl = clonedDoc.createElement('style');
     styleEl.textContent = `
@@ -254,10 +329,13 @@ export function sanitizeClonedDocumentForHtml2Canvas(clonedDoc: Document, target
         transition: none !important;
         box-shadow: none !important;
         text-shadow: none !important;
+        --tw-ring-color: transparent !important;
+        --tw-shadow-color: transparent !important;
+        --tw-border-color: #cbd5e1 !important;
       }
       .print\\:hidden,
       [class*="print:hidden"],
-      button:not(#cv-preview button):not(#letter-preview button):not(#kdp-printable-manuscript button),
+      button:not(#cv-preview button):not(#letter-preview button):not(#kdp-printable-manuscript button):not(#dokya-document-capture-target button):not(#business-doc-preview button),
       .canva-toolbar,
       .group-hover\\/section\\:opacity-100,
       .group-hover\\/item\\:opacity-100,
@@ -326,28 +404,83 @@ export function sanitizeClonedDocumentForHtml2Canvas(clonedDoc: Document, target
   });
 
   // 3. Strip contenteditable and editing outlines
-  clonedDoc.querySelectorAll('[contenteditable]').forEach((el) => {
-    const htmlEl = el as HTMLElement;
-    htmlEl.removeAttribute('contenteditable');
-    htmlEl.style.outline = 'none';
-    htmlEl.style.border = 'none';
-    htmlEl.style.background = 'transparent';
-  });
+  try {
+    clonedDoc.querySelectorAll('[contenteditable]').forEach((el) => {
+      const htmlEl = el as HTMLElement;
+      htmlEl.removeAttribute('contenteditable');
+      htmlEl.style.outline = 'none';
+      htmlEl.style.border = 'none';
+      htmlEl.style.background = 'transparent';
+    });
+  } catch {
+    // Ignore
+  }
 
   // 4. Reset section wrapper margins/paddings added for interactive hover states
-  clonedDoc.querySelectorAll('.group\\/section, .group\\/item, .group\\/edu').forEach((el) => {
-    const htmlEl = el as HTMLElement;
-    htmlEl.style.margin = '0';
-    htmlEl.style.border = 'none';
-    htmlEl.style.boxShadow = 'none';
-    htmlEl.style.background = 'transparent';
-  });
+  try {
+    clonedDoc.querySelectorAll('.group\\/section, .group\\/item, .group\\/edu').forEach((el) => {
+      const htmlEl = el as HTMLElement;
+      htmlEl.style.margin = '0';
+      htmlEl.style.border = 'none';
+      htmlEl.style.boxShadow = 'none';
+      htmlEl.style.background = 'transparent';
+    });
+  } catch {
+    // Ignore
+  }
 
-  // 5. Sanitize document styles (OKLCH, OKLAB, color-mix)
+  // 5. Sanitize document styles (OKLCH, OKLAB, color-mix, lab, color)
   sanitizeDocumentStyles(clonedDoc);
 
-  // 6. Direct RGB/RGBA computed color application restricted strictly to preview DOM trees
-  const elementId = targetId || (document.getElementById('cv-preview') ? 'cv-preview' : (document.getElementById('letter-preview') ? 'letter-preview' : (document.getElementById('kdp-printable-manuscript') ? 'kdp-printable-manuscript' : '')));
+  // 6. Thorough color sanitization on all elements in clonedDoc
+  try {
+    const allClonedElements = Array.from(clonedDoc.querySelectorAll<HTMLElement>('*'));
+    allClonedElements.forEach((clone) => {
+      if (!clone.style) return;
+      const propsToCheck = [
+        'color', 
+        'backgroundColor', 
+        'borderColor', 
+        'borderTopColor', 
+        'borderRightColor', 
+        'borderBottomColor', 
+        'borderLeftColor', 
+        'outlineColor', 
+        'textDecorationColor', 
+        'fill', 
+        'stroke'
+      ] as const;
+
+      propsToCheck.forEach((prop) => {
+        try {
+          const val = (clone.style as any)[prop];
+          if (val && typeof val === 'string' && (
+            val.includes('oklch') || 
+            val.includes('oklab') || 
+            val.includes('color-mix') || 
+            val.includes('light-dark') || 
+            val.includes('lab(') ||
+            val.includes('color(')
+          )) {
+            (clone.style as any)[prop] = replaceUnsupportedColorsInString(val);
+          }
+        } catch {
+          // Ignore individual property error
+        }
+      });
+    });
+  } catch {
+    // Ignore
+  }
+
+  // 7. Direct RGB/RGBA computed color application from live DOM to cloned document
+  const elementId = targetId || 
+    (document.getElementById('dokya-document-capture-target') ? 'dokya-document-capture-target' : 
+    (document.getElementById('cv-preview') ? 'cv-preview' : 
+    (document.getElementById('letter-preview') ? 'letter-preview' : 
+    (document.getElementById('business-doc-preview') ? 'business-doc-preview' : 
+    (document.getElementById('kdp-printable-manuscript') ? 'kdp-printable-manuscript' : '')))));
+
   const liveTarget = elementId ? document.getElementById(elementId) : null;
   const clonedTarget = elementId ? clonedDoc.getElementById(elementId) : null;
 
@@ -365,14 +498,18 @@ export function sanitizeClonedDocumentForHtml2Canvas(clonedDoc: Document, target
       try {
         const computed = window.getComputedStyle(orig);
 
-        if (computed.color) {
-          clone.style.color = replaceUnsupportedColorsInString(computed.color);
+        if (computed.color && (computed.color.includes('oklch') || computed.color.includes('oklab') || computed.color.includes('color-mix') || computed.color.includes('lab') || computed.color.includes('color('))) {
+          clone.style.color = parseCssColorToRgbString(computed.color);
         }
         if (computed.backgroundColor && computed.backgroundColor !== 'rgba(0, 0, 0, 0)' && computed.backgroundColor !== 'transparent') {
-          clone.style.backgroundColor = replaceUnsupportedColorsInString(computed.backgroundColor);
+          if (computed.backgroundColor.includes('oklch') || computed.backgroundColor.includes('oklab') || computed.backgroundColor.includes('color-mix') || computed.backgroundColor.includes('lab') || computed.backgroundColor.includes('color(')) {
+            clone.style.backgroundColor = parseCssColorToRgbString(computed.backgroundColor);
+          }
         }
         if (computed.borderColor && computed.borderColor !== 'rgba(0, 0, 0, 0)' && computed.borderColor !== 'transparent') {
-          clone.style.borderColor = replaceUnsupportedColorsInString(computed.borderColor);
+          if (computed.borderColor.includes('oklch') || computed.borderColor.includes('oklab') || computed.borderColor.includes('color-mix') || computed.borderColor.includes('lab') || computed.borderColor.includes('color(')) {
+            clone.style.borderColor = parseCssColorToRgbString(computed.borderColor);
+          }
         }
       } catch {
         // Continuation safety
@@ -576,6 +713,9 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
           width: 794,
           scrollX: 0,
           scrollY: 0,
+          onclone: (clonedDoc) => {
+            sanitizeClonedDocumentForHtml2Canvas(clonedDoc, pageEl.id);
+          }
         });
 
         // Restore styles
@@ -696,7 +836,10 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
         windowWidth: 1440,
         width: 794,
         scrollX: 0,
-        scrollY: 0
+        scrollY: 0,
+        onclone: (clonedDoc) => {
+          sanitizeClonedDocumentForHtml2Canvas(clonedDoc, elementId);
+        }
       });
 
       // Restore original inline styles

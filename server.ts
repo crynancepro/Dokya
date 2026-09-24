@@ -279,20 +279,69 @@ function generateFallbackCVData(formData: any) {
         ]
       }];
 
-  // Strict 4-paragraph VOUS / MOI / NOUS / CONCLUSION architecture (250-350 words)
-  const coverLetter = {
-    subject: `Candidature${targetJob ? ` au poste de ${targetJob}` : ''}${company ? ` - ${company}` : ''}`,
-    greeting: `Madame, Monsieur le Responsable des Recrutements,`,
-    opening: `C'est avec un vif intérêt et un réel enthousiasme que je vous soumets ma candidature pour le poste de ${targetJob} au sein de votre prestigieuse organisation ${company}. Reconnu pour son dynamisme, son exigence d'excellence et son impact structurant à ${city} et dans la sous-région, votre établissement incarne une référence au sein de laquelle je souhaite activement investir mon expertise et mon leadership.`,
-    bodyParagraphs: [
-      userInstructions
-        ? `Fort d'un parcours riche et directement aligné avec vos attentes prioritaires (${userInstructions}), j'ai développé une solide maîtrise des méthodologies indispensables à la réussite de cette mission. Mon esprit d'analyse, mon pragmatisme et ma rigueur d'exécution m'ont permis de mener à bien des chantiers d'envergure, de résoudre des problématiques complexes et d'atteindre avec régularité des objectifs chiffrés exigeants.`
-        : `Fort d'un parcours probant et diversifié, j'ai consolidé une expertise pointue dans les outils techniques, la gestion de projet et l'optimisation des processus. Mon approche orientée résultats m'a permis de piloter des initiatives stratégiques, de fluidifier les collaborations transverses et de garantir un haut niveau de performance conforme aux standards internationaux.`,
-      `Intégrer ${company} représente une opportunité stimulante de conjuguer mon savoir-faire à vos ambitions d'expansion. Parfaitement imprégné des réalités économiques et des exigences du marché à ${city}, je suis convaincu que mon sens de l'initiative, mon engagement et ma force de proposition constitueront un accélérateur de valeur durable pour vos équipes.`
-    ],
-    callToAction: `Persuadé de la forte convergence entre vos besoins et mon profil, je serais très honoré de vous rencontrer lors d'un entretien afin d'échanger plus en détail sur ma vision du poste et mes contributions futures.`,
-    closing: `Dans l'attente de votre retour, je vous prie d'agréer, Madame, Monsieur le Responsable des Recrutements, l'expression de mes salutations les plus respectueuses et distinguées.`
-  };
+  // Category-aware letter fallback
+  const category = formData?.letterCategory || 'candidature';
+  const customSubject = formData?.letterSubject?.trim();
+  let coverLetter: any;
+
+  if (category === 'administration') {
+    coverLetter = {
+      subject: customSubject || `Demande administrative officielle - ${formData.letterType ? formData.letterType.replace('_', ' ') : 'Formalités'}`,
+      greeting: `Madame, Monsieur le Responsable des Services Administratifs,`,
+      opening: `Par la présente, je sollicite respectueusement votre bienveillance concernant la démarche officielle citée en objet. Établi(e) à ${city} (${country}), je souhaite vous exposer les motifs et éléments circonstanciés justifiant cette requête auprès de vos services.`,
+      bodyParagraphs: [
+        userInstructions
+          ? `Conformément aux dispositions en vigueur et aux consignes particulières portées à votre connaissance (${userInstructions}), j'ai réuni l'ensemble des éléments justificatifs attestant de la régularité et du bien-fondé de ma situation. Mon sens du devoir et mon attachement au respect scrupuleux des procédures administratives guident cette démarche.`
+          : `Conformément aux règlements et dispositions administratives en vigueur à ${city}, j'ai réuni toutes les informations requises pour permettre un examen diligent et transparent de mon dossier. Mon dossier est constitué avec rigueur afin de respecter scrupuleusement les exigences légales et réglementaires applicables.`,
+        `Soucieux(se) d'une collaboration fluide avec vos services, je me tiens à votre entière disposition pour apporter toute précision ou document complémentaire qui vous paraîtrait utile à l'instruction de cette formalité.`
+      ],
+      callToAction: `Comptant sur votre compréhension et sur la bienveillance de votre instruction, je sollicite un retour officiel ou une confirmation de traitement dans les meilleurs délais.`,
+      closing: `Dans l'attente d'une suite favorable à ma requête, je vous prie d'agréer, Madame, Monsieur le Responsable, l'expression de ma considération distinguée et de mon profond respect.`
+    };
+  } else if (category === 'business') {
+    coverLetter = {
+      subject: customSubject || `Proposition commerciale et partenariat d'accompagnement - ${company}`,
+      greeting: `Madame, Monsieur le Directeur,`,
+      opening: `Dans le cadre du développement stratégique et de la modernisation continue de vos activités au sein de ${company}, nous avons l'honneur de vous soumettre notre proposition de collaboration sur-mesure, conçue pour répondre avec précision à vos impératifs de rentabilité et d'efficience opérationnelle.`,
+      bodyParagraphs: [
+        userInstructions
+          ? `En tenant compte des priorités spécifiques de votre organisation (${userInstructions}), notre approche conjugue rigueur méthodologique, solutions agiles et accompagnement de proximité. Nous avons modélisé une offre clé en main permettant de sécuriser vos processus tout en maximisant votre retour sur investissement.`
+          : `Forts d'une solide expertise sectorielle et d'un ancrage affirmé à ${city} et dans la zone UEMOA, nous déployons des méthodologies éprouvées et des outils innovants au service des entreprises les plus exigeantes. Notre vision privilégie la création de valeur durable, la performance mesurable et l'excellence du service.`,
+        `Faire le choix d'un partenariat avec notre structure, c'est garantir à vos équipes une expertise reconnue, un pilotage rigoureux des livrables et une réactivité constante face à vos enjeux d'affaires.`
+      ],
+      callToAction: `Nous serions ravis de convenir d'un rendez-vous d'échange ou d'une séance de démonstration personnalisée dans vos locaux ou par visioconférence selon vos disponibilités.`,
+      closing: `Dans l'attente de ce prochain échange, nous vous prions d'agréer, Madame, Monsieur le Directeur, l'expression de nos salutations professionnelles et distinguées.`
+    };
+  } else if (category === 'sur_mesure') {
+    coverLetter = {
+      subject: customSubject || `Courrier officiel à l'attention de ${company}`,
+      greeting: `Madame, Monsieur,`,
+      opening: `Je me permets de vous adresser la présente correspondance officielle afin de porter à votre attention la situation détaillée ci-après, requérant un traitement attentif de votre part.`,
+      bodyParagraphs: [
+        userInstructions
+          ? `Comme précisé dans les éléments de contexte (${userInstructions}), cette démarche s'inscrit dans une volonté claire de conciliation, de clarté et de respect des engagements mutuels. Chaque point a été analysé avec rigueur pour assurer une parfaite transparence.`
+          : `Résidant à ${city} (${country}), je souhaite vous faire part des faits et considérations justifiant cette démarche formelle. Ma volonté constante est d'assurer un dialogue constructif, équitable et conforme aux règles régissant nos relations.`,
+        `Je reste particulièrement attentif(ve) aux mesures qui seront prises pour répondre favorablement à cette demande et garantir la préservation de nos intérêts réciproques.`
+      ],
+      callToAction: `Espérant un examen attentif et une réponse favorable de votre part, je me tiens à votre entière disposition pour tout complément d'information.`,
+      closing: `Je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distinguées et respectueuses.`
+    };
+  } else {
+    // Candidature & Carrière
+    coverLetter = {
+      subject: customSubject || `Candidature${targetJob ? ` au poste de ${targetJob}` : ''}${company ? ` - ${company}` : ''}`,
+      greeting: `Madame, Monsieur le Responsable des Recrutements,`,
+      opening: `C'est avec un vif intérêt et un réel enthousiasme que je vous soumets ma candidature pour le poste de ${targetJob} au sein de votre prestigieuse organisation ${company}. Reconnu pour son dynamisme, son exigence d'excellence et son impact structurant à ${city} et dans la sous-région, votre établissement incarne une référence au sein de laquelle je souhaite activement investir mon expertise et mon leadership.`,
+      bodyParagraphs: [
+        userInstructions
+          ? `Fort d'un parcours riche et directement aligné avec vos attentes prioritaires (${userInstructions}), j'ai développé une solide maîtrise des méthodologies indispensables à la réussite de cette mission. Mon esprit d'analyse, mon pragmatisme et ma rigueur d'exécution m'ont permis de mener à bien des chantiers d'envergure, de résoudre des problématiques complexes et d'atteindre avec régularité des objectifs chiffrés exigeants.`
+          : `Fort d'un parcours probant et diversifié, j'ai consolidé une expertise pointue dans les outils techniques, la gestion de projet et l'optimisation des processus. Mon approche orientée résultats m'a permis de piloter des initiatives stratégiques, de fluidifier les collaborations transverses et de garantir un haut niveau de performance conforme aux standards internationaux.`,
+        `Intégrer ${company} représente une opportunité stimulante de conjuguer mon savoir-faire à vos ambitions d'expansion. Parfaitement imprégné des réalités économiques et des exigences du marché à ${city}, je suis convaincu que mon sens de l'initiative, mon engagement et ma force de proposition constitueront un accélérateur de valeur durable pour vos équipes.`
+      ],
+      callToAction: `Persuadé de la forte convergence entre vos besoins et mon profil, je serais très honoré de vous rencontrer lors d'un entretien afin d'échanger plus en détail sur ma vision du poste et mes contributions futures.`,
+      closing: `Dans l'attente de votre retour, je vous prie d'agréer, Madame, Monsieur le Responsable des Recrutements, l'expression de mes salutations les plus respectueuses et distinguées.`
+    };
+  }
 
   return {
     profileSummary: `${targetJob} chevronné(e), rigoureux(se) et orienté(e) résultats, justifiant d'une solide expertise à ${city} (${country}). Doté(e) d'un fort esprit d'initiative, d'un sens aigu de l'organisation et d'une excellente capacité d'adaptation, j'apporte des solutions concrètes, innovantes et à haute valeur ajoutée pour dynamiser la performance de vos activités.`,
@@ -495,52 +544,50 @@ ${JSON.stringify(cleanData.languages, null, 2)}
 Génère la version enrichie, professionnelle et optimisée ATS au format JSON.`;
 
     } else if (isLetterOnly) {
-      // Standalone Cover Letter Prompt
-      const letterType = cleanData.letterType || 'spontanee';
-      const letterTypeLabels: Record<string, string> = {
-        offre: "Réponse à une offre d'emploi",
-        spontanee: "Candidature spontanée",
-        stage: "Demande de stage / alternance",
-        reconversion: "Reconversion professionnelle",
-        recommandation: "Recommandation / Réseau",
-      };
-
+      // Standalone Universal Letter Prompt
+      const letterCategory = cleanData.letterCategory || 'candidature';
+      const letterType = cleanData.letterType || 'motivation';
+      const targetJobOrSubject = cleanData.letterSubject || cleanData.personalInfo.targetJob || 'Lettre officielle';
+      const recipient = cleanData.targetCompany || 'Destinataire officiel';
+      const tone = cleanData.letterTone || 'Convaincante';
       const userInstructions = (cleanData.letterInstructions || cleanData.highlightsSummary || '').trim();
 
-      systemPrompt = `Tu es un expert RH et recruteur d'élite spécialisé dans le recrutement au Sénégal et en Afrique francophone (Zone UEMOA/CEMAC).
-Ta mission est de rédiger une Lettre de Motivation complète et captivante occupant élégamment toute la feuille A4 (entre 250 et 350 mots, au moins 300 mots au total).
+      systemPrompt = `Tu es un expert en correspondance et rédaction officielle, administrative, commerciale et de candidature au Sénégal et en zone francophone (UEMOA/CEMAC).
+Ta mission est de rédiger une lettre officielle complète, hautement soignée, élégante et conforme aux normes en vigueur, occupant toute la feuille A4 (entre 250 et 350 mots, au moins 250 mots au total).
 
-CONSIGNES STRICTES DE RÉDACTION :
-1. **Contrainte de longueur obligatoire** :
-   Génère impérativement un corps de texte d'au moins 300 mots (entre 250 et 350 mots au total). La lettre doit être dense, substantielle et percutante.
+Catégorie exacte de lettre : ${letterCategory.toUpperCase()} | Type de lettre : ${letterType} | Ton : ${tone}
 
-2. **Structure stricte en 4 paragraphes distincts et développés (Architecture VOUS / MOI / NOUS / CONCLUSION)** :
-   - **Paragraphe 1 (Accroche - Le "VOUS")** : Raison de la candidature et intérêt ciblé pour l'entreprise (${cleanData.targetCompany || "l'entreprise"}). Démontre une compréhension fine de leur positionnement et explique pourquoi cette structure vous attire particulièrement.
-   - **Paragraphe 2 (Vos compétences & réalisations - Le "MOI")** : Mise en valeur des expériences techniques, projets marquants, réalisations concrètes et résultats chiffrés probants avec verbes d'action forts.
-   - **Paragraphe 3 (Apport mutuel & synergie - Le "NOUS")** : Ce que votre profil va apporter concrètement aux objectifs de l'entreprise au Sénégal/UEMOA, vos soft skills, votre force de proposition et votre adaptabilité.
-   - **Paragraphe 4 (Conclusion & Entretien)** : Demande explicite d'entretien, disponibilité immédiate et affirmation de votre motivation à échanger de vive voix.
+CONSIGNES STRICTES DE RÉDACTION OFFICIELLE :
+1. **Objet clair et professionnel** : Formuler un objet précis, formel et percutant conforme aux standards administratifs, juridiques et commerciaux (${targetJobOrSubject}).
+2. **Salutation protocolaire adaptée** : Utiliser la formule d'appel protocolaire exacte selon le destinataire (ex: 'Madame, Monsieur le Directeur,', 'Monsieur le Président,', 'Madame, Monsieur le Responsable des Recrutements,', 'Madame, Monsieur,').
+3. **Corps de texte développé en 4 paragraphes distincts (250-350 mots)** :
+   - **Paragraphe 1 (Accroche / Contexte officiel)** : Exposer clairement le motif de la lettre, l'objet précis de la démarche ou l'intérêt pour ${recipient}.
+   - **Paragraphe 2 (Développement / Arguments / Faits circonstanciés / Compétences)** : Développer de manière rigoureuse les arguments, faits précis, antécédents, justificatifs ou compétences techniques avec clarté et vocabulaire soutenu.
+   - **Paragraphe 3 (Synergie / Modalités / Démarche constructive)** : Préciser les modalités d'application, le respect scrupuleux des procédures, l'apport mutuel ou la valeur ajoutée pour l'organisation.
+   - **Paragraphe 4 (Conclusion & Demande formelle)** : Formuler expressément la demande d'instruction, de rendez-vous, d'entretien, de décharge ou de suite favorable avec mention de la disponibilité immédiate.
+4. **Formule de politesse (Closing)** : Formule solennelle, élégante et respectueuse conforme aux usages officiels en Afrique de l'Ouest.
+5. **Intégration impérative des consignes utilisateur** : ${userInstructions ? `Intègre fidèlement et scrupuleusement ces consignes dans le corps de texte : "${userInstructions}".` : `Assure une rédaction exemplaire et rigoureuse.`}
+6. Fournis également 3 conseils pratiques ou juridiques adaptés pour optimiser la démarche.`;
 
-3. **Formule de politesse (Closing)** : Formule formelle et soignée respectant les usages professionnels en Afrique de l'Ouest.
-
-4. **Prise en compte prioritaire du contexte & consignes de l'utilisateur** :
-   ${userInstructions ? `L'utilisateur a spécifié des consignes particulières : "${userInstructions}". Tu DOIS OBLIGATOIREMENT respecter et intégrer fidèlement ces éléments au cœur de l'argumentation de la lettre.` : `Adapte le discours au poste de ${cleanData.personalInfo.targetJob || 'professionnel'} et à l'entreprise ${cleanData.targetCompany || "l'entreprise"}.`}
-
-5. Ton demandé : ${cleanData.letterTone || 'Convaincante'}.
-6. Fournis également 3 conseils d'entretien spécifiques pour réussir l'échange.`;
-
-      userPrompt = `Informations du candidat :
-- Prénom & Nom : ${cleanData.personalInfo.firstName} ${cleanData.personalInfo.lastName}
-- Email : ${cleanData.personalInfo.email} | Téléphone : ${cleanData.personalInfo.phone}
+      userPrompt = `Paramètres de la lettre :
+- Catégorie : ${letterCategory}
+- Type précis : ${letterType}
+- Expéditeur : ${cleanData.personalInfo.firstName} ${cleanData.personalInfo.lastName}
+- Coordonnées : ${cleanData.personalInfo.email} | Téléphone : ${cleanData.personalInfo.phone}
 - Localisation : ${cleanData.personalInfo.city || 'Dakar'}, ${cleanData.personalInfo.country || 'Sénégal'}
-- Poste visé : ${cleanData.personalInfo.targetJob}
-- Entreprise cible : ${cleanData.targetCompany || 'Non précisé'}
-- Format de candidature : ${letterTypeLabels[letterType] || letterType}
-- Contexte & Consignes particulières pour la lettre : ${userInstructions || 'Mettre en valeur le professionnalisme, les compétences techniques et l\'adéquation au poste'}
+- Destinataire : ${recipient}
+- Objet visé : ${targetJobOrSubject}
+- Ton de rédaction : ${tone}
+- Contexte & Consignes particulières : ${userInstructions || 'Rédiger une lettre officielle complète et percutante selon les règles de l\'art'}
 ${letterType === 'stage' && cleanData.diplomaOrSchool ? `- Diplôme / École préparé : ${cleanData.diplomaOrSchool}` : ''}
 ${letterType === 'reconversion' && cleanData.previousCareer ? `- Ancien métier / Domaine d'origine : ${cleanData.previousCareer}` : ''}
 ${letterType === 'recommandation' && cleanData.referrerNameAndRole ? `- Personne de recommandation : ${cleanData.referrerNameAndRole}` : ''}
 
-Génère la lettre de motivation idéale au format JSON.`;
+Expériences & Compétences complémentaires :
+${JSON.stringify(cleanData.experiences, null, 2)}
+${JSON.stringify(cleanData.skills, null, 2)}
+
+Génère la lettre idéale au format JSON.`;
     } else {
       // Full Pack CV + Letter Prompt
       const userInstructions = (cleanData.letterInstructions || cleanData.highlightsSummary || '').trim();
@@ -2950,6 +2997,14 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       resolvedType = 'document';
     } else if (rawType.includes('sub') || rawType.includes('vip') || targetPlanId) {
       resolvedType = 'subscription';
+    }
+
+    // Validation stricte du montant minimum pour la recharge du portefeuille : 300 FCFA
+    if (resolvedType === 'wallet' && targetAmount < 300) {
+      return res.status(400).json({
+        success: false,
+        error: 'Le montant minimal de rechargement est de 300 FCFA.'
+      });
     }
 
     const targetUserId = String(userId || metadata.userId || 'guest').trim() || 'guest';

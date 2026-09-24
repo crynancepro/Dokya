@@ -162,7 +162,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
   // Mode resolution & pricing
   const [activeMode, setActiveMode] = useState<PaymentCounterMode>(mode);
-  const [rechargeAmount, setRechargeAmount] = useState<number>(initialRechargeAmount || 3000);
+  const [rechargeAmount, setRechargeAmount] = useState<number>(initialRechargeAmount && initialRechargeAmount >= 300 ? initialRechargeAmount : 500);
   const [customRechargeInput, setCustomRechargeInput] = useState<string>('');
   const [isCustomRecharge, setIsCustomRecharge] = useState<boolean>(false);
 
@@ -171,10 +171,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     if (isOpen) {
       setActiveMode(mode);
       if (initialRechargeAmount) {
-        setRechargeAmount(initialRechargeAmount);
-        setIsCustomRecharge(![1000, 2000, 3000, 5000, 10000].includes(initialRechargeAmount));
-        if (![1000, 2000, 3000, 5000, 10000].includes(initialRechargeAmount)) {
-          setCustomRechargeInput(initialRechargeAmount.toString());
+        const safeAmt = Math.max(300, initialRechargeAmount);
+        setRechargeAmount(safeAmt);
+        setIsCustomRecharge(![300, 500, 1000, 2000, 5000].includes(safeAmt));
+        if (![300, 500, 1000, 2000, 5000].includes(safeAmt)) {
+          setCustomRechargeInput(safeAmt.toString());
         }
       }
     }
@@ -314,7 +315,11 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   // Base raw price calculation
   const getRawPrice = () => {
     if (activeMode === 'recharge') {
-      return isCustomRecharge ? (parseInt(customRechargeInput, 10) || 1000) : rechargeAmount;
+      if (isCustomRecharge) {
+        const val = parseInt(customRechargeInput, 10);
+        return isNaN(val) ? 0 : val;
+      }
+      return rechargeAmount;
     }
     if (activeMode === 'subscription') {
       return planPrice || (planId === 'annual' ? 25000 : (planId === 'weekly' ? 2000 : 5000));
@@ -626,6 +631,12 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     }
     setErrorMessage(null);
 
+    const cleanAmount = Math.round(Number(payablePrice) || 0);
+    if (cleanAmount < 300) {
+      setErrorMessage("Le montant minimal de rechargement est de 300 FCFA.");
+      return;
+    }
+
     const rawPhoneDigits = senderPhoneNumber.replace(/\s+/g, '').replace(/\D/g, '');
     if (!rawPhoneDigits) {
       setErrorMessage("Le numéro de téléphone (pour le paiement Mobile Money) est obligatoire.");
@@ -636,7 +647,6 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
     try {
       const user = auth.currentUser;
-      const cleanAmount = Math.max(100, Math.round(Number(payablePrice) || 3000));
       const targetUserId = user?.uid || userId || 'guest';
       const targetUserName = user?.displayName || userName || 'Client Dokya';
       const targetPhone = `${selectedCountry.dialCode} ${senderPhoneNumber.trim()}`;
@@ -1099,76 +1109,148 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           {currentStep === 1 && (
             <div className="space-y-4 animate-in fade-in duration-200">
               
-              {/* Dynamic Service Card */}
+              {/* Mode Recharge Spécifique Ultra-Compact & Sans Scroll */}
               {activeMode === 'recharge' ? (
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/50 via-slate-900 to-slate-950 border border-indigo-500/30">
-                  <div className="flex items-center justify-between mb-3">
+                <div className="space-y-3.5">
+                  {/* Solde actuel */}
+                  <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
                     <div className="flex items-center gap-2">
-                      <Wallet className="w-5 h-5 text-indigo-400" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">Recharger mon Solde Wallet</span>
+                      <Wallet className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs font-bold text-slate-300">Solde actuel :</span>
                     </div>
-                    <span className="text-xs text-slate-400">
-                      Solde actuel : <strong className="text-emerald-400 font-mono">{safeBalance.toLocaleString('fr-FR')} F</strong>
+                    <span className="text-xs font-mono font-black text-emerald-400">
+                      {safeBalance.toLocaleString('fr-FR')} FCFA
                     </span>
                   </div>
 
-                  {/* Preset Amount Badges */}
-                  <div className="grid grid-cols-4 gap-2 mb-3">
-                    {[1000, 2000, 3000, 5000].map((amt) => (
-                      <button
-                        key={amt}
-                        type="button"
-                        onClick={() => {
-                          setRechargeAmount(amt);
-                          setIsCustomRecharge(false);
-                        }}
-                        className={`py-2 rounded-xl text-xs font-black transition-all cursor-pointer border ${
-                          !isCustomRecharge && rechargeAmount === amt
-                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-600/30'
-                            : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-slate-700'
-                        }`}
-                      >
-                        {amt.toLocaleString('fr-FR')} F
-                      </button>
-                    ))}
-                  </div>
+                  {/* Sélection rapide du montant */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                        Montant de recharge :
+                      </label>
+                      <span className="text-[10px] font-semibold text-slate-400">Min. 300 FCFA</span>
+                    </div>
 
-                  {/* 10 000 F & Custom Amount */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRechargeAmount(10000);
-                        setIsCustomRecharge(false);
-                      }}
-                      className={`py-2 rounded-xl text-xs font-black transition-all cursor-pointer border ${
-                        !isCustomRecharge && rechargeAmount === 10000
-                          ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
-                          : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      10 000 FCFA <span className="text-[10px] text-indigo-300">(+Bonus)</span>
-                    </button>
+                    {/* Boutons rapides : [300 F] [500 F] [1000 F] [2000 F] [5000 F] */}
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[300, 500, 1000, 2000, 5000].map((amt) => {
+                        const isSelected = !isCustomRecharge && rechargeAmount === amt;
+                        return (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => {
+                              setRechargeAmount(amt);
+                              setIsCustomRecharge(false);
+                              setCustomRechargeInput('');
+                              if (errorMessage) setErrorMessage(null);
+                            }}
+                            className={`py-2 px-1 rounded-xl text-xs font-black transition-all cursor-pointer border text-center ${
+                              isSelected
+                                ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-600/30'
+                                : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            {amt >= 1000 ? `${amt / 1000}k F` : `${amt} F`}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                    <div className="relative">
+                    {/* Saisie montant personnalisé libre */}
+                    <div className="mt-2 relative">
                       <input
                         type="number"
-                        placeholder="Montant libre..."
+                        min={300}
+                        step={100}
+                        placeholder="Autre montant libre (min. 300 FCFA)..."
                         value={customRechargeInput}
                         onChange={(e) => {
                           setCustomRechargeInput(e.target.value);
                           setIsCustomRecharge(true);
+                          if (errorMessage) setErrorMessage(null);
                         }}
-                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-900 border transition-all !text-white !placeholder:text-slate-400 caret-blue-500 ${
+                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-950 border transition-all text-white placeholder:text-slate-500 focus:outline-hidden ${
                           isCustomRecharge
-                            ? 'border-indigo-500 ring-1 ring-indigo-500 text-white'
-                            : 'border-slate-700 text-white'
+                            ? 'border-blue-500 ring-1 ring-blue-500'
+                            : 'border-slate-800'
                         }`}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                        FCFA
+                      </span>
+                    </div>
+
+                    {/* Message de validation immédiat si < 300 FCFA */}
+                    {payablePrice < 300 && (
+                      <p className="mt-1.5 text-xs text-rose-400 font-semibold flex items-center gap-1.5 animate-in fade-in">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>Le montant minimal de rechargement est de 300 FCFA</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Indicateur de pays et saisie du numéro de téléphone */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Numéro Mobile Money (Wave, Orange, MTN, Moov) :
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        value={selectedCountry.code}
+                        onChange={(e) => {
+                          const found = AFRICAN_COUNTRIES.find(c => c.code === e.target.value);
+                          if (found) setSelectedCountry(found);
+                        }}
+                        className="px-2.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white focus:border-blue-500 outline-hidden shrink-0 cursor-pointer"
+                      >
+                        {AFRICAN_COUNTRIES.map((c) => (
+                          <option key={c.code} value={c.code} className="bg-slate-900 text-white">
+                            {c.flag} {c.dialCode}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="tel"
+                        placeholder="Ex: 77 123 45 67"
+                        value={senderPhoneNumber}
+                        onChange={(e) => {
+                          setSenderPhoneNumber(e.target.value);
+                          if (errorMessage) setErrorMessage(null);
+                        }}
+                        className="flex-1 px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-hidden"
                       />
                     </div>
                   </div>
+
+                  {/* Bouton de validation principal */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      disabled={isPaymentLoading || payablePrice < 300}
+                      onClick={handlePayWithMoneyFusion}
+                      className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-black text-sm transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {isPaymentLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Connexion Money Fusion...</span>
+                        </>
+                      ) : (
+                        <>
+                          <QrCode className="w-4 h-4" />
+                          <span>Recharger ({Math.max(0, payablePrice).toLocaleString('fr-FR')} FCFA)</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              ) : activeMode === 'subscription' ? (
+              ) : (
+                <>
+                  {/* Dynamic Service Card */}
+                  {activeMode === 'subscription' ? (
                 <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-950 border border-amber-500/30">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
@@ -1225,10 +1307,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                 </div>
               )}
 
-              {/* Promo Code Section (If not a recharge) */}
-              {activeMode !== 'recharge' && (
-                <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3">
-                  {!showPromoBox && !appliedPromo ? (
+              {/* Promo Code Section */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3">
+                {!showPromoBox && !appliedPromo ? (
                     <button
                       type="button"
                       onClick={() => setShowPromoBox(true)}
@@ -1304,7 +1385,6 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                     </div>
                   )}
                 </div>
-              )}
 
               {/* Free with Promo CTA Button */}
               {isFreeWithPromo ? (
@@ -1332,128 +1412,36 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 gap-3">
-                    {activeMode === 'recharge' ? (
-                      /* Mode Recharge : Passerelle Money Fusion exclusive */
-                      <div className="p-4 rounded-2xl border bg-blue-600/20 border-blue-500 text-white shadow-lg ring-1 ring-blue-500">
-                        <div className="flex items-start gap-3.5">
-                          <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                            <QrCode className="w-5 h-5 text-blue-400" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center justify-between gap-1">
-                              <p className="text-sm font-black text-white flex items-center gap-2">
-                                <span>Recharge Money Fusion • Mobile Money &amp; QR</span>
-                                <span className="text-[10px] bg-blue-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
-                                  ⚡ Automatisé
-                                </span>
-                              </p>
-                            </div>
-                            <p className="text-xs text-slate-300 mt-1">
-                              Créditez votre portefeuille par Wave, Orange Money, MTN ou scan QR Code. Votre solde sera mis à jour en direct.
-                            </p>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/60 text-sky-300 border border-sky-800/60">🌊 Wave</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-950/60 text-orange-300 border border-orange-800/60">🍊 Orange Money</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-950/60 text-yellow-300 border border-yellow-800/60">🟡 MTN / Moov</span>
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">📱 QR Code</span>
-                            </div>
-
-                            {/* Champ obligatoire : Numéro de téléphone Mobile Money */}
-                            <div className="mt-4 pt-3.5 border-t border-blue-500/20">
-                              <label className="block text-xs font-bold text-slate-200 mb-1.5 flex items-center justify-between">
-                                <span className="flex items-center gap-1.5">
-                                  <Phone className="w-3.5 h-3.5 text-blue-400" />
-                                  <span>Numéro de téléphone (pour le paiement Mobile Money) <span className="text-rose-400">*</span></span>
-                                </span>
-                                <span className="text-[10px] text-blue-300 font-medium">Requis</span>
-                              </label>
-                              <div className="flex gap-2">
-                                <select
-                                  value={selectedCountry.code}
-                                  onChange={(e) => {
-                                    const found = AFRICAN_COUNTRIES.find(c => c.code === e.target.value);
-                                    if (found) setSelectedCountry(found);
-                                  }}
-                                  className="px-2.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:border-blue-500 outline-hidden shrink-0 cursor-pointer"
-                                >
-                                  {AFRICAN_COUNTRIES.map((c) => (
-                                    <option key={c.code} value={c.code} className="bg-slate-900 text-white">
-                                      {c.flag} {c.dialCode}
-                                    </option>
-                                  ))}
-                                </select>
-                                <input
-                                  type="tel"
-                                  placeholder="Ex: 77 123 45 67"
-                                  value={senderPhoneNumber}
-                                  onChange={(e) => {
-                                    setSenderPhoneNumber(e.target.value);
-                                    if (errorMessage) setErrorMessage(null);
-                                  }}
-                                  className="flex-1 px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold !text-white !placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-hidden caret-blue-500"
-                                />
-                              </div>
-                              <p className="text-[10px] text-slate-400 mt-1">
-                                Saisissez le numéro Mobile Money (Wave, Orange, MTN, Free) qui effectuera le débit.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Mode Achat/Déblocage : Règlement 100% Solde Portefeuille Dokya */
-                      <div className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all ${
-                        hasEnoughBalance 
-                          ? 'bg-emerald-950/40 border-emerald-500/60 text-white shadow-lg' 
-                          : 'bg-amber-950/30 border-amber-500/40 text-slate-300'
+                    {/* Mode Achat/Déblocage : Règlement 100% Solde Portefeuille Dokya */}
+                    <div className={`p-4 rounded-2xl border text-left flex items-start gap-3.5 transition-all ${
+                      hasEnoughBalance 
+                        ? 'bg-emerald-950/40 border-emerald-500/60 text-white shadow-lg' 
+                        : 'bg-amber-950/30 border-amber-500/40 text-slate-300'
+                    }`}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                        hasEnoughBalance ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-amber-500/20 border border-amber-500/30'
                       }`}>
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                          hasEnoughBalance ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-amber-500/20 border border-amber-500/30'
-                        }`}>
-                          <Wallet className={`w-5 h-5 ${hasEnoughBalance ? 'text-emerald-400' : 'text-amber-400'}`} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-black text-white">Votre Solde Dokya</p>
-                            <span className={`text-xs font-mono font-bold ${hasEnoughBalance ? 'text-emerald-400' : 'text-amber-400'}`}>
-                              {safeBalance.toLocaleString('fr-FR')} FCFA
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-400 mt-1">
-                            {hasEnoughBalance 
-                              ? 'Solde suffisant pour un déblocage immédiat.' 
-                              : 'Solde insuffisant pour ce montant. Une recharge est requise.'}
-                          </p>
-                        </div>
+                        <Wallet className={`w-5 h-5 ${hasEnoughBalance ? 'text-emerald-400' : 'text-amber-400'}`} />
                       </div>
-                    )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-black text-white">Votre Solde Dokya</p>
+                          <span className={`text-xs font-mono font-bold ${hasEnoughBalance ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {safeBalance.toLocaleString('fr-FR')} FCFA
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {hasEnoughBalance 
+                            ? 'Solde suffisant pour un déblocage immédiat.' 
+                            : 'Solde insuffisant pour ce montant. Une recharge est requise.'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Boutons d'action contextuels */}
                   <div className="pt-2">
-                    {activeMode === 'recharge' ? (
-                      <button
-                        type="button"
-                        disabled={isPaymentLoading}
-                        onClick={handlePayWithMoneyFusion}
-                        className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-black text-sm transition-all shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        {isPaymentLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Connexion sécurisée Money Fusion...</span>
-                          </>
-                        ) : (
-                          <>
-                            <QrCode className="w-4 h-4" />
-                            <span>
-                              Recharger via Money Fusion ({payablePrice.toLocaleString('fr-FR')} FCFA)
-                            </span>
-                            <ArrowRight className="w-4 h-4" />
-                          </>
-                        )}
-                      </button>
-                    ) : hasEnoughBalance ? (
+                    {hasEnoughBalance ? (
                       <button
                         type="button"
                         disabled={isPaymentLoading}
@@ -1485,19 +1473,23 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          if (onOpenRechargeModal) onOpenRechargeModal();
+                          setActiveMode('recharge');
+                          setRechargeAmount(Math.max(300, Math.ceil((payablePrice - safeBalance) / 100) * 100));
                         }}
                         className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-sm transition-all shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                       >
-                        <span>⚡ Solde insuffisant : Recharger mon solde</span>
+                        <Wallet className="w-4 h-4" />
+                        <span>Recharger mon solde (+{Math.max(300, payablePrice - safeBalance).toLocaleString('fr-FR')} FCFA nécessaires)</span>
                         <ArrowRight className="w-4 h-4" />
                       </button>
                     )}
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )}
+        </div>
+      )}
 
           {/* ========================================================================= */}
           {/* ÉTAPE 3 : SCANNER IA LASER, BARRE 2 MIN & CERTIFICATION EN TEMPS RÉEL     */}

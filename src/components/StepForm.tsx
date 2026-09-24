@@ -8,7 +8,7 @@ import {
   UserCheck, RotateCcw, Target, Send,
   Upload, Camera, X, MapPin, Phone, Linkedin, 
   Wand2, Info, ArrowRight, ArrowLeft, Star, Heart,
-  RefreshCw, UserCircle2, CheckCircle2, AlertCircle
+  RefreshCw, UserCircle2, CheckCircle2, AlertCircle, Layers
 } from 'lucide-react';
 import { auth, fetchUserProfile, fetchCandidateProfile } from '../lib/firebase';
 import { AIFormValidationBanner } from './AIFormValidationBanner';
@@ -53,7 +53,6 @@ export const StepForm: React.FC<StepFormProps> = ({
   onChangeTemplateRequest
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [templateFilter, setTemplateFilter] = useState<'all' | 'no_photo' | 'photo'>('all');
   const activeMode: GenerationMode = forceMode || formData.generationMode || 'cv_only';
   const activeLetterType: CoverLetterType = formData.letterType || 'spontanee';
 
@@ -221,7 +220,7 @@ export const StepForm: React.FC<StepFormProps> = ({
     const handleF5Key = (e: KeyboardEvent) => {
       if (e.key === 'F5') {
         e.preventDefault();
-        if (currentStep < 5) {
+        if (currentStep < 4) {
           setCurrentStep(prev => prev + 1);
         } else {
           onSubmit();
@@ -463,11 +462,10 @@ export const StepForm: React.FC<StepFormProps> = ({
   };
 
   const steps = [
-    { number: 1, title: 'Infos Personnelles', icon: User, desc: 'Identité & Contact' },
-    { number: 2, title: 'Expériences', icon: Briefcase, desc: 'Parcours pro' },
-    { number: 3, title: 'Formations', icon: GraduationCap, desc: 'Diplômes' },
-    { number: 4, title: 'Compétences', icon: Award, desc: 'Hard & Soft skills' },
-    { number: 5, title: 'Style & IA', icon: Settings, desc: 'Modèles & Génération' },
+    { number: 1, title: 'Infos Personnelles & Contact', icon: User, desc: 'Identité & Contact' },
+    { number: 2, title: 'Expériences Professionnelles', icon: Briefcase, desc: 'Parcours pro' },
+    { number: 3, title: 'Formations & Diplômes', icon: GraduationCap, desc: 'Diplômes' },
+    { number: 4, title: 'Compétences, Langues & Génération IA', icon: Award, desc: 'Compétences & Génération' },
   ];
 
   const letterTypesList = [
@@ -1811,113 +1809,6 @@ export const StepForm: React.FC<StepFormProps> = ({
                   </div>
                 </div>
 
-              </div>
-            )}
-
-            {/* ========================================================= */}
-            {/* STEP 5: STYLE & OPTIONS IA                                */}
-            {/* ========================================================= */}
-            {currentStep === 5 && (
-              <div className="space-y-6 animate-in fade-in">
-                
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                    <div>
-                      <label className="block text-xs font-black text-slate-900 uppercase tracking-wider">
-                        Catalogue des 20 Modèles Professionnels
-                      </label>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Choisissez parmi nos 10 modèles ATS épurés ou 10 modèles premium avec photo.
-                      </p>
-                    </div>
-
-                    {/* Filter Tabs */}
-                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0 self-start sm:self-auto">
-                      <button
-                        type="button"
-                        onClick={() => setTemplateFilter('all')}
-                        className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                          templateFilter === 'all'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Tous (50)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTemplateFilter('no_photo')}
-                        className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                          templateFilter === 'no_photo'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Sans Photo (30)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTemplateFilter('photo')}
-                        className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                          templateFilter === 'photo'
-                            ? 'bg-white text-indigo-700 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        📸 Avec Photo (20)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 max-h-[460px] overflow-y-auto pr-1 p-0.5 custom-scrollbar">
-                    {ALL_CV_TEMPLATES
-                    .filter((st) => {
-                      if (templateFilter === 'no_photo') return !st.hasPhoto;
-                      if (templateFilter === 'photo') return st.hasPhoto;
-                      return true;
-                    })
-                    .map((st) => {
-                      const isSelected = formData.templateStyle === st.id;
-                      return (
-                        <button
-                          key={st.id}
-                          type="button"
-                          onClick={() => onChange({ ...formData, templateStyle: st.id as any })}
-                          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between h-full group ${
-                            isSelected
-                              ? 'border-indigo-600 bg-indigo-50/90 text-indigo-950 ring-2 ring-indigo-500 shadow-sm font-semibold'
-                              : 'border-slate-200 text-slate-700 bg-white hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-1 mb-1">
-                              <span className="font-bold text-xs truncate group-hover:text-indigo-600 transition-colors">{st.label}</span>
-                              {st.hasPhoto ? (
-                                <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-1.5 py-0.5 rounded shrink-0">
-                                  📸
-                                </span>
-                              ) : (
-                                <span className="text-[9px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded shrink-0">
-                                  ATS
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[10px] text-slate-500 line-clamp-2 leading-tight">{st.desc}</div>
-                          </div>
-                          <div className="mt-2 flex items-center justify-between pt-1 border-t border-slate-100">
-                            <span className="text-[9px] font-semibold text-slate-400 truncate">{st.category}</span>
-                            {isSelected && (
-                              <span className="text-[10px] text-indigo-600 font-extrabold flex items-center gap-0.5">
-                                <Check className="w-3 h-3" />
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 {/* Ready to generate card */}
                 <div className="p-6 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl border border-slate-800">
                   <div>
@@ -1985,10 +1876,19 @@ export const StepForm: React.FC<StepFormProps> = ({
                   type="button"
                   onClick={onSubmit}
                   disabled={isLoading}
-                  className="bg-indigo-600 text-white font-black py-3 px-7 rounded-xl text-xs hover:bg-indigo-700 transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-200 disabled:opacity-50 ml-auto"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-black py-3 px-7 rounded-xl text-xs transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-200 disabled:opacity-50 ml-auto"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Générer avec l'IA</span>
+                  {isLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Génération par l'IA...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>{activeMode === 'cv_only' ? 'Générer mon CV (1 000 FCFA)' : 'Générer Pack Duo (1 399 FCFA)'}</span>
+                    </>
+                  )}
                 </button>
               )}
             </div>

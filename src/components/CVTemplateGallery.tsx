@@ -85,10 +85,10 @@ const FluidCVThumbnail: React.FC<{
         }
       }}
       aria-label={`Sélectionner le modèle de CV ${template.label}`}
-      className={`group relative cursor-pointer select-none transition-all duration-300 rounded-xl sm:rounded-2xl overflow-hidden flex flex-col bg-slate-900/60 p-2 sm:p-0 ${
+      className={`group relative cursor-pointer select-none transition-all duration-300 rounded-xl sm:rounded-2xl overflow-hidden flex flex-col bg-[#0d1322] border border-slate-800/80 p-1.5 sm:p-0 ${
         isSelected
-          ? 'ring-3 ring-indigo-500 ring-offset-4 ring-offset-slate-950 shadow-2xl shadow-indigo-500/25'
-          : 'shadow-xl shadow-black/60 hover:shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-1.5'
+          ? 'ring-2 sm:ring-3 ring-indigo-500 ring-offset-2 sm:ring-offset-4 ring-offset-slate-950 shadow-2xl shadow-indigo-500/25 border-indigo-500/80'
+          : 'shadow-xl shadow-black/60 hover:shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-1.5 hover:border-slate-700'
       }`}
     >
       {/* 1. PURE FLOATING A4 SHEET CONTAINER */}
@@ -115,50 +115,50 @@ const FluidCVThumbnail: React.FC<{
             e.stopPropagation();
             onOpenPreview();
           }}
-          className="absolute top-2 left-2 z-20 p-2 rounded-full bg-slate-950/80 hover:bg-slate-900 text-white backdrop-blur-md border border-white/20 transition-all active:scale-90 cursor-pointer shadow-lg flex items-center justify-center"
+          className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-20 p-1.5 sm:p-2 rounded-full bg-slate-950/80 hover:bg-slate-900 text-white backdrop-blur-md border border-white/20 transition-all active:scale-90 cursor-pointer shadow-lg flex items-center justify-center"
           title="Aperçu Plein Écran HD"
           aria-label="Aperçu Plein Écran HD"
         >
-          <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <Maximize2 className="w-3 h-3 sm:w-4 sm:h-4" />
         </button>
 
         {/* Selected Indicator Badge (Top-Right) */}
         {isSelected && (
-          <div className="absolute top-2 right-2 z-20 px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-indigo-950/60">
-            <Check className="w-3 h-3 stroke-[3]" />
+          <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-20 px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] sm:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-indigo-950/60">
+            <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[3]" />
             <span>Actif</span>
           </div>
         )}
       </div>
 
-      {/* 2. DEDICATED MOBILE ACTION BAR (ALWAYS VISIBLE & 100% TOUCH-CLICKABLE) */}
-      <div className="sm:hidden pt-2.5 pb-1 px-1 flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5 min-w-0">
+      {/* 2. DEDICATED MOBILE ACTION BAR (ALWAYS VISIBLE & 100% TOUCH-CLICKABLE SUR 2 COLONNES) */}
+      <div className="sm:hidden pt-2 pb-0.5 px-0.5 flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1 min-w-0">
             <span 
-              className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-white/50"
+              className="w-2 h-2 rounded-full shrink-0 ring-1 ring-white/50"
               style={{ backgroundColor: template.accentColor }}
             />
-            <h3 className="text-xs font-black text-white truncate">
+            <h3 className="text-[11px] font-black text-white truncate">
               {template.label}
             </h3>
           </div>
           <span 
-            className="px-1.5 py-0.5 rounded text-[9px] font-black text-white shrink-0"
+            className="px-1 py-0.2 rounded text-[8px] font-black text-white shrink-0"
             style={{ backgroundColor: template.accentColor }}
           >
-            N° {template.number}
+            #{template.number}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               onSelect();
             }}
-            className={`flex-1 py-2 px-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md ${
+            className={`flex-1 py-1.5 px-2 rounded-lg font-black text-[11px] flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer shadow-xs ${
               isSelected
                 ? 'bg-emerald-600 text-white'
                 : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
@@ -166,13 +166,13 @@ const FluidCVThumbnail: React.FC<{
           >
             {isSelected ? (
               <>
-                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                <span>Sélectionné</span>
+                <Check className="w-3 h-3 stroke-[3]" />
+                <span>Actif</span>
               </>
             ) : (
               <>
-                <span>Choisir ce modèle</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>Choisir</span>
+                <ArrowRight className="w-3 h-3" />
               </>
             )}
           </button>
@@ -182,7 +182,7 @@ const FluidCVThumbnail: React.FC<{
               e.stopPropagation();
               onOpenPreview();
             }}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all active:scale-90 cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all active:scale-90 cursor-pointer shrink-0"
             title="Aperçu HD"
             aria-label="Aperçu HD"
           >
@@ -350,7 +350,7 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
 
   return (
     <div 
-      className="space-y-4 sm:space-y-6 animate-in fade-in max-w-7xl mx-auto pb-16 px-2 sm:px-6"
+      className="space-y-4 sm:space-y-6 animate-in fade-in max-w-7xl mx-auto pb-16 px-2 sm:px-6 bg-[#090D16] text-slate-100 min-h-screen"
     >
       
       {/* 1. ULTRA-COMPACT HEADER & MINIMAL TOOLBAR (REDUCED VERTICAL FOOTPRINT) */}
@@ -367,40 +367,6 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Mobile Column View Switch (1 Col vs 2 Cols) */}
-            <div className="flex sm:hidden items-center bg-slate-900/90 p-0.5 rounded-lg border border-slate-800">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMobileGridCols(1);
-                }}
-                className={`p-1 rounded-md transition-all ${
-                  mobileGridCols === 1
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="1 colonne"
-              >
-                <Square className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMobileGridCols(2);
-                }}
-                className={`p-1 rounded-md transition-all ${
-                  mobileGridCols === 2
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="2 colonnes"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
             {onGoServices && (
               <button
                 type="button"
@@ -489,11 +455,7 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
         </div>
       ) : (
         <div 
-          className={`grid ${
-            mobileGridCols === 1
-              ? 'grid-cols-1 max-w-sm mx-auto sm:max-w-none sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 sm:gap-8 lg:gap-10'
-              : 'grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-8 lg:gap-10'
-          }`}
+          className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6 lg:gap-8"
         >
           {filteredTemplates.map((template) => {
             const isSelected = selectedTemplateId === template.id;

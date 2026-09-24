@@ -40,6 +40,7 @@ import { doc, getDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
 import { initAffiliateTracking } from './lib/referralTracking';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { generateCVWithGemini, generateInterviewPrepWithGemini } from './lib/geminiService';
+import { isAdminEmail } from './lib/adminAuth';
 
 import { 
   CheckCircle2, ArrowLeft,
@@ -196,10 +197,6 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   const [userSubscription, setUserSubscription] = useState<UserSubscription | null>(null);
   const isVip = isUserVipActive(userSubscription);
   const [currentDocId, setCurrentDocId] = useState<string>(() => `DOC-${Date.now()}`);
-
-  // Post-download modal state
-  const [isPostDownloadModalOpen, setIsPostDownloadModalOpen] = useState<boolean>(false);
-  const [downloadedDocTitle, setDownloadedDocTitle] = useState<string>('');
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -722,8 +719,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         }
       }
 
-      setSuccessMessage(`Document débloqué avec succès ! Vous pouvez maintenant le télécharger au format Word (.docx) et PDF (.pdf).`);
-      setTimeout(() => setSuccessMessage(null), 6000);
+      setSuccessMessage("Félicitations, votre document est débloqué");
+      setTimeout(() => setSuccessMessage(null), 5000);
     } catch (err) {
       console.error('[Payment Handler Error]:', err);
       // Guarantee the document is unlocked even if logging fails
@@ -754,8 +751,6 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
       : activeTab.startsWith('ebook') ? (ebookData.title || 'Livre Numérique (Ebook)')
       : `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - CV Pro ATS`.trim() || 'CV Pro ATS'
     );
-
-    setDownloadedDocTitle(docTitle);
 
     // Save finalized document into "Mes Documents" history
     const savedDoc: SavedUserDocument = {
@@ -800,15 +795,66 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
     saveUserDocument(savedDoc);
 
-    // 1. Immediately hide download button from payment / preview interface
-    // 2. Reset payment status for next documents
-    setIsCurrentDocPaid(false);
+    // Le document reste payé, débloqué et accessible pour d'autres exports
+    setIsCurrentDocPaid(true);
 
-    // 3. Reset form fields to clean state
-    handleCreateNewDocument();
+    // Notification toast claire et discrète (sans écraser le formulaire ni ouvrir de popup bloquante)
+    setSuccessMessage(`✅ Document téléchargé en ${formatDownloaded} et sauvegardé dans Mes Documents.`);
+    setTimeout(() => setSuccessMessage(null), 4000);
+  };
 
-    // 4. Open post-download confirmation dialog
-    setIsPostDownloadModalOpen(true);
+  // -------------------------------------------------------------
+  // Consultation directe d'un document en plein écran (comme l'aperçu complet)
+  // -------------------------------------------------------------
+  const handleOpenDocumentDedicatedPreview = (docItem: SavedUserDocument) => {
+    const isDocUnlocked = docItem.isPaid === true || (docItem as any).unlocked === true || docItem.status === 'UNLOCKED' || isVip || (currentUser?.email ? isAdminEmail(currentUser.email) : false);
+    setIsCurrentDocPaid(isDocUnlocked);
+    setCurrentDocId(docItem.id);
+    setPaymentDocTitle(docItem.title || 'Document Professionnel');
+
+    const contentObj = docItem.content || {};
+    const effectiveFormData = docItem.formData || contentObj.formData || (contentObj.personalInfo ? contentObj : null);
+    const effectiveAiData = docItem.aiData || contentObj.aiData || null;
+    const effectiveBusinessDocData = docItem.businessDocData || contentObj.businessDocData || null;
+    const effectiveEbookData = docItem.ebookData || contentObj.ebookData || null;
+
+    const mode = docItem.generationMode || (
+      docItem.businessDocData?.type === 'facture' || effectiveBusinessDocData?.type === 'facture' ? 'facture' :
+      docItem.businessDocData?.type === 'devis' || effectiveBusinessDocData?.type === 'devis' ? 'devis' :
+      docItem.ebookData || effectiveEbookData ? 'ebook' :
+      docItem.formData?.letterType || effectiveFormData?.letterType ? 'letter_only' : 'cv_only'
+    );
+
+    if (mode === 'letter_only') {
+      if (effectiveFormData) setFormData(effectiveFormData);
+      if (effectiveAiData) setAiData(effectiveAiData);
+      setActiveTab('letter_preview');
+    } else if (mode === 'devis') {
+      if (effectiveBusinessDocData) {
+        setBusinessDocData({ ...effectiveBusinessDocData, type: 'devis' });
+      }
+      setActiveTab('devis_preview');
+    } else if (mode === 'facture') {
+      if (effectiveBusinessDocData) {
+        setBusinessDocData({ ...effectiveBusinessDocData, type: 'facture' });
+      }
+      setActiveTab('facture_preview');
+    } else if (mode === 'pack_business') {
+      if (effectiveBusinessDocData) {
+        setBusinessDocData(effectiveBusinessDocData);
+      }
+      setActiveTab('pack_business_preview');
+    } else if (mode === 'ebook') {
+      if (effectiveEbookData) setEbookData(effectiveEbookData);
+      setActiveTab('ebook_preview');
+    } else {
+      // CV Pro ATS par défaut
+      if (effectiveFormData) setFormData(effectiveFormData);
+      if (effectiveAiData) setAiData(effectiveAiData);
+      setActiveTab('cv_preview');
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // -------------------------------------------------------------
@@ -1343,16 +1389,19 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
             setActiveTab(type);
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
+          onOpenDedicatedPreview={handleOpenDocumentDedicatedPreview}
         />
       ) : isTemplatesView ? (
-        <TemplatesView
-          initialService={templatesService}
-          onSelectCVTemplate={handleSelectCVTemplate}
-          onSelectLetterTemplate={handleSelectLetterTemplate}
-          onSelectBusinessTemplate={handleSelectBusinessTemplate}
-          onSelectEbookTemplate={handleSelectEbookTemplate}
-          onBackToDashboard={() => navigateToView('dashboard')}
-        />
+        <div className="flex-1 w-full bg-[#090D16] min-h-screen">
+          <TemplatesView
+            initialService={templatesService}
+            onSelectCVTemplate={handleSelectCVTemplate}
+            onSelectLetterTemplate={handleSelectLetterTemplate}
+            onSelectBusinessTemplate={handleSelectBusinessTemplate}
+            onSelectEbookTemplate={handleSelectEbookTemplate}
+            onBackToDashboard={() => navigateToView('dashboard')}
+          />
+        </div>
       ) : (
         <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7 space-y-6">
         
@@ -1424,12 +1473,14 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         {/* VIEW 2A-GAL : GALERIE DES MODÈLES CV                                      */}
         {/* ========================================================================= */}
         {activeTab === 'cv_gallery' && (
-          <CVTemplateGallery
-            selectedTemplateId={formData.templateStyle}
-            selectedColor={formData.themeColor}
-            onSelectTemplate={handleSelectCVTemplate}
-            onGoServices={() => navigateToView('dashboard')}
-          />
+          <div className="w-full bg-[#090D16] min-h-screen">
+            <CVTemplateGallery
+              selectedTemplateId={formData.templateStyle}
+              selectedColor={formData.themeColor}
+              onSelectTemplate={handleSelectCVTemplate}
+              onGoServices={() => navigateToView('dashboard')}
+            />
+          </div>
         )}
 
         {/* ========================================================================= */}
@@ -1912,7 +1963,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           setIsCurrentDocPaid(true);
           setVictoryDocTitle(paymentDocTitle || 'Document Professionnel');
           setIsVictoryModalOpen(true);
-          setSuccessMessage('🎉 Document débloqué avec succès ! Vous pouvez maintenant le télécharger.');
+          setSuccessMessage('Félicitations, votre document est débloqué');
           setTimeout(() => setSuccessMessage(null), 4500);
         }}
         onDownloadAction={(format) => {
@@ -1992,73 +2043,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
         }}
       />
 
-      {/* 6. POST-DOWNLOAD CONFIRMATION & ARCHIVAL MODAL */}
-      {isPostDownloadModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="relative w-full max-w-lg bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 text-center space-y-5">
-            <button
-              onClick={() => setIsPostDownloadModalOpen(false)}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
-              title="Fermer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="w-16 h-16 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
-              <CheckCircle2 className="w-9 h-9" />
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                Téléchargement Réussi & Archivé !
-              </h3>
-              <p className="text-sm text-slate-600 font-medium leading-relaxed">
-                Le document <span className="font-bold text-slate-900">« {downloadedDocTitle} »</span> a été téléchargé et sauvegardé dans votre profil sous la section <span className="font-bold text-indigo-600">« Mes Documents »</span>.
-              </p>
-            </div>
-
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl text-left space-y-2 text-xs text-slate-600">
-              <div className="flex items-start gap-2">
-                <FolderHeart className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                <span><strong>Ré-téléchargements illimités :</strong> Vous pouvez à tout moment retrouver et réexporter ce document sans frais depuis votre profil.</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span><strong>Pay-Per-Document :</strong> Pour garantir l'intégrité de vos documents, l'espace de création a été réinitialisé. Toute nouvelle création fera l'objet d'un nouveau paiement.</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPostDownloadModalOpen(false);
-                  navigateToView('dashboard');
-                }}
-                className="w-full py-3 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-indigo-100 transition-all cursor-pointer active:scale-95"
-              >
-                <FolderHeart className="w-4 h-4" />
-                <span>Mes Documents</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPostDownloadModalOpen(false);
-                  handleCreateNewDocument();
-                  navigateToView('templates', 'cv');
-                }}
-                className="w-full py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
-              >
-                <PlusCircle className="w-4 h-4 text-amber-400" />
-                <span>Nouveau Document</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 7. VICTORY & CELEBRATION MODAL */}
+      {/* 6. VICTORY & CELEBRATION MODAL */}
       <VictoryModal
         isOpen={isVictoryModalOpen}
         onClose={() => setIsVictoryModalOpen(false)}
