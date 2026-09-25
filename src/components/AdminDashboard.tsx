@@ -1867,7 +1867,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Courbe Visuelle Épurée des Ventes (30 Derniers Jours - Money Fusion Direct) */}
-            <AdminSalesTrendCurve transactions={transactionsList} />
+            <AdminSalesTrendCurve transactions={transactionsList} onRefresh={loadAdminData} />
 
             {/* Performance Grid: Services & Trend */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
