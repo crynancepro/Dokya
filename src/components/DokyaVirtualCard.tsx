@@ -114,76 +114,76 @@ export const DokyaVirtualCard: React.FC<DokyaVirtualCardProps> = ({
   // 2. DASHBOARD VARIANT (LUXURY VIRTUAL BANK CARD)
   // =========================================================================
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-zinc-900/95 to-indigo-950/90 border border-slate-700/70 p-5 sm:p-6 shadow-2xl transition-all duration-300 hover:border-indigo-500/40 hover:shadow-indigo-500/10 backdrop-blur-md">
+    <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-slate-900 via-zinc-900/95 to-indigo-950/90 border border-slate-700/70 p-4 sm:p-6 shadow-2xl transition-all duration-300 hover:border-indigo-500/40 hover:shadow-indigo-500/10 backdrop-blur-md">
       {/* Background ambient lighting */}
       <div className="absolute top-0 right-0 -mr-12 -mt-12 w-56 h-56 bg-gradient-to-bl from-indigo-500/25 via-teal-500/10 to-transparent rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-0 -ml-10 -mb-10 w-44 h-44 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
 
       {/* Dokya Filigrane Watermark */}
-      <div className="absolute right-4 bottom-1 text-6xl sm:text-7xl font-black text-white/[0.04] select-none pointer-events-none font-mono tracking-tighter">
+      <div className="absolute right-3 bottom-0 text-5xl sm:text-7xl font-black text-white/[0.04] select-none pointer-events-none font-mono tracking-tighter">
         DOKYA
       </div>
 
       {/* Top row: Brand / Title & EMV Chip */}
-      <div className="relative z-10 flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
+      <div className="relative z-10 flex items-center justify-between mb-3.5 sm:mb-5">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           {/* Microchip EMV */}
-          <div className="w-10 h-8 rounded-md bg-gradient-to-tr from-amber-300 via-amber-400 to-yellow-200 border border-amber-600/50 relative overflow-hidden shadow-md flex items-center justify-center shrink-0">
+          <div className="w-8 h-6 sm:w-10 sm:h-8 rounded-md bg-gradient-to-tr from-amber-300 via-amber-400 to-yellow-200 border border-amber-600/50 relative overflow-hidden shadow-md flex items-center justify-center shrink-0">
             <div className="w-full h-[1px] bg-amber-800/40 absolute top-1/2 -translate-y-1/2" />
             <div className="h-full w-[1px] bg-amber-800/40 absolute left-1/2 -translate-x-1/2" />
-            <div className="w-4 h-3 rounded-[3px] border border-amber-800/40" />
+            <div className="w-3.5 h-2.5 sm:w-4 sm:h-3 rounded-[3px] border border-amber-800/40" />
           </div>
 
           {/* Contactless waves icon */}
           <div className="flex items-center gap-1.5 text-slate-400">
-            <Radio className="w-4 h-4 rotate-90" />
-            <span className="text-[10px] font-mono tracking-widest text-slate-400 uppercase hidden sm:inline font-bold">
+            <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4 rotate-90" />
+            <span className="text-[9px] sm:text-[10px] font-mono tracking-widest text-slate-400 uppercase hidden sm:inline font-bold">
               CONTACTLESS
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {isVip && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black uppercase bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/40 shadow-xs">
-              <Crown className="w-3.5 h-3.5 fill-amber-400" />
-              <span>VIP Pass</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-black uppercase bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/40 shadow-xs">
+              <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-amber-400" />
+              <span>VIP</span>
             </span>
           )}
-          <span className="text-xs sm:text-sm font-black text-white tracking-widest uppercase font-mono bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+          <span className="text-[10px] sm:text-sm font-black text-white tracking-widest uppercase font-mono bg-white/5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-white/10">
             DOKYA WALLET
           </span>
         </div>
       </div>
 
       {/* Middle row: Card Number */}
-      <div className="relative z-10 mb-4 sm:mb-6">
-        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1">
+      <div className="relative z-10 mb-3 sm:mb-5">
+        <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5 sm:mb-1">
           Numéro Virtuel Sécurisé
         </span>
-        <div className="font-mono text-base sm:text-lg text-slate-200 tracking-[0.25em] font-semibold">
+        <div className="font-mono text-sm sm:text-lg text-slate-200 tracking-[0.18em] sm:tracking-[0.25em] font-semibold">
           {maskedCard}
         </div>
       </div>
 
       {/* Bottom row: Solde en grand, Cardholder Name, & Action Recharger */}
-      <div className="relative z-10 flex flex-col sm:flex-row sm:items-end justify-between gap-4 pt-3.5 border-t border-white/10">
+      <div className="relative z-10 flex items-end justify-between gap-2 pt-3 border-t border-white/10">
         <div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+          <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
             Solde Disponible
           </span>
-          <div className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-baseline gap-1.5">
+          <div className="text-xl sm:text-3xl font-black text-white tracking-tight flex items-baseline gap-1 sm:gap-1.5">
             <span className="text-emerald-400">{(balance ?? 0).toLocaleString('fr-FR')}</span>
-            <span className="text-sm font-bold text-emerald-300">{currency}</span>
+            <span className="text-xs sm:text-sm font-bold text-emerald-300">{currency}</span>
           </div>
         </div>
 
-        <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
-          <div className="text-left sm:text-right">
-            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block">
-              Titulaire de la carte
+        <div className="flex items-center gap-2.5 sm:gap-4">
+          <div className="text-right hidden xs:block">
+            <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-widest block">
+              Titulaire
             </span>
-            <span className="font-mono text-xs font-extrabold text-slate-200 uppercase tracking-wider">
+            <span className="font-mono text-[10px] sm:text-xs font-extrabold text-slate-200 uppercase tracking-wider truncate max-w-[100px] sm:max-w-none block">
               {cleanName}
             </span>
           </div>
@@ -191,11 +191,11 @@ export const DokyaVirtualCard: React.FC<DokyaVirtualCardProps> = ({
           <button
             type="button"
             onClick={onRecharge}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer shrink-0"
+            className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs flex items-center gap-1 shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer shrink-0"
             title="Recharger mon solde Dokya"
           >
             <Plus className="w-3.5 h-3.5 stroke-[3] text-slate-950" />
-            <span>+ Recharger</span>
+            <span>Recharger</span>
           </button>
         </div>
       </div>

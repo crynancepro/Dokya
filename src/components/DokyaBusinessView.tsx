@@ -340,36 +340,36 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
       {/* ========================================================================= */}
       {/* TOP HEADER & TITLE                                                        */}
       {/* ========================================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 bg-slate-900/90 border border-slate-800 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl">
         <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-              <Building2 className="w-5 h-5" />
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+              <Building2 className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white flex items-center gap-2">
+              <h2 className="text-base sm:text-xl font-black text-white flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <span>Pôle Dokya Business</span>
-                <span className="text-xs px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold uppercase tracking-wider">
+                <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold uppercase tracking-wider">
                   Clients & Suivi Financier
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
-                Gérez votre portefeuille clients sénégalais, suivez vos créances et partagez devis & factures en 1 clic sur WhatsApp.
+              <p className="text-[11px] sm:text-xs text-slate-400 line-clamp-2 sm:line-clamp-none">
+                Gérez vos clients sénégalais, suivez vos créances et partagez devis & factures en 1 clic sur WhatsApp.
               </p>
             </div>
           </div>
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto pt-1 sm:pt-0">
           <button
             type="button"
             onClick={loadBusinessData}
             disabled={isRefreshing}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
             title="Rafraîchir les données"
           >
-            <RefreshCw className={`w-4 h-4 text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>Actualiser</span>
           </button>
 
@@ -379,18 +379,18 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
               setEditingBusinessForModal(null);
               setIsManageBusinessesModalOpen(true);
             }}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
           >
-            <Building2 className="w-4 h-4 text-indigo-400" />
-            <span>Mes Entreprises ({businesses.length})</span>
+            <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="truncate">Entreprises ({businesses.length})</span>
           </button>
 
           <button
             type="button"
             onClick={handleOpenAddClient}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-indigo-600/20 active:scale-95 cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Nouveau Client</span>
           </button>
 
@@ -398,10 +398,10 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
             <button
               type="button"
               onClick={() => onOpenInvoiceGenerator(undefined, 'facture')}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
             >
-              <FileText className="w-4 h-4 text-emerald-400" />
-              <span>Créer Facture / Devis</span>
+              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Facture / Devis</span>
             </button>
           )}
         </div>
@@ -410,83 +410,83 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
       {/* ========================================================================= */}
       {/* 4 GLOBAL STATISTIC CARDS (En-tête de bord)                                */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
         
         {/* Total Clients */}
-        <div className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Clients</span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
-              <Users className="w-4 h-4" />
+        <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col justify-between hover:border-slate-700 transition-colors">
+          <div className="flex items-center justify-between text-slate-400 mb-1.5 sm:mb-2">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Clients</span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
           <div className="space-y-0.5">
-            <span className="text-2xl font-black text-white font-mono">{stats.totalClients}</span>
-            <p className="text-[11px] text-slate-500">Comptes enregistrés</p>
+            <span className="text-xl sm:text-2xl font-black text-white font-mono">{stats.totalClients}</span>
+            <p className="text-[10px] sm:text-[11px] text-slate-500">Comptes enregistrés</p>
           </div>
         </div>
 
         {/* Factures Émises */}
-        <div className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Factures Émises</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
-              <Receipt className="w-4 h-4" />
+        <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col justify-between hover:border-slate-700 transition-colors">
+          <div className="flex items-center justify-between text-slate-400 mb-1.5 sm:mb-2">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Factures</span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+              <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
           <div className="space-y-0.5">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-white font-mono">{stats.facturesEmises}</span>
+            <div className="flex items-baseline gap-1 sm:gap-2">
+              <span className="text-xl sm:text-2xl font-black text-white font-mono">{stats.facturesEmises}</span>
               {stats.devisEmis > 0 && (
-                <span className="text-xs text-slate-400 font-mono">(+{stats.devisEmis} devis)</span>
+                <span className="text-[10px] sm:text-xs text-slate-400 font-mono">(+{stats.devisEmis})</span>
               )}
             </div>
-            <p className="text-[11px] text-slate-500">Documents commerciaux</p>
+            <p className="text-[10px] sm:text-[11px] text-slate-500">Documents émis</p>
           </div>
         </div>
 
         {/* Total Facturé FCFA */}
-        <div className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Facturé</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4" />
+        <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col justify-between hover:border-slate-700 transition-colors">
+          <div className="flex items-center justify-between text-slate-400 mb-1.5 sm:mb-2">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Total Facturé</span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+              <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
           <div className="space-y-0.5">
-            <div className="text-xl font-black text-emerald-400 font-mono tracking-tight">
+            <div className="text-base sm:text-xl font-black text-emerald-400 font-mono tracking-tight truncate">
               {stats.totalFactureFCFA.toLocaleString('fr-FR')}{' '}
-              <span className="text-xs text-emerald-300 font-normal">FCFA</span>
+              <span className="text-[10px] sm:text-xs text-emerald-300 font-normal">FCFA</span>
             </div>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[10px] sm:text-[11px] text-slate-500 truncate">
               Encaissé : {stats.payeesFCFA.toLocaleString('fr-FR')} F
             </p>
           </div>
         </div>
 
         {/* Impayés FCFA (Highlighted) */}
-        <div className={`border rounded-2xl p-4 flex flex-col justify-between transition-colors ${
+        <div className={`border rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col justify-between transition-colors ${
           stats.impayesFCFA > 0 
             ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-500/60' 
             : 'bg-slate-900/80 border-slate-800/90 hover:border-slate-700'
         }`}>
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Impayés Restants</span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+          <div className="flex items-center justify-between text-slate-400 mb-1.5 sm:mb-2">
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-400">Impayés</span>
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center ${
               stats.impayesFCFA > 0 ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-500'
             }`}>
-              <AlertCircle className="w-4 h-4" />
+              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
           <div className="space-y-0.5">
-            <div className={`text-xl font-black font-mono tracking-tight ${
+            <div className={`text-base sm:text-xl font-black font-mono tracking-tight truncate ${
               stats.impayesFCFA > 0 ? 'text-amber-400' : 'text-slate-400'
             }`}>
               {stats.impayesFCFA.toLocaleString('fr-FR')}{' '}
-              <span className="text-xs font-normal">FCFA</span>
+              <span className="text-[10px] sm:text-xs font-normal">FCFA</span>
             </div>
-            <p className="text-[11px] text-amber-300/80">
-              {stats.impayesFCFA > 0 ? 'Créances en attente de règlement' : 'Aucun impayé en cours'}
+            <p className="text-[10px] sm:text-[11px] text-amber-300/80 truncate">
+              {stats.impayesFCFA > 0 ? 'Créances en attente' : 'Aucun impayé'}
             </p>
           </div>
         </div>

@@ -160,30 +160,30 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
   };
 
   return (
-    <div id="my-subscription-view" className="space-y-8 animate-in fade-in max-w-5xl mx-auto pb-12">
+    <div id="my-subscription-view" className="space-y-4 sm:space-y-8 animate-in fade-in max-w-5xl mx-auto pb-8 sm:pb-12">
       
       {/* 1. TOP STATUS HEADER */}
-      <div className="flex items-center justify-between gap-4 flex-wrap border-b border-slate-800 pb-4">
+      <div className="flex items-center justify-between gap-3 sm:gap-4 flex-wrap border-b border-slate-800 pb-3 sm:pb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-2xl lg:text-3xl font-black text-white tracking-tight">
               Mon Abonnement & Privilèges VIP
             </h1>
             {isCurrentlyActive ? (
-              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm animate-pulse">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-black bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm animate-pulse">
                 👑 Pass VIP Actif
               </span>
             ) : isPending ? (
-              <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
                 ⏳ Validation en cours
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
                 ⚪ Standard / À l'acte
               </span>
             )}
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
             Gérez votre abonnement, suivez la validité en temps réel et profitez de l'accès illimité.
           </p>
         </div>
@@ -191,10 +191,10 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
         <button
           type="button"
           onClick={onGoToPricing}
-          className="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
+          className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95"
         >
-          <CreditCard className="w-4 h-4" />
-          <span>Voir la Grille Tarifaire</span>
+          <CreditCard className="w-3.5 h-3.5" />
+          <span>Grille Tarifaire</span>
         </button>
       </div>
 
@@ -402,21 +402,21 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
         /* ========================================================================= */
         /* CASE C: USER HAS NO ACTIVE VIP SUBSCRIPTION (FREE / PAY-PER-DOC)          */
         /* ========================================================================= */
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           
           {/* Status Alert Banner */}
-          <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-6 sm:p-8 shadow-xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">
-                  <ShieldCheck className="w-6 h-6 text-indigo-400" />
+          <div className="rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 p-4 sm:p-6 shadow-xl space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="flex items-center gap-2.5 sm:gap-3">
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                  <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-400" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                  <span className="text-[9px] sm:text-[10px] font-black uppercase text-slate-400 tracking-wider">
                     Statut Actuel du Compte
                   </span>
-                  <h2 className="text-xl sm:text-2xl font-black text-white">
-                    Compte Standard • Mode Paiement à l'Acte
+                  <h2 className="text-base sm:text-xl font-black text-white">
+                    Compte Standard • Paiement à l'Acte
                   </h2>
                 </div>
               </div>
@@ -424,10 +424,10 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
               <button
                 type="button"
                 onClick={onGoToPricing}
-                className="px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
+                className="w-full sm:w-auto px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
               >
-                <Crown className="w-4 h-4" />
-                <span>Débloquer le Pass VIP Illimité</span>
+                <Crown className="w-3.5 h-3.5" />
+                <span>Pass VIP Illimité</span>
               </button>
             </div>
 
@@ -437,65 +437,65 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
           </div>
 
           {/* Value Comparison Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-6">
             
             {/* Standard Mode Card */}
-            <div className="rounded-3xl bg-slate-900/60 border border-slate-800 p-6 space-y-4">
+            <div className="rounded-2xl sm:rounded-3xl bg-slate-900/60 border border-slate-800 p-4 sm:p-6 space-y-3 sm:space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-black text-white">Mode Actuel : Paiement à l'Acte</h3>
+                <h3 className="text-sm sm:text-base font-black text-white">Mode Actuel : Paiement à l'Acte</h3>
                 <span className="text-xs text-slate-400 font-mono">0 F / mois</span>
               </div>
 
-              <ul className="space-y-2.5 text-xs text-slate-300">
+              <ul className="space-y-2 sm:space-y-2.5 text-xs text-slate-300">
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>Accès gratuit aux formulaires et éditeurs</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>Aperçu interactif plein écran avant achat</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>Archivage et ré-téléchargement à vie des documents payés</span>
                 </li>
                 <li className="flex items-center gap-2 text-slate-500">
-                  <XCircle className="w-4 h-4 text-slate-600 shrink-0" />
+                  <XCircle className="w-3.5 h-3.5 text-slate-600 shrink-0" />
                   <span>Paiement de 1 000 à 3 000 FCFA à chaque nouvelle création</span>
                 </li>
               </ul>
             </div>
 
             {/* VIP Pass Card */}
-            <div className="rounded-3xl bg-gradient-to-br from-indigo-950 to-slate-900 border-2 border-amber-400/70 p-6 space-y-4 shadow-xl">
+            <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-br from-indigo-950 to-slate-900 border-2 border-amber-400/70 p-4 sm:p-6 space-y-3 sm:space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                   <Crown className="w-4 h-4 text-amber-400" />
-                  <h3 className="text-base font-black text-white">Pass VIP Illimité</h3>
+                  <h3 className="text-sm sm:text-base font-black text-white">Pass VIP Illimité</h3>
                 </div>
                 <span className="text-xs font-black text-amber-300">Dès 2 500 FCFA</span>
               </div>
 
-              <ul className="space-y-2.5 text-xs text-slate-200">
+              <ul className="space-y-2 sm:space-y-2.5 text-xs text-slate-200">
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span>Téléchargements Word (.docx) & PDF <strong>100% ILLIMITÉS</strong></span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span>Générations IA Dokya illimitées sur tous les services</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span>Accès complet au générateur d'Ebooks & Livres complets</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span>Support prioritaire direct sur WhatsApp 7j/7</span>
                 </li>
               </ul>
 
-              <div className="pt-2">
+              <div className="pt-1 sm:pt-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -506,12 +506,12 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
                       onSubscribePlan('monthly', 5000, 'Pass VIP Mensuel');
                     }
                   }}
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
+                  className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>
                     {(profile?.balance ?? 0) < 5000 
-                      ? 'Solde insuffisant : Recharger mon solde' 
+                      ? 'Recharger mon portefeuille' 
                       : "S'abonner avec mon solde (5 000 FCFA)"}
                   </span>
                 </button>

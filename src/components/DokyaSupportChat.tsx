@@ -491,45 +491,45 @@ export const DokyaSupportChat: React.FC<DokyaSupportChatProps> = ({
       {/* ========================================================================= */}
       {/* HEADER : WHATSAPP-INSPIRED TOP BAR WITH ESCALATION BUTTON                */}
       {/* ========================================================================= */}
-      <div className="bg-slate-900 border-b border-slate-800 p-3 sm:p-4 sm:px-6 flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div className="bg-slate-900 border-b border-slate-800 p-2.5 sm:p-4 px-3 sm:px-6 flex items-center justify-between gap-2.5 shrink-0">
         
         {/* Left: Contact Info */}
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shadow-md">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="relative shrink-0">
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shadow-md">
               <DokyaLogo size="sm" variant="icon" />
             </div>
-            <span className="w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900 absolute -bottom-0.5 -right-0.5" />
+            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-500 border-2 border-slate-900 absolute -bottom-0.5 -right-0.5" />
           </div>
 
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm sm:text-base font-black text-white">Support & Assistance Dokya</h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-950 text-violet-300 border border-violet-800/60">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h3 className="text-xs sm:text-base font-black text-white truncate">Support Dokya AI</h3>
+              <span className="px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-violet-950 text-violet-300 border border-violet-800/60 shrink-0">
                 24h/7j
               </span>
             </div>
 
-            <p className="text-xs text-slate-400 flex items-center gap-1.5">
+            <p className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-1 truncate">
               {isHumanRequested ? (
-                <span className="text-amber-400 font-semibold flex items-center gap-1">
-                  <ShieldAlert className="w-3 h-3" />
-                  <span>En attente de prise en charge humaine</span>
+                <span className="text-amber-400 font-semibold flex items-center gap-1 truncate">
+                  <ShieldAlert className="w-3 h-3 shrink-0" />
+                  <span className="truncate">Attente conseiller humain</span>
                 </span>
               ) : isInProgress ? (
-                <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                  <UserCheck className="w-3 h-3" />
-                  <span>Conseiller humain en ligne</span>
+                <span className="text-emerald-400 font-semibold flex items-center gap-1 truncate">
+                  <UserCheck className="w-3 h-3 shrink-0" />
+                  <span className="truncate">Conseiller en ligne</span>
                 </span>
               ) : isResolved ? (
-                <span className="text-slate-400 flex items-center gap-1">
-                  <CheckCheck className="w-3 h-3 text-emerald-400" />
-                  <span>Ticket résolu</span>
+                <span className="text-slate-400 flex items-center gap-1 truncate">
+                  <CheckCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                  <span className="truncate">Ticket résolu</span>
                 </span>
               ) : (
-                <span className="text-violet-300 font-medium flex items-center gap-1">
-                  <Bot className="w-3 h-3 text-violet-400" />
-                  <span>Assistant IA Gemini actif</span>
+                <span className="text-violet-300 font-medium flex items-center gap-1 truncate">
+                  <Bot className="w-3 h-3 text-violet-400 shrink-0" />
+                  <span className="truncate">IA Gemini active</span>
                 </span>
               )}
             </p>
@@ -537,30 +537,31 @@ export const DokyaSupportChat: React.FC<DokyaSupportChatProps> = ({
         </div>
 
         {/* Right: Escalation CTA Button */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {!isHumanRequested && !isInProgress && (
             <button
               type="button"
               onClick={handleRequestHuman}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer active:scale-95 animate-pulse"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] sm:text-xs shadow-md transition-all cursor-pointer active:scale-95 animate-pulse"
               title="Alerte immédiate transmise aux administrateurs"
             >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>🆘 Parler à un conseiller humain</span>
+              <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+              <span className="hidden sm:inline">🆘 Parler à un conseiller humain</span>
+              <span className="sm:hidden">Conseiller</span>
             </button>
           )}
 
           {isHumanRequested && (
-            <div className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              <span>Alerte admin transmise</span>
+            <div className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] sm:text-xs font-bold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+              <span>Alerte admin</span>
             </div>
           )}
 
           {isInProgress && (
-            <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5">
-              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Relais humain actif</span>
+            <div className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] sm:text-xs font-bold flex items-center gap-1">
+              <UserCheck className="w-3 h-3 text-emerald-400" />
+              <span>Humain actif</span>
             </div>
           )}
         </div>

@@ -918,32 +918,68 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       <div className="flex-1 md:pl-72 flex flex-col min-w-0">
         
         {/* Top Floating App Bar */}
-        <header className="sticky top-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-8 py-3.5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-3 sm:px-8 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4 overflow-hidden">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => setIsMobileSidebarOpen(true)}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 md:hidden hover:text-white transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 md:hidden hover:text-white transition-colors cursor-pointer shrink-0"
               title="Ouvrir le menu"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="w-4.5 h-4.5" />
             </button>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm sm:text-base font-black text-white capitalize">
+                <h2 className="text-xs sm:text-base font-black text-white capitalize truncate max-w-[115px] xs:max-w-[160px] sm:max-w-none">
+                  {/* Compact labels on mobile to avoid 5-8 line wrapping, full labels on desktop */}
                   {activeSidebarTab === 'dashboard_home' || activeSidebarTab === 'dashboard' ? 'Tableau de bord'
-                    : activeSidebarTab === 'documents' ? 'Mes Documents Générés'
-                    : activeSidebarTab === 'entretiens' ? 'Mes Fiches de Préparation d\'Entretien RH'
-                    : activeSidebarTab === 'business' || activeSidebarTab === 'clients' ? 'Pôle Dokya Business • Gestion Clients & Ventes'
-                    : activeSidebarTab === 'affiliation' ? 'Programme d\'Affiliation & Commissions (20%)'
+                    : activeSidebarTab === 'documents' ? (
+                      <>
+                        <span className="sm:hidden">Mes Documents</span>
+                        <span className="hidden sm:inline">Mes Documents Générés</span>
+                      </>
+                    )
+                    : activeSidebarTab === 'entretiens' ? (
+                      <>
+                        <span className="sm:hidden">Entretiens RH</span>
+                        <span className="hidden sm:inline">Fiches de Préparation d'Entretien RH</span>
+                      </>
+                    )
+                    : activeSidebarTab === 'business' || activeSidebarTab === 'clients' ? (
+                      <>
+                        <span className="sm:hidden">Dokya Business</span>
+                        <span className="hidden sm:inline">Pôle Dokya Business • Ventes</span>
+                      </>
+                    )
+                    : activeSidebarTab === 'affiliation' ? (
+                      <>
+                        <span className="sm:hidden">Affiliation (20%)</span>
+                        <span className="hidden sm:inline">Affiliation & Commissions (20%)</span>
+                      </>
+                    )
                     : activeSidebarTab === 'tarifs' ? 'Tarifs & Offres'
-                    : activeSidebarTab === 'subscription' ? 'Mon Abonnement & Privilèges VIP'
-                    : activeSidebarTab === 'profile' ? 'Mon Profil & Paramètres'
-                    : activeSidebarTab === 'wallet' ? 'Mon Portefeuille Wallet'
-                    : activeSidebarTab === 'transactions' || activeSidebarTab === 'orders' ? 'Mes Commandes & Suivi des Paiements'
-                    : 'Espace Dokya AI'}
+                    : activeSidebarTab === 'subscription' ? (
+                      <>
+                        <span className="sm:hidden">Pass VIP</span>
+                        <span className="hidden sm:inline">Mon Abonnement & Privilèges VIP</span>
+                      </>
+                    )
+                    : activeSidebarTab === 'profile' ? (
+                      <>
+                        <span className="sm:hidden">Mon Profil</span>
+                        <span className="hidden sm:inline">Mon Profil & Paramètres</span>
+                      </>
+                    )
+                    : activeSidebarTab === 'wallet' ? 'Mon Wallet'
+                    : activeSidebarTab === 'transactions' || activeSidebarTab === 'orders' ? (
+                      <>
+                        <span className="sm:hidden">Commandes</span>
+                        <span className="hidden sm:inline">Mes Commandes & Paiements</span>
+                      </>
+                    )
+                    : 'Dokya AI'}
                 </h2>
-                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <span className="hidden lg:inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   <Sparkles className="w-3 h-3 text-amber-300" />
                   <span>SaaS Pro</span>
                 </span>
@@ -954,18 +990,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* VIP Status Badge */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* VIP Status Badge - Compact on Mobile */}
             {isSubscriptionActive && (
               <button
                 type="button"
                 onClick={() => handleSelectTab('subscription')}
-                className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/10 border border-amber-400/50 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm hover:border-amber-400 transition-all cursor-pointer"
-                title="Pass VIP Actif - Cliquez pour voir les détails"
+                className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/10 border border-amber-400/50 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl flex items-center gap-1 shadow-xs hover:border-amber-400 transition-all cursor-pointer shrink-0"
+                title="Pass VIP Actif"
               >
-                <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span className="text-xs font-black text-amber-300 whitespace-nowrap">
-                  👑 Pass VIP Actif
+                <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                <span className="text-[10px] sm:text-xs font-black text-amber-300 whitespace-nowrap">
+                  <span className="hidden xs:inline">👑 </span>VIP
                 </span>
               </button>
             )}
@@ -973,12 +1009,12 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             {/* Quick Balance indicator */}
             <div 
               onClick={() => setIsRechargeModalOpen(true)}
-              className="bg-slate-900 hover:bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-inner cursor-pointer transition-colors"
+              className="bg-slate-900 hover:bg-slate-850 border border-slate-800 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl flex items-center gap-1 sm:gap-1.5 shadow-inner cursor-pointer transition-colors shrink-0"
               title="Cliquez pour recharger votre solde"
             >
-              <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-xs font-black text-emerald-400">
-                {(profile.balance ?? 0).toLocaleString('fr-FR')} <span className="text-[10px] text-emerald-300">FCFA</span>
+              <Wallet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="text-[11px] sm:text-xs font-black text-emerald-400 whitespace-nowrap">
+                {(profile.balance ?? 0).toLocaleString('fr-FR')} <span className="text-[9px] sm:text-[10px] text-emerald-300">FCFA</span>
               </span>
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded-md hidden lg:inline">
                 + Recharger
@@ -997,7 +1033,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               onClick={onSignOut ? onSignOut : async () => {
                 await signOut(auth);
               }}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-800/60 text-slate-400 hover:text-rose-300 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-800/60 text-slate-400 hover:text-rose-300 text-xs font-medium transition-all flex items-center gap-1 cursor-pointer shadow-xs shrink-0"
               title="Se déconnecter"
             >
               <LogOut className="w-3.5 h-3.5 text-rose-400" />
@@ -1008,35 +1044,35 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
                 title="Fermer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4.5 h-4.5" />
               </button>
             )}
           </div>
         </header>
 
         {/* Workspace Body */}
-        <main className="flex-1 p-4 sm:p-8 max-w-6xl w-full mx-auto space-y-8">
+        <main className="flex-1 p-3.5 sm:p-8 max-w-6xl w-full mx-auto space-y-5 sm:space-y-8 min-w-0">
           
           {/* ========================================================================= */}
           {/* TAB 1: TABLEAU DE BORD (DASHBOARD HOME)                                   */}
           {/* ========================================================================= */}
           {(activeSidebarTab === 'dashboard_home' || activeSidebarTab === 'dashboard') && (
-            <div className="space-y-8 animate-in fade-in">
+            <div className="space-y-5 sm:space-y-8 animate-in fade-in">
               
               {/* Welcome Hero Banner */}
-              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-950 via-slate-900 to-slate-950 border border-slate-800 p-6 sm:p-8 shadow-2xl space-y-6">
+              <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-r from-indigo-950 via-slate-900 to-slate-950 border border-slate-800 p-4 sm:p-7 shadow-xl space-y-4 sm:space-y-5">
                 <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
                 
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div className="space-y-2">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-6">
+                  <div className="space-y-1.5">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                       <Sparkles className="w-3 h-3 text-amber-300" />
                       <span>Espace Candidat & Bureautique IA</span>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                    <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight">
                       Bienvenue, <span className="text-indigo-400">{profile?.personalInfo?.firstName || profile?.email?.split('@')[0] || 'Candidat Pro'}</span> !
                     </h1>
                     <p className="text-xs sm:text-sm text-slate-400 max-w-xl leading-relaxed">
@@ -1044,30 +1080,33 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTab(isSubscriptionActive ? 'subscription' : 'tarifs')}
-                      className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                    >
-                      <Crown className="w-4 h-4" />
-                      <span>{isSubscriptionActive ? 'Mon Pass VIP Actif' : 'Tarifs & Pass VIP'}</span>
-                    </button>
-                  </div>
+                  {/* Only show Tarifs button if not already active to avoid duplicate VIP cards */}
+                  {!isSubscriptionActive && (
+                    <div className="flex items-center gap-2 pt-1 sm:pt-0">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectTab('tarifs')}
+                        className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                      >
+                        <Crown className="w-3.5 h-3.5" />
+                        <span>Tarifs & Pass VIP</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* VIP ACTIVE BANNER - Compact & Sleek */}
+                {/* VIP ACTIVE BANNER - Single sleek version when active */}
                 {isSubscriptionActive && (
                   <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-emerald-950/20 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-sm">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shrink-0">
-                        <Crown className="w-4 h-4 text-emerald-400" />
+                      <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shrink-0">
+                        <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
                             Pass VIP Dokya
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                               Actif • Illimité
                             </span>
                           </h3>
@@ -1080,7 +1119,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     <button
                       type="button"
                       onClick={() => handleSelectTab('subscription')}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-white text-xs font-black transition-all shrink-0 cursor-pointer active:scale-95"
+                      className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-white text-[11px] sm:text-xs font-black transition-all shrink-0 cursor-pointer active:scale-95"
                     >
                       Détails →
                     </button>
@@ -1088,18 +1127,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 )}
 
                 {/* Profile Completion Strip */}
-                <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1.5 flex-1">
-                    <div className="flex items-center justify-between text-xs pr-4">
-                      <span className="text-slate-300 font-bold flex items-center gap-1.5">
-                        <UserCircle2 className="w-4 h-4 text-indigo-400" />
-                        <span>Complétion de votre profil candidat & professionnel</span>
+                <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center justify-between text-xs pr-1">
+                      <span className="text-slate-300 font-bold flex items-center gap-1.5 text-[11px] sm:text-xs truncate">
+                        <UserCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-400 shrink-0" />
+                        <span className="truncate">Profil candidat & professionnel</span>
                       </span>
-                      <span className={`font-black ${completionPercentage >= 80 ? 'text-emerald-400' : completionPercentage >= 50 ? 'text-amber-400' : 'text-indigo-400'}`}>
+                      <span className={`font-black text-xs ${completionPercentage >= 80 ? 'text-emerald-400' : completionPercentage >= 50 ? 'text-amber-400' : 'text-indigo-400'}`}>
                         {completionPercentage}%
                       </span>
                     </div>
-                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 sm:h-2 bg-slate-800 rounded-full overflow-hidden">
                       <div 
                         className={`h-full rounded-full transition-all duration-700 ${
                           completionPercentage >= 80 
@@ -1117,9 +1156,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     <button
                       type="button"
                       onClick={() => handleSelectTab('profile')}
-                      className="px-3.5 py-2 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs"
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs self-start sm:self-auto"
                     >
-                      Compléter mon profil →
+                      Compléter →
                     </button>
                   )}
                 </div>
@@ -1141,24 +1180,24 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </div>
 
                 {/* Right: Quick metric cards (Spans 5 cols on large screens) */}
-                <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
+                <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2.5 sm:gap-3">
                   {/* Metric 1: Mes Documents */}
-                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md flex items-center justify-between">
-                    <div className="space-y-1">
-                      <span className="text-xs font-bold text-slate-400">Documents archivés</span>
-                      <p className="text-2xl font-black text-white">
+                  <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-900/90 border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] sm:text-xs font-bold text-slate-400">Documents archivés</span>
+                      <p className="text-xl sm:text-2xl font-black text-white">
                         {documents.length} <span className="text-xs font-normal text-slate-400">{documents.length > 1 ? 'fichiers' : 'fichier'}</span>
                       </p>
                       <p className="text-[10px] text-slate-500">PDF & Word HD certifiés ATS</p>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                        <FileText className="w-5 h-5" />
+                    <div className="flex flex-col items-end gap-1.5 sm:gap-2">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                        <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                       </div>
                       <button
                         type="button"
                         onClick={() => handleSelectTab('documents')}
-                        className="text-[11px] font-black text-indigo-400 hover:text-indigo-300 cursor-pointer"
+                        className="text-[10px] sm:text-[11px] font-black text-indigo-400 hover:text-indigo-300 cursor-pointer"
                       >
                         Consulter →
                       </button>
@@ -1166,24 +1205,24 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   </div>
 
                   {/* Metric 2: Formule & Accès */}
-                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md flex items-center justify-between">
-                    <div className="space-y-1">
-                      <span className="text-xs font-bold text-slate-400">Formule & Statut</span>
-                      <p className="text-base font-black text-amber-400">
+                  <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-900/90 border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] sm:text-xs font-bold text-slate-400">Formule & Statut</span>
+                      <p className="text-sm sm:text-base font-black text-amber-400">
                         {profile?.subscription?.status === 'active' || isSubscriptionActive ? '👑 Pass VIP Actif' : 'Paiement à l\'acte'}
                       </p>
                       <p className="text-[10px] text-slate-500">
                         {isSubscriptionActive ? 'Génération & téléchargements illimités' : 'Recharge mobile money par acte'}
                       </p>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                        <Crown className="w-5 h-5" />
+                    <div className="flex flex-col items-end gap-1.5 sm:gap-2">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                        <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
                       </div>
                       <button
                         type="button"
                         onClick={() => handleSelectTab(isSubscriptionActive ? 'subscription' : 'tarifs')}
-                        className="text-[11px] font-black text-amber-400 hover:text-amber-300 cursor-pointer"
+                        className="text-[10px] sm:text-[11px] font-black text-amber-400 hover:text-amber-300 cursor-pointer"
                       >
                         {isSubscriptionActive ? 'Gérer' : 'Pass VIP →'}
                       </button>
@@ -1191,92 +1230,92 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   </div>
 
                   {/* Metric 3: Score Profil ATS */}
-                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md flex items-center justify-between sm:col-span-2 lg:col-span-1">
-                    <div className="space-y-1">
-                      <span className="text-xs font-bold text-slate-400">Optimisation Profil ATS</span>
+                  <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-900/90 border border-slate-800 shadow-sm flex items-center justify-between sm:col-span-2 lg:col-span-1">
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] sm:text-xs font-bold text-slate-400">Optimisation Profil ATS</span>
                       <div className="flex items-baseline gap-2">
-                        <p className="text-xl font-black text-blue-400">
+                        <p className="text-lg sm:text-xl font-black text-blue-400">
                           {Math.max(65, completionPercentage)}%
                         </p>
-                        <span className="text-[10px] font-bold text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded">
+                        <span className="text-[9px] sm:text-[10px] font-bold text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded">
                           Standard RH UEMOA
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-500">Optimisé pour filtres de recrutement</p>
                     </div>
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                      <ShieldCheck className="w-5 h-5" />
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* 5 REAL DOKYA AI GENERATOR CARDS */}
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-base font-black text-white flex items-center gap-2">
-                    <Wand2 className="w-4 h-4 text-amber-400" />
-                    <span>Générateurs Dokya AI (Catalogue Officiel & Accès Direct)</span>
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-1.5 sm:gap-2">
+                    <Wand2 className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Générateurs Dokya AI</span>
                   </h3>
-                  <span className="text-xs text-slate-400">5 services certifiés</span>
+                  <span className="text-[11px] sm:text-xs text-slate-400">5 services certifiés</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                   {/* Card 1: CV ATS */}
                   <div 
                     onClick={() => handleSelectTab('gen_cv')}
-                    className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-indigo-500/60 p-5 space-y-3 transition-all cursor-pointer hover:-translate-y-1 shadow-lg group flex flex-col justify-between"
+                    className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-indigo-500/60 space-y-2.5 sm:space-y-3 transition-all cursor-pointer hover:-translate-y-0.5 shadow-md group flex flex-col justify-between"
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                          <FileText className="w-5 h-5" />
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                          <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">
+                        <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">
                           1 000 FCFA
                         </span>
                       </div>
                       <div>
-                        <h4 className="text-sm font-black text-white group-hover:text-indigo-400 transition-colors">
+                        <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-indigo-400 transition-colors">
                           CV ATS Professionnel
                         </h4>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                        <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 line-clamp-2">
                           50+ modèles certifiés optimisés pour passer les filtres de recrutement.
                         </p>
                       </div>
                     </div>
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-xs font-bold text-indigo-400 gap-1">
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-[11px] sm:text-xs font-bold text-indigo-400 gap-1">
                       <span>Lancer la création</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </div>
 
                   {/* Card 2: Lettre */}
                   <div 
                     onClick={() => handleSelectTab('gen_letter')}
-                    className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-blue-500/60 p-5 space-y-3 transition-all cursor-pointer hover:-translate-y-1 shadow-lg group flex flex-col justify-between"
+                    className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-blue-500/60 space-y-2.5 sm:space-y-3 transition-all cursor-pointer hover:-translate-y-0.5 shadow-md group flex flex-col justify-between"
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                          <Mail className="w-5 h-5" />
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                          <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">
+                        <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">
                           1 000 FCFA
                         </span>
                       </div>
                       <div>
-                        <h4 className="text-sm font-black text-white group-hover:text-blue-400 transition-colors">
+                        <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-blue-400 transition-colors">
                           Lettre de Motivation IA
                         </h4>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                        <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 line-clamp-2">
                           Rédaction persuasive sur-mesure adaptée à votre entreprise cible.
                         </p>
                       </div>
                     </div>
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-xs font-bold text-blue-400 gap-1">
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-[11px] sm:text-xs font-bold text-blue-400 gap-1">
                       <span>Rédiger ma lettre</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </div>
 
@@ -1286,29 +1325,29 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       if (onSelectService) onSelectService('facture');
                       else handleSelectTab('gen_business');
                     }}
-                    className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/60 p-5 space-y-3 transition-all cursor-pointer hover:-translate-y-1 shadow-lg group flex flex-col justify-between"
+                    className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/60 space-y-2.5 sm:space-y-3 transition-all cursor-pointer hover:-translate-y-0.5 shadow-md group flex flex-col justify-between"
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                          <Receipt className="w-5 h-5" />
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                          <Receipt className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                        <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
                           1 000 FCFA
                         </span>
                       </div>
                       <div>
-                        <h4 className="text-sm font-black text-white group-hover:text-emerald-400 transition-colors">
+                        <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-emerald-400 transition-colors">
                           Facture Client UEMOA
                         </h4>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                        <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 line-clamp-2">
                           Conforme OHADA, TVA et mentions légales sénégalaises.
                         </p>
                       </div>
                     </div>
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-xs font-bold text-emerald-400 gap-1">
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-[11px] sm:text-xs font-bold text-emerald-400 gap-1">
                       <span>Éditer facture</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </div>
 
@@ -1318,29 +1357,29 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       if (onSelectService) onSelectService('devis');
                       else handleSelectTab('gen_business');
                     }}
-                    className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-teal-500/60 p-5 space-y-3 transition-all cursor-pointer hover:-translate-y-1 shadow-lg group flex flex-col justify-between"
+                    className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-teal-500/60 space-y-2.5 sm:space-y-3 transition-all cursor-pointer hover:-translate-y-0.5 shadow-md group flex flex-col justify-between"
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="w-10 h-10 rounded-2xl bg-teal-500/20 text-teal-400 flex items-center justify-center">
-                          <FileCheck className="w-5 h-5" />
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center">
+                          <FileCheck className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300">
+                        <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300">
                           1 000 FCFA
                         </span>
                       </div>
                       <div>
-                        <h4 className="text-sm font-black text-white group-hover:text-teal-400 transition-colors">
+                        <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-teal-400 transition-colors">
                           Devis Commercial Pro
                         </h4>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                        <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 line-clamp-2">
                           Chiffrage clair, conditions de vente et signature client.
                         </p>
                       </div>
                     </div>
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-xs font-bold text-teal-400 gap-1">
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-[11px] sm:text-xs font-bold text-teal-400 gap-1">
                       <span>Éditer devis</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </div>
 
@@ -1350,29 +1389,29 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       if (onSelectService) onSelectService('ebook');
                       else handleSelectTab('gen_ebook');
                     }}
-                    className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-purple-500/60 p-5 space-y-3 transition-all cursor-pointer hover:-translate-y-1 shadow-lg group flex flex-col justify-between"
+                    className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-purple-500/60 space-y-2.5 sm:space-y-3 transition-all cursor-pointer hover:-translate-y-0.5 shadow-md group flex flex-col justify-between"
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
-                          <BookOpen className="w-5 h-5" />
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                          <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
+                        <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
                           3 000 FCFA
                         </span>
                       </div>
                       <div>
-                        <h4 className="text-sm font-black text-white group-hover:text-purple-400 transition-colors">
-                          Ebook & Rapport Pro AI
+                        <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-purple-400 transition-colors">
+                          Livre & Rapport AI
                         </h4>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                          Création de livre complet avec chapitres et couvertures 3D.
+                        <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 line-clamp-2">
+                          Génération structurée de contenus longs avec sommaire et chapitres.
                         </p>
                       </div>
                     </div>
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-xs font-bold text-purple-400 gap-1">
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-[11px] sm:text-xs font-bold text-purple-400 gap-1">
                       <span>Générer un livre</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </div>
                 </div>
@@ -1490,32 +1529,32 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             <div className="space-y-6 animate-in fade-in">
               
               {/* Header & Filter bar */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 border-b border-slate-800 pb-3 sm:pb-4">
                 <div>
-                  <h3 className="text-lg font-black text-white flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-indigo-400" />
+                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                    <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
                     <span>Répertoire de Mes Documents ({documents.length})</span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
                     Tous vos CVs, Lettres, Factures, Devis et Ebooks générés et archivés en haute définition.
                   </p>
                 </div>
 
                 {/* Search input */}
                 <div className="relative w-full md:w-64">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Rechercher un document..."
                     value={docSearchQuery}
                     onChange={(e) => setDocSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-indigo-500"
+                    className="w-full pl-8 sm:pl-9 pr-3 py-1.5 sm:py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-indigo-500"
                   />
                 </div>
               </div>
 
               {/* Filter Pills */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-none [&::-webkit-scrollbar]:hidden">
                 {[
                   { id: 'all', label: `Tous (${documents.length})` },
                   { id: 'cv', label: 'CVs ATS' },
@@ -1528,9 +1567,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     key={pill.id}
                     type="button"
                     onClick={() => setDocFilterType(pill.id)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    className={`px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                       docFilterType === pill.id
-                        ? 'bg-indigo-600 text-white shadow-md'
+                        ? 'bg-indigo-600 text-white shadow-xs'
                         : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                     }`}
                   >
@@ -1541,22 +1580,22 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
               {/* Document Cards Grid */}
               {filteredDocuments.length === 0 ? (
-                <div className="p-12 rounded-3xl bg-slate-900/60 border border-slate-800 text-center space-y-4">
-                  <FileText className="w-12 h-12 text-slate-600 mx-auto" />
+                <div className="p-8 sm:p-12 rounded-2xl sm:rounded-3xl bg-slate-900/60 border border-slate-800 text-center space-y-3 sm:space-y-4">
+                  <FileText className="w-10 h-10 sm:w-12 sm:h-12 text-slate-600 mx-auto" />
                   <div>
-                    <h4 className="text-sm font-bold text-white">Aucun document trouvé</h4>
-                    <p className="text-xs text-slate-400 mt-1">Créez votre premier document avec l'un de nos générateurs.</p>
+                    <h4 className="text-xs sm:text-sm font-bold text-white">Aucun document trouvé</h4>
+                    <p className="text-[11px] sm:text-xs text-slate-400 mt-1">Créez votre premier document avec l'un de nos générateurs.</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleSelectTab('gen_cv')}
-                    className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-md cursor-pointer hover:bg-indigo-500"
+                    className="px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-md cursor-pointer hover:bg-indigo-500"
                   >
                     Générer un Document →
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-5">
                   {filteredDocuments.map(docItem => {
                     const isInterviewDoc = !!docItem.interviewPrepData || (docItem.generationMode as any) === 'interview_prep';
                     const isBusinessDoc = docItem.generationMode === 'devis' || docItem.generationMode === 'facture' || docItem.generationMode === 'pack_business' || !!docItem.businessDocData;
@@ -1569,16 +1608,16 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     return (
                     <div
                       key={docItem.id}
-                      className={`bg-slate-900 border ${isInterviewDoc ? 'border-indigo-500/40 hover:border-indigo-500/70' : isUnlocked ? 'border-slate-800 hover:border-emerald-500/50' : 'border-slate-800 hover:border-amber-500/50'} rounded-3xl p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all`}
+                      className={`bg-slate-900 border ${isInterviewDoc ? 'border-indigo-500/40 hover:border-indigo-500/70' : isUnlocked ? 'border-slate-800 hover:border-emerald-500/50' : 'border-slate-800 hover:border-amber-500/50'} rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 flex flex-col justify-between space-y-3 sm:space-y-4 shadow-lg transition-all`}
                     >
                       <div 
-                        className="space-y-2.5 cursor-pointer group"
+                        className="space-y-2 cursor-pointer group"
                         onClick={() => handleDocumentClick(docItem)}
                         title={isUnlocked ? "Cliquer pour consulter et télécharger le document" : "Cliquer pour débloquer le document"}
                       >
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center justify-between gap-1.5 flex-wrap">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md ${
+                            <span className={`text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
                               isInterviewDoc
                                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                 : isDevis
@@ -1600,13 +1639,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                             {/* Statut Débloqué / Verrouillé */}
                             {!isInterviewDoc && (
                               isUnlocked ? (
-                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                <span className="text-[9px] sm:text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
                                   Débloqué
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
-                                  <Lock className="w-3 h-3 text-amber-400" />
+                                <span className="text-[9px] sm:text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                                  <Lock className="w-2.5 h-2.5 text-amber-400" />
                                   À débloquer
                                 </span>
                               )
@@ -1620,7 +1659,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                   e.stopPropagation();
                                   handleToggleDocPaymentStatus(docItem);
                                 }}
-                                className={`px-2 py-0.5 rounded text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 active:scale-95 ${
+                                className={`px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 active:scale-95 ${
                                   isPaid 
                                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30' 
                                     : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
@@ -1629,12 +1668,12 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                               >
                                 {isPaid ? (
                                   <>
-                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
                                     <span>PAYÉE</span>
                                   </>
                                 ) : (
                                   <>
-                                    <Clock className="w-3 h-3 text-amber-400" />
+                                    <Clock className="w-2.5 h-2.5 text-amber-400" />
                                     <span>IMPAYÉE</span>
                                   </>
                                 )}
@@ -1647,7 +1686,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                 value={quoteStatus}
                                 onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => handleUpdateDocQuoteStatus(docItem, e.target.value as any)}
-                                className={`px-2 py-0.5 rounded text-[10px] font-black border cursor-pointer bg-slate-950 ${
+                                className={`px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-black border cursor-pointer bg-slate-950 ${
                                   quoteStatus === 'ACCEPTE'
                                     ? 'text-emerald-300 border-emerald-500/40'
                                     : quoteStatus === 'REFUSE'
@@ -1666,19 +1705,19 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                             )}
                           </div>
 
-                          <span className="text-[11px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-400 font-mono">
                             {new Date(docItem.createdAt).toLocaleDateString('fr-FR')}
                           </span>
                         </div>
 
-                        <h4 className="text-sm font-black text-white line-clamp-1 group-hover:text-indigo-300 transition-colors">{docItem.title}</h4>
-                        <p className="text-xs text-slate-400 line-clamp-2">
+                        <h4 className="text-xs sm:text-sm font-black text-white line-clamp-1 group-hover:text-indigo-300 transition-colors">{docItem.title}</h4>
+                        <p className="text-[11px] sm:text-xs text-slate-400 line-clamp-1">
                           {docItem.formData?.personalInfo?.targetJob || docItem.businessDocData?.issuer?.companyName || docItem.ebookData?.author || 'Document Dokya'}
                         </p>
 
                         {/* Montant TTC pour les documents commerciaux */}
                         {isBusinessDoc && docItem.businessDocData && (
-                          <div className="flex items-center justify-between text-xs pt-1">
+                          <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1">
                             <span className="text-slate-400">Total :</span>
                             <span className="font-mono font-black text-white">
                               {((docItem.businessDocData.items || []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0)).toLocaleString('fr-FR')} {docItem.businessDocData.currency || 'FCFA'}
@@ -1687,7 +1726,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                         )}
                       </div>
 
-                      <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-1.5 flex-wrap">
                         {isInterviewDoc ? (
                           <button
                             type="button"
@@ -1712,7 +1751,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                 onOpenInterviewPrepDocument(prepData);
                               }
                             }}
-                            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                            className="w-full sm:w-auto px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
                           >
                             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                             <span>Réviser l'Entretien 🎯</span>
@@ -1723,10 +1762,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                             <button
                               type="button"
                               onClick={() => handleExportWithPaywallProtection(docItem, 'pdf')}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
+                              className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
                               title="Télécharger PDF"
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                               <span>PDF</span>
                             </button>
 
@@ -1734,10 +1773,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                             <button
                               type="button"
                               onClick={() => handleExportWithPaywallProtection(docItem, 'docx')}
-                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
+                              className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] sm:text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer active:scale-95"
                               title="Télécharger Word (.docx)"
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                               <span>Word</span>
                             </button>
 
@@ -1746,50 +1785,50 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleShareWhatsApp(docItem)}
-                                className="px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                                title="Partager directement ce document sur WhatsApp"
+                                className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-[11px] sm:text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                                title="Partager directement sur WhatsApp"
                               >
-                                <span className="text-xs">📲</span>
+                                <span className="text-[11px]">📲</span>
                                 <span className="hidden sm:inline">WhatsApp</span>
                               </button>
                             )}
 
-                            {/* Consulter le document du projet */}
+                            {/* Consulter le document du projet - Shortened label for mobile */}
                             <button
                               type="button"
                               onClick={() => handleDocumentClick(docItem)}
-                              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                              title="Consulter le document du projet en plein écran"
+                              className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-[11px] sm:text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                              title="Consulter le document en plein écran"
                             >
-                              <Eye className="w-3.5 h-3.5 text-indigo-400" />
-                              <span>Consulter le document du projet</span>
+                              <Eye className="w-3 h-3 text-indigo-400" />
+                              <span>Consulter</span>
                             </button>
                           </div>
                         )}
 
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           {/* Conversion Devis -> Facture si Devis */}
                           {isDevis && (
                             <button
                               type="button"
                               onClick={() => handleConvertDocQuote(docItem)}
-                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                              title="Convertir ce devis en Facture avec statut initial IMPAYÉE"
+                              className="px-2 py-1 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                              title="Convertir ce devis en Facture"
                             >
-                              <RefreshCw className="w-3.5 h-3.5" />
+                              <RefreshCw className="w-3 h-3" />
                               <span className="hidden sm:inline">Convertir</span>
                             </button>
                           )}
 
-                          {/* Bouton d'action [ ✏️ Modifier ] demandé */}
+                          {/* Bouton d'action Modifier */}
                           {!isInterviewDoc && (
                             <button
                               type="button"
                               onClick={() => handleEditAnyDocument(docItem)}
-                              className="px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                              title="Recharger l'intégralité des données dans l'Éditeur"
+                              className="px-2 py-1 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-300 hover:text-white text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                              title="Modifier dans l'Éditeur"
                             >
-                              <Edit3 className="w-3.5 h-3.5" />
+                              <Edit3 className="w-3 h-3" />
                               <span>Modifier</span>
                             </button>
                           )}
@@ -1798,10 +1837,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => handleDeleteDoc(docItem.id)}
-                            className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
                             title="Supprimer ce document"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -1853,39 +1892,39 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           {/* TAB: ENTRETIENS (INTERVIEW PREPARATION & COACHING REPOSITORY)              */}
           {/* ========================================================================= */}
           {activeSidebarTab === 'entretiens' && (
-            <div className="space-y-6 animate-in fade-in">
+            <div className="space-y-4 sm:space-y-6 animate-in fade-in">
               
               {/* Header */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 border-b border-slate-800 pb-3 sm:pb-4">
                 <div>
-                  <h3 className="text-lg font-black text-white flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-1.5 sm:gap-2">
+                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
                     <span>Fiches de Préparation à l'Entretien RH</span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Accédez à tout moment à vos pitchs de 2 min, vos questions pièges décryptées et vos réponses modèles STAR.
+                  <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
+                    Accédez à vos pitchs de 2 min, questions pièges décryptées et réponses modèles STAR.
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => handleSelectTab('gen_cv')}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer self-start md:self-auto flex items-center gap-2"
+                  className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer self-start sm:self-auto flex items-center gap-1.5"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   <span>Nouveau CV / Coaching RH</span>
                 </button>
               </div>
 
               {/* Information Banner */}
-              <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-300 shrink-0">
-                  <BookmarkCheck className="w-5 h-5" />
+              <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-start gap-2.5 sm:gap-3">
+                <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-indigo-500/20 text-indigo-300 shrink-0">
+                  <BookmarkCheck className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div className="text-xs space-y-1">
+                <div className="text-[11px] sm:text-xs space-y-0.5">
                   <p className="font-bold text-white">Espace de Révision 100% Persistant</p>
                   <p className="text-slate-300 leading-relaxed">
-                    Vos fiches d'entretien sont sauvegardées automatiquement dans votre compte Dokya AI. Vous pouvez les réviser tranquillement sur votre téléphone ou ordinateur avant chaque entretien d'embauche, sans téléchargement préalable.
+                    Vos fiches d'entretien sont sauvegardées automatiquement. Révisez-les sur votre téléphone ou ordinateur avant chaque entretien d'embauche.
                   </p>
                 </div>
               </div>
@@ -1896,18 +1935,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
                 if (interviewDocs.length === 0) {
                   return (
-                    <div className="p-12 rounded-3xl bg-slate-900/60 border border-slate-800 text-center space-y-4">
-                      <Sparkles className="w-12 h-12 text-slate-600 mx-auto" />
+                    <div className="p-8 sm:p-12 rounded-2xl sm:rounded-3xl bg-slate-900/60 border border-slate-800 text-center space-y-3 sm:space-y-4">
+                      <Sparkles className="w-10 h-10 sm:w-12 sm:h-12 text-slate-600 mx-auto" />
                       <div>
-                        <h4 className="text-sm font-bold text-white">Aucune fiche d'entretien enregistrée</h4>
-                        <p className="text-xs text-slate-400 mt-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white">Aucune fiche d'entretien enregistrée</h4>
+                        <p className="text-[11px] sm:text-xs text-slate-400 mt-1">
                           Créez votre CV avec l'IA pour débloquer automatiquement votre préparation personnalisée.
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleSelectTab('gen_cv')}
-                        className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-md cursor-pointer hover:bg-indigo-500"
+                        className="px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-md cursor-pointer hover:bg-indigo-500"
                       >
                         Générer un CV & Coaching RH →
                       </button>
@@ -1916,7 +1955,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 }
 
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-5">
                     {interviewDocs.map((docItem) => {
                       const prep: InterviewPrepData = docItem.interviewPrepData || {
                         id: `PREP-${docItem.id}`,
@@ -1960,46 +1999,46 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       return (
                         <div
                           key={docItem.id}
-                          className="bg-slate-900 border border-slate-800 hover:border-indigo-500/60 rounded-3xl p-6 flex flex-col justify-between space-y-5 shadow-xl transition-all"
+                          className="bg-slate-900 border border-slate-800 hover:border-indigo-500/60 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 flex flex-col justify-between space-y-3 sm:space-y-4 shadow-lg transition-all"
                         >
-                          <div className="space-y-3">
+                          <div className="space-y-2 sm:space-y-2.5">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
-                                <Sparkles className="w-3 h-3 text-amber-300" />
+                              <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                <Sparkles className="w-2.5 h-2.5 text-amber-300" />
                                 <span>Coaching RH Prêt</span>
                               </span>
-                              <span className="text-[11px] text-slate-400 font-mono">
+                              <span className="text-[10px] text-slate-400 font-mono">
                                 {new Date(docItem.createdAt).toLocaleDateString('fr-FR')}
                               </span>
                             </div>
 
                             <div>
-                              <h4 className="text-base font-black text-white">
+                              <h4 className="text-xs sm:text-base font-black text-white truncate">
                                 {prep.candidateName || docItem.title}
                               </h4>
-                              <p className="text-xs font-semibold text-indigo-300 mt-0.5">
+                              <p className="text-[11px] sm:text-xs font-semibold text-indigo-300 mt-0.5 truncate">
                                 {prep.targetJob || docItem.formData?.personalInfo?.targetJob || 'Poste Cible'}
                                 {prep.targetCompany ? ` • ${prep.targetCompany}` : ''}
                               </p>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
-                                <p className="text-[10px] text-slate-400">Pitch Chrono</p>
-                                <p className="text-xs font-bold text-white">2 min</p>
+                            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-1 text-center">
+                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg sm:rounded-xl p-1.5 sm:p-2">
+                                <p className="text-[9px] sm:text-[10px] text-slate-400">Pitch Chrono</p>
+                                <p className="text-[11px] sm:text-xs font-bold text-white">2 min</p>
                               </div>
-                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
-                                <p className="text-[10px] text-slate-400">Questions</p>
-                                <p className="text-xs font-bold text-white">{prep.questions?.length || 5}+ Q/R</p>
+                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg sm:rounded-xl p-1.5 sm:p-2">
+                                <p className="text-[9px] sm:text-[10px] text-slate-400">Questions</p>
+                                <p className="text-[11px] sm:text-xs font-bold text-white">{prep.questions?.length || 5}+ Q/R</p>
                               </div>
-                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
-                                <p className="text-[10px] text-slate-400">Méthode</p>
-                                <p className="text-xs font-bold text-emerald-400">STAR</p>
+                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg sm:rounded-xl p-1.5 sm:p-2">
+                                <p className="text-[9px] sm:text-[10px] text-slate-400">Méthode</p>
+                                <p className="text-[11px] sm:text-xs font-bold text-emerald-400">STAR</p>
                               </div>
                             </div>
                           </div>
 
-                          <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+                          <div className="pt-2 sm:pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
                             <button
                               type="button"
                               onClick={() => {
@@ -2007,16 +2046,16 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                   onOpenInterviewPrepDocument(prep);
                                 }
                               }}
-                              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                              className="flex-1 py-2 px-3 sm:py-2.5 sm:px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
                             >
-                              <Sparkles className="w-4 h-4 text-amber-300" />
-                              <span>Réviser mon Entretien 🎯</span>
+                              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                              <span>Réviser l'Entretien 🎯</span>
                             </button>
 
                             <button
                               type="button"
                               onClick={() => handleDeleteDoc(docItem.id)}
-                              className="p-2.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
                               title="Supprimer la fiche"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -2079,19 +2118,19 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           {/* TAB 5: MON PROFIL & PARAMETRES                                            */}
           {/* ========================================================================= */}
           {activeSidebarTab === 'profile' && (
-            <div className="space-y-6 animate-in fade-in">
+            <div className="space-y-4 sm:space-y-6 animate-in fade-in">
               
               {/* Save floating bar */}
-              <div className="flex items-center justify-between bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl shadow-sm">
                 <div>
-                  <h3 className="text-sm font-bold text-white">Informations Personnelles & Parcours Professionnel</h3>
-                  <p className="text-xs text-slate-400">Remplissez ces informations une fois pour toutes pour gagner du temps lors des créations de CV et Lettres.</p>
+                  <h3 className="text-xs sm:text-sm font-bold text-white">Informations Personnelles & Parcours Professionnel</h3>
+                  <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">Remplissez ces informations une fois pour toutes pour gagner du temps lors des créations.</p>
                 </div>
                 <button
                   onClick={handleSaveProfile}
                   disabled={isLoading}
                   type="button"
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2 active:scale-95 disabled:opacity-75"
+                  className="w-full sm:w-auto px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-75"
                 >
                   <Save className="w-4 h-4" />
                   <span>Enregistrer mon Profil</span>
@@ -2099,14 +2138,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               </div>
 
               {saveSuccess && (
-                <div className="p-4 rounded-2xl bg-emerald-950/80 border border-emerald-800 text-emerald-200 text-xs font-semibold flex items-center gap-2">
+                <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-emerald-950/80 border border-emerald-800 text-emerald-200 text-xs font-semibold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Profil Candidat enregistré avec succès !</span>
                 </div>
               )}
 
               {/* Form Section: Personal Info */}
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 space-y-3 sm:space-y-4">
                 <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm border-b border-slate-800 pb-3">
                   <User className="w-4 h-4 text-indigo-400" />
                   <span>Coordonnées & Titre Professionnel</span>
