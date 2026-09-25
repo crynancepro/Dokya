@@ -37,10 +37,14 @@ export async function captureDocumentAsImage(
   // Fallback intelligent de recherche
   if (!element) {
     element = 
+      document.querySelector('#dokya-document-capture-target') as HTMLElement ||
       document.querySelector('#cv-preview') as HTMLElement ||
       document.querySelector('#letter-preview') as HTMLElement ||
       document.querySelector('#business-doc-preview') as HTMLElement ||
-      document.querySelector('#dokya-document-capture-target') as HTMLElement ||
+      document.querySelector('#modal-cv-preview') as HTMLElement ||
+      document.querySelector('#modal-letter-preview') as HTMLElement ||
+      document.querySelector('#modal-business-preview') as HTMLElement ||
+      document.querySelector('#modal-ebook-preview') as HTMLElement ||
       document.querySelector('[data-a4-wrapper="true"]') as HTMLElement ||
       document.querySelector('.a4-document-root') as HTMLElement;
   }

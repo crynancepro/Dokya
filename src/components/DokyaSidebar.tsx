@@ -31,6 +31,7 @@ import { CandidateProfile, SavedUserDocument, isUserVipActive } from '../types';
 import { auth } from '../lib/firebase';
 import { isAdminEmail } from '../lib/adminAuth';
 import { DokyaLogo } from './DokyaLogo';
+import { DokyaVirtualCard } from './DokyaVirtualCard';
 
 export type SidebarTab = 
   | 'dashboard_home'
@@ -202,18 +203,16 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </div>
             </div>
 
-            {/* VIP Status Badge */}
+            {/* VIP Status Badge - Discreet & Professional */}
             {isSubscriptionActive ? (
-              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-yellow-500/15 to-amber-600/20 border border-amber-400/40 text-amber-300 shadow-xs">
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-slate-200">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm">👑</span>
-                  <span className="text-[11px] font-black tracking-wide bg-gradient-to-r from-amber-200 to-yellow-400 bg-clip-text text-transparent">
-                    Membre Pass VIP
+                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] font-bold text-white tracking-wide">
+                    Pass VIP Actif
                   </span>
                 </div>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black uppercase">
-                  Actif
-                </span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400" title="Actif" />
               </div>
             ) : (
               /* Profile Completion Indicator */
@@ -241,7 +240,7 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
           </div>
 
           {/* ========================================================================= */}
-          {/* NAVIGATION LINKS                                                          */}
+          {/* NAVIGATION LINKS (STRIPE / VERCEL STYLE : CLEAN & PROFESSIONAL)           */}
           {/* ========================================================================= */}
           <nav className="px-3 py-2 space-y-1">
             
@@ -250,19 +249,18 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-dashboard"
               type="button"
               onClick={() => handleNavClick('dashboard_home')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'dashboard_home' || activeTab === 'dashboard'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <LayoutDashboard className="w-4 h-4 shrink-0 text-indigo-300" />
+                <LayoutDashboard className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'dashboard_home' || activeTab === 'dashboard' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Tableau de bord</span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800/80 text-slate-300 font-mono">
-                Vue globale
-              </span>
             </button>
 
             {/* 2. Mes Documents */}
@@ -270,19 +268,23 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-documents"
               type="button"
               onClick={() => handleNavClick('documents')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'documents'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <FileText className="w-4 h-4 shrink-0 text-indigo-300" />
+                <FileText className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'documents' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Mes Documents</span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 font-black text-indigo-300">
-                {documentsCount}
-              </span>
+              {documentsCount > 0 && (
+                <span className="text-[11px] font-mono text-slate-400">
+                  {documentsCount}
+                </span>
+              )}
             </button>
 
             {/* 2.1 Entretiens RH */}
@@ -290,19 +292,18 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-entretiens"
               type="button"
               onClick={() => handleNavClick('entretiens')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'entretiens' || activeTab === 'interview_prep'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Sparkles className="w-4 h-4 shrink-0 text-amber-400" />
+                <Sparkles className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'entretiens' || activeTab === 'interview_prep' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Préparation Entretiens</span>
               </div>
-              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Coaching RH
-              </span>
             </button>
 
             {/* 2.3 Dokya Business : Mes Clients & Ventes */}
@@ -310,19 +311,18 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-dokya-business"
               type="button"
               onClick={() => handleNavClick('business')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'business' || activeTab === 'clients'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Building2 className="w-4 h-4 shrink-0 text-cyan-400" />
+                <Building2 className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'business' || activeTab === 'clients' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Mes Clients & Ventes</span>
               </div>
-              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                Business
-              </span>
             </button>
 
             {/* 2.3b Dokya Business : Stock & Inventaire */}
@@ -330,19 +330,18 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-dokya-inventory"
               type="button"
               onClick={() => handleNavClick('inventory')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'inventory'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Boxes className="w-4 h-4 shrink-0 text-amber-400" />
+                <Boxes className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'inventory' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Stock & Inventaire</span>
               </div>
-              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Catalogue
-              </span>
             </button>
 
             {/* 2.4 Parrainage & Affiliation */}
@@ -350,68 +349,61 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-affiliation"
               type="button"
               onClick={() => handleNavClick('affiliation')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'affiliation'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Users className="w-4 h-4 shrink-0 text-violet-400" />
+                <Users className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'affiliation' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Parrainage & Affiliation</span>
               </div>
-              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                20% Gain
-              </span>
             </button>
 
-            {/* 3. Générateur AI (Dropdown / Accordion) */}
-            <div className="space-y-1 pt-1">
+            {/* 3. Générateur AI (Accordion propre sans prix ni badges agressifs) */}
+            <div className="space-y-0.5 pt-1">
               <button
                 id="nav-generators-toggle"
                 type="button"
                 onClick={() => setIsGeneratorOpen(!isGeneratorOpen)}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                   isGenTabActive
-                    ? 'bg-slate-800 text-white border border-indigo-500/30'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                    ? 'text-white font-semibold bg-white/5'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <Wand2 className="w-4 h-4 shrink-0 text-amber-400" />
+                  <Wand2 className={`w-4 h-4 shrink-0 transition-colors ${
+                    isGenTabActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                  }`} />
                   <span>Générateur AI</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                    4 Outils
-                  </span>
-                  {isGeneratorOpen ? (
-                    <ChevronDown className="w-4 h-4 text-slate-400 transition-transform" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-slate-400 transition-transform" />
-                  )}
-                </div>
+                {isGeneratorOpen ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 transition-transform" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 transition-transform" />
+                )}
               </button>
 
-              {/* Sub-menu Generator Items */}
+              {/* Sub-menu Generator Items (Épurés, sans prix) */}
               {isGeneratorOpen && (
-                <div className="pl-4 pr-1 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                <div className="pl-4 pr-1 py-1 space-y-0.5 animate-in slide-in-from-top-1 duration-150 border-l border-slate-800 ml-3.5 my-0.5">
                   {/* CV ATS */}
                   <button
                     id="nav-gen-cv"
                     type="button"
                     onClick={() => handleNavClick('gen_cv')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                       activeTab === 'gen_cv' || activeTab === 'cv' || activeTab === 'cv_gallery' || activeTab === 'cv_preview'
-                        ? 'bg-indigo-600/90 text-white font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                        ? 'bg-white/10 text-white font-medium'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                      <span>CV ATS Professionnel</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono">1 000 F</span>
+                    <FileText className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    <span>CV ATS Professionnel</span>
                   </button>
 
                   {/* Lettre de Motivation */}
@@ -419,17 +411,14 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
                     id="nav-gen-letter"
                     type="button"
                     onClick={() => handleNavClick('gen_letter')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                       activeTab === 'gen_letter' || activeTab === 'letter' || activeTab === 'letter_gallery' || activeTab === 'letter_preview'
-                        ? 'bg-indigo-600/90 text-white font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                        ? 'bg-white/10 text-white font-medium'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                      <span>Lettre de Motivation</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono">1 000 F</span>
+                    <Mail className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    <span>Lettre de Motivation</span>
                   </button>
 
                   {/* Facture & Devis UEMOA */}
@@ -437,17 +426,14 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
                     id="nav-gen-business"
                     type="button"
                     onClick={() => handleNavClick('gen_business')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                       activeTab === 'gen_business' || activeTab === 'devis' || activeTab === 'facture' || activeTab === 'pack_business' || activeTab.includes('devis_') || activeTab.includes('facture_')
-                        ? 'bg-indigo-600/90 text-white font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                        ? 'bg-white/10 text-white font-medium'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Receipt className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      <span>Facture & Devis UEMOA</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono">1 000 F</span>
+                    <Receipt className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    <span>Facture & Devis UEMOA</span>
                   </button>
 
                   {/* Ebook & Rapport AI */}
@@ -455,17 +441,14 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
                     id="nav-gen-ebook"
                     type="button"
                     onClick={() => handleNavClick('gen_ebook')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                       activeTab === 'gen_ebook' || activeTab === 'ebook' || activeTab === 'ebook_preview'
-                        ? 'bg-indigo-600/90 text-white font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                        ? 'bg-white/10 text-white font-medium'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                      <span>Ebook & Rapport AI</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono">3 000 F</span>
+                    <BookOpen className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    <span>Ebook & Rapport AI</span>
                   </button>
                 </div>
               )}
@@ -476,19 +459,18 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-tarifs"
               type="button"
               onClick={() => handleNavClick('tarifs')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'tarifs'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <CreditCard className="w-4 h-4 shrink-0 text-emerald-400" />
+                <CreditCard className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'tarifs' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Tarifs & Offres</span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                Grille FCFA
-              </span>
             </button>
 
             {/* 5. Mon Abonnement */}
@@ -496,24 +478,20 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-subscription"
               type="button"
               onClick={() => handleNavClick('subscription')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'subscription'
-                  ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md shadow-amber-500/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Crown className={`w-4 h-4 shrink-0 ${isSubscriptionActive ? 'text-amber-300' : 'text-amber-400'}`} />
+                <Crown className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'subscription' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Mon Abonnement</span>
               </div>
-              {isSubscriptionActive ? (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black animate-pulse">
-                  ACTIF 🟢
-                </span>
-              ) : (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-amber-300 font-extrabold border border-amber-500/30">
-                  Pass VIP
-                </span>
+              {isSubscriptionActive && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Abonnement Actif" />
               )}
             </button>
 
@@ -522,82 +500,67 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               id="nav-profile"
               type="button"
               onClick={() => handleNavClick('profile')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'profile'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <UserCircle2 className="w-4 h-4 shrink-0 text-indigo-300" />
+                <UserCircle2 className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'profile' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Mon Profil & Paramètres</span>
               </div>
-              <span className="text-[10px] text-slate-400 font-mono">
-                Éditer
-              </span>
             </button>
 
-            {/* 7. Centre d'Aide & Support Tchat (IA + Relais Humain) */}
+            {/* 7. Centre d'Aide & Support */}
             <button
               id="nav-support-help"
               type="button"
               onClick={() => handleNavClick('help')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
                 activeTab === 'help' || activeTab === 'support'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <MessageSquare className="w-4 h-4 shrink-0 text-emerald-400" />
+                <MessageSquare className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'help' || activeTab === 'support' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
                 <span>Centre d'Aide & Support</span>
               </div>
-              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Direct</span>
-              </span>
             </button>
 
           </nav>
         </div>
 
         {/* ========================================================================= */}
-        {/* BOTTOM SECTION: WALLET WIDGET + ADMIN SHORTCUT                           */}
+        {/* BOTTOM SECTION: CARTE BANCAIRE VIRTUELLE DOKYA + ADMIN SHORTCUT           */}
         {/* ========================================================================= */}
-        <div className="p-3 border-t border-slate-800/90 bg-slate-950/80 space-y-2.5">
+        <div className="p-3 border-t border-slate-800/80 bg-slate-950/95 space-y-2">
           
-          {/* User Wallet Balance Box */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-inner">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Solde Dokya</span>
-              </div>
-              <p className="text-sm font-black text-emerald-400">
-                {(userBalance ?? 0).toLocaleString('fr-FR')} <span className="text-[11px] text-emerald-300 font-normal">FCFA</span>
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={onOpenRecharge}
-              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-sm flex items-center gap-1 transition-all cursor-pointer active:scale-95 shrink-0"
-              title="Recharger mon solde"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Recharger</span>
-            </button>
-          </div>
+          {/* Carte Bancaire Virtuelle Dokya (Affichage du Solde élégant) */}
+          <DokyaVirtualCard
+            userName={displayName}
+            userEmail={currentUser?.email || profile?.email}
+            balance={userBalance ?? 0}
+            currency="FCFA"
+            onRecharge={onOpenRecharge}
+            variant="sidebar"
+            isVip={isSubscriptionActive}
+          />
 
           {/* Admin Dashboard Shortcut if user is Admin */}
           {isUserAdmin && onOpenAdmin && (
             <button
               type="button"
               onClick={onOpenAdmin}
-              className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+              className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
             >
-              <ShieldCheck className="w-4 h-4 text-amber-400" />
-              <span>Accès Dashboard Admin</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Dashboard Admin</span>
             </button>
           )}
 
@@ -606,7 +569,7 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
             <button
               type="button"
               onClick={onSignOut}
-              className="w-full py-1.5 px-3 rounded-xl text-slate-400 hover:text-rose-300 hover:bg-rose-950/30 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              className="w-full py-1.5 px-3 rounded-xl text-slate-500 hover:text-slate-300 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Se déconnecter</span>

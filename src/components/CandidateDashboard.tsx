@@ -17,12 +17,13 @@ import {
   deleteUserDocument, fetchUserOrders, saveOrderRecord, OrderRecord,
   saveTransactionRecord, fetchUserTransactions, subscribeToUserProfile,
   subscribeToUserTransactions, updateInvoicePaymentStatus, updateQuoteStatus,
-  convertQuoteToInvoice, saveOrUpdateBusinessDocument,
+  convertQuoteToInvoice, saveOrUpdateBusinessDocument, createNotification,
   subscribeToUserDocuments, getLocalDocumentsKey, getLocalProfileKey, getLocalTransactionsKey
 } from '../lib/firebase';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { DokyaSidebar, SidebarTab, calculateProfileCompletion } from './DokyaSidebar';
+import { DokyaVirtualCard } from './DokyaVirtualCard';
 import { PricingOffersView } from './PricingOffersView';
 import { MySubscriptionView } from './MySubscriptionView';
 import { OrdersTrackingView } from './OrdersTrackingView';
@@ -364,9 +365,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         localStorage.setItem(getLocalTransactionsKey(user?.uid), JSON.stringify(updatedTxs));
       } catch (_e) {}
 
-      if (user?.uid) {
+      const effectiveUid = user?.uid || profile.uid;
+      if (effectiveUid) {
+        // Send real-time notification
+        createNotification(effectiveUid, {
+          title: 'Rechargement de solde confirmé',
+          message: `Votre portefeuille Dokya Wallet a été crédité de ${addedAmount.toLocaleString('fr-FR')} FCFA avec succès.`,
+          type: 'recharge',
+          tabTarget: 'dashboard_home'
+        }).catch(() => {});
+
         try {
-          const freshProfile = await fetchUserProfile(user.uid);
+          const freshProfile = await fetchUserProfile(effectiveUid);
           if (freshProfile && typeof freshProfile.walletBalance === 'number') {
             setProfile(prev => ({
               ...prev,
@@ -405,6 +415,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       try {
         localStorage.setItem(getLocalProfileKey(user?.uid), JSON.stringify(updatedProfile));
       } catch (_e) {}
+
+      const effectiveUid = user?.uid || profile.uid;
+      if (effectiveUid) {
+        createNotification(effectiveUid, {
+          title: isPending ? 'Demande d\'abonnement en cours' : 'Pass VIP Dokya Activé',
+          message: isPending 
+            ? `Votre demande de souscription pour "${newSub.planName}" est en cours de validation.`
+            : `Félicitations ! Votre souscription au "${newSub.planName}" est validée. Profitez des téléchargements illimités !`,
+          type: 'subscription',
+          tabTarget: 'subscription'
+        }).catch(() => {});
+      }
 
       const tx: TransactionRecord = {
         id: newSub.transactionReference || `TX-SUB-${Date.now()}`,
@@ -862,6 +884,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   });
 
   const completionPercentage = calculateProfileCompletion(profile);
+  const userFullName = [profile?.personalInfo?.firstName, profile?.personalInfo?.lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim() || (profile as any)?.fullName || profile?.displayName || user?.displayName || user?.email?.split('@')[0] || 'Peter Ngouala';
+
   const isSubscriptionActive = isUserVipActive(profile?.subscription) || 
     profile.subscriptionStatus === 'unlimited' ||
     (profile?.subscription?.status?.toUpperCase() === 'ACTIVE' && (
@@ -1029,33 +1056,33 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* VIP ACTIVE BANNER */}
+                {/* VIP ACTIVE BANNER - Compact & Sleek */}
                 {isSubscriptionActive && (
-                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-emerald-500/10 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 shadow-inner">
-                        <Crown className="w-6 h-6 fill-amber-400" />
+                  <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-emerald-950/20 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-sm">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shrink-0">
+                        <Crown className="w-4 h-4 text-emerald-400" />
                       </div>
-                      <div className="space-y-0.5">
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-base font-black text-white">
-                            👑 Abonnement Pass VIP Actif
+                          <h3 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
+                            Pass VIP Dokya
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              Actif • Illimité
+                            </span>
                           </h3>
-                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                            Accès 100% Illimité
-                          </span>
                         </div>
-                        <p className="text-xs text-slate-300">
-                          Tous vos téléchargements de CV, lettres de motivation, devis, factures, ebooks et préparations d'entretiens RH sont débloqués sans frais.
+                        <p className="text-[11px] text-slate-400 truncate hidden sm:block">
+                          Téléchargements illimités de CV, lettres, devis, factures & coachings RH sans frais.
                         </p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleSelectTab('subscription')}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 text-slate-950 text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-white text-xs font-black transition-all shrink-0 cursor-pointer active:scale-95"
                     >
-                      Détails de mon Pass →
+                      Détails →
                     </button>
                   </div>
                 )}
@@ -1098,97 +1125,90 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </div>
               </div>
 
-              {/* 4 STAT CARDS ROW */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                
-                {/* Stat 1: Solde Dokya Wallet */}
-                <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-400">Solde Wallet</span>
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                      <Wallet className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-xl font-black text-emerald-400">
-                      {(profile.balance ?? 0).toLocaleString('fr-FR')} <span className="text-xs font-normal text-emerald-300">FCFA</span>
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setIsRechargeModalOpen(true)}
-                      className="text-[11px] font-black text-emerald-400 hover:text-emerald-300 cursor-pointer"
-                    >
-                      + Recharger
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-500">Paiement instantané Mobile Money</p>
+              {/* FINANCIAL OVERVIEW & CARTE BANCAIRE VIRTUELLE DOKYA */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                {/* Left: Luxury Dokya Virtual Card (Spans 7 cols on large screens) */}
+                <div className="lg:col-span-7 flex flex-col justify-center">
+                  <DokyaVirtualCard
+                    userName={userFullName}
+                    userEmail={user?.email || profile?.email}
+                    balance={profile.balance ?? 0}
+                    currency="FCFA"
+                    onRecharge={() => setIsRechargeModalOpen(true)}
+                    variant="dashboard"
+                    isVip={isSubscriptionActive}
+                  />
                 </div>
 
-                {/* Stat 2: Mes Documents */}
-                <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-400">Mes Documents</span>
-                    <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                      <FileText className="w-4 h-4" />
+                {/* Right: Quick metric cards (Spans 5 cols on large screens) */}
+                <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
+                  {/* Metric 1: Mes Documents */}
+                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md flex items-center justify-between">
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-400">Documents archivés</span>
+                      <p className="text-2xl font-black text-white">
+                        {documents.length} <span className="text-xs font-normal text-slate-400">{documents.length > 1 ? 'fichiers' : 'fichier'}</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500">PDF & Word HD certifiés ATS</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectTab('documents')}
+                        className="text-[11px] font-black text-indigo-400 hover:text-indigo-300 cursor-pointer"
+                      >
+                        Consulter →
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-xl font-black text-white">
-                      {documents.length} <span className="text-xs font-normal text-slate-400">{documents.length > 1 ? 'fichiers' : 'fichier'}</span>
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTab('documents')}
-                      className="text-[11px] font-black text-indigo-400 hover:text-indigo-300 cursor-pointer"
-                    >
-                      Voir tout →
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-500">Archivage PDF & Word HD</p>
-                </div>
 
-                {/* Stat 3: Formule / Statut */}
-                <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-400">Statut Compte</span>
-                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                      <Crown className="w-4 h-4" />
+                  {/* Metric 2: Formule & Accès */}
+                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md flex items-center justify-between">
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-400">Formule & Statut</span>
+                      <p className="text-base font-black text-amber-400">
+                        {profile?.subscription?.status === 'active' || isSubscriptionActive ? '👑 Pass VIP Actif' : 'Paiement à l\'acte'}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        {isSubscriptionActive ? 'Génération & téléchargements illimités' : 'Recharge mobile money par acte'}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                        <Crown className="w-5 h-5" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectTab(isSubscriptionActive ? 'subscription' : 'tarifs')}
+                        className="text-[11px] font-black text-amber-400 hover:text-amber-300 cursor-pointer"
+                      >
+                        {isSubscriptionActive ? 'Gérer' : 'Pass VIP →'}
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-sm font-black text-amber-400">
-                      {profile?.subscription?.status === 'active' ? '👑 Pass VIP Actif' : 'Paiement à l\'acte'}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTab('tarifs')}
-                      className="text-[11px] font-black text-amber-400 hover:text-amber-300 cursor-pointer"
-                    >
-                      {profile?.subscription?.status === 'active' ? 'Gérer' : 'Activer'}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-500">Téléchargements & IA illimités</p>
-                </div>
 
-                {/* Stat 4: Score Profil ATS */}
-                <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-400">Score Profil ATS</span>
-                    <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                      <ShieldCheck className="w-4 h-4" />
+                  {/* Metric 3: Score Profil ATS */}
+                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md flex items-center justify-between sm:col-span-2 lg:col-span-1">
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-400">Optimisation Profil ATS</span>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-xl font-black text-blue-400">
+                          {Math.max(65, completionPercentage)}%
+                        </p>
+                        <span className="text-[10px] font-bold text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded">
+                          Standard RH UEMOA
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500">Optimisé pour filtres de recrutement</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-xl font-black text-blue-400">
-                      {Math.max(65, completionPercentage)}%
-                    </p>
-                    <span className="text-[10px] font-bold text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded">
-                      Standard RH
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-500">Optimisé pour filtres de recrutement</p>
                 </div>
-
               </div>
 
               {/* 5 REAL DOKYA AI GENERATOR CARDS */}
@@ -2537,6 +2557,16 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             }
             setVictoryDocTitle(paywallTargetDoc.title || 'Document Professionnel');
             setIsVictoryModalOpen(true);
+
+            const effectiveUid = user?.uid || profile.uid;
+            if (effectiveUid) {
+              createNotification(effectiveUid, {
+                title: 'Document débloqué avec succès',
+                message: `Votre document "${paywallTargetDoc.title || 'Document Professionnel'}" a été débloqué. Téléchargements PDF & Word sans filigrane disponibles.`,
+                type: 'document',
+                tabTarget: 'documents'
+              }).catch(() => {});
+            }
           }
         }}
         onDownloadAction={(format) => {

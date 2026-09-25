@@ -35,7 +35,7 @@ import { AuthModal } from './components/AuthModal';
 import { VictoryModal } from './components/VictoryModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
 import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
-import { auth, db, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, fetchUserData, refetchProfile, initializeUserAccountDoc, saveBusinessInvoice, getLocalProfileKey, getLocalTransactionsKey, getLocalDocumentsKey } from './lib/firebase';
+import { auth, db, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, fetchUserData, refetchProfile, initializeUserAccountDoc, saveBusinessInvoice, getLocalProfileKey, getLocalTransactionsKey, getLocalDocumentsKey, createNotification } from './lib/firebase';
 import { doc, getDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
 import { initAffiliateTracking } from './lib/referralTracking';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
@@ -795,6 +795,15 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
     saveUserDocument(savedDoc);
 
+    if (currentUser?.uid) {
+      createNotification(currentUser.uid, {
+        title: 'Nouveau document archivé',
+        message: `Votre document "${savedDoc.title || 'Document Professionnel'}" a été sauvegardé avec succès dans Mes Documents.`,
+        type: 'document',
+        tabTarget: 'documents'
+      }).catch(() => {});
+    }
+
     // Le document reste payé, débloqué et accessible pour d'autres exports
     setIsCurrentDocPaid(true);
 
@@ -1067,6 +1076,12 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
 
         if (auth.currentUser) {
           saveUserDocument(prepDoc).catch(err => console.error('Erreur sync Firestore:', err));
+          createNotification(auth.currentUser.uid, {
+            title: 'Fiche d\'entretien prête',
+            message: `Votre simulation et fiche pour le poste de "${res.data.targetJob || formData?.personalInfo?.targetJob || 'Candidat'}" est prête.`,
+            type: 'document',
+            tabTarget: 'entretiens'
+          }).catch(() => {});
         }
 
         setSuccessMessage("Fiche de préparation d'entretien générée et enregistrée dans votre Espace !");

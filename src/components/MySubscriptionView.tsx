@@ -142,6 +142,23 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
     }
   };
 
+  // Format date helper compact (mobile & compact bars)
+  const formatDateCompact = (rawDate?: any) => {
+    if (!rawDate) return 'Permanent';
+    try {
+      const millis = getTimestampMillis(rawDate);
+      if (!millis) return 'Permanent';
+      const d = new Date(millis);
+      return d.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch {
+      return String(rawDate);
+    }
+  };
+
   return (
     <div id="my-subscription-view" className="space-y-8 animate-in fade-in max-w-5xl mx-auto pb-12">
       
@@ -185,148 +202,105 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
       {/* CASE A: USER HAS AN ACTIVE VIP SUBSCRIPTION                               */}
       {/* ========================================================================= */}
       {isCurrentlyActive ? (
-        <div className="space-y-6">
+        <div className="space-y-3 sm:space-y-4">
           
-          {/* Main Active Subscription Card */}
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 border-2 border-amber-400/80 p-6 sm:p-8 shadow-2xl space-y-6">
-            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+          {/* Main Active Subscription Card - Ultra-compact, élégant et optimisé Mobile & PC */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-800/80 border border-slate-700/60 p-3 sm:p-4 shadow-xl">
+            {/* Subtle glow effect */}
+            <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
 
-            {/* Plan Title & Status Badge */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20">
-                  <Crown className="w-6 h-6" />
+            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              
+              {/* Left: Crown Icon + Title + Status + Compact Expiry & Live Countdown */}
+              <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-500/20 via-emerald-500/20 to-teal-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 shadow-sm mt-0.5 sm:mt-0">
+                  <Crown className="w-5 h-5 text-amber-400" />
                 </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider">
-                    Formule Souscrite
-                  </span>
-                  <h2 className="text-xl sm:text-2xl font-black text-white">
-                    {subscription?.planName || 'Pass VIP Dokya AI'}
-                  </h2>
+
+                <div className="min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-sm sm:text-base font-black text-white truncate tracking-tight">
+                      {subscription?.planName || 'Pass VIP Dokya'}
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Pass VIP Actif
+                    </span>
+                    <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-bold text-teal-300 bg-teal-500/10 px-2 py-0.5 rounded-lg border border-teal-500/20">
+                      <Unlock className="w-3 h-3 text-teal-400" />
+                      Accès total débloqué
+                    </span>
+                  </div>
+
+                  {/* Inline Expiration & Countdown */}
+                  <div className="flex items-center gap-2 flex-wrap text-xs text-slate-300">
+                    <span className="inline-flex items-center gap-1 text-slate-400">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>Jusqu'au {formatDateCompact(subscription?.expiresAt)}</span>
+                    </span>
+                    <span className="text-slate-600 hidden sm:inline">•</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/70 border border-slate-800 text-[11px] font-mono text-emerald-300 font-bold">
+                      <Clock className="w-3 h-3 text-emerald-400 animate-spin shrink-0" />
+                      {remaining.days > 0 && `${remaining.days}j `}
+                      {String(remaining.hours).padStart(2, '0')}h {String(remaining.minutes).padStart(2, '0')}m {String(remaining.seconds).padStart(2, '0')}s
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="px-3.5 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-slate-950 flex items-center gap-1.5 shadow-md">
-                  <Crown className="w-4 h-4" />
-                  <span>👑 Pass VIP Actif</span>
-                </span>
-              </div>
-            </div>
-
-            {/* EXPIRATION DATE HIGHLIGHT */}
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <Calendar className="w-5 h-5 text-amber-400 shrink-0" />
-                <div>
-                  <p className="text-[11px] text-amber-300/80 font-bold uppercase tracking-wider">Échéance de l'abonnement</p>
-                  <p className="text-sm sm:text-base font-black text-white">
-                    Valable jusqu'au {formatDate(subscription?.expiresAt)}
-                  </p>
-                </div>
-              </div>
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20">
-                <Unlock className="w-3.5 h-3.5" />
-                <span>Tous les documents et entretiens débloqués</span>
-              </div>
-            </div>
-
-            {/* DYNAMIC REAL-TIME COUNTDOWN TIMER */}
-            <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-amber-400 animate-spin" />
-                  Temps restant avant expiration (Compteur direct)
-                </span>
-                <span className="text-amber-400 font-black font-mono">
-                  {remaining.days}j {remaining.hours}h {remaining.minutes}m {remaining.seconds}s
-                </span>
-              </div>
-
-              {/* Digital Numbers Grid */}
-              <div className="grid grid-cols-4 gap-2 sm:gap-4 text-center">
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5">
-                  <p className="text-xl sm:text-3xl font-black text-white font-mono">{remaining.days}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">Jours</p>
-                </div>
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5">
-                  <p className="text-xl sm:text-3xl font-black text-white font-mono">{String(remaining.hours).padStart(2, '0')}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">Heures</p>
-                </div>
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5">
-                  <p className="text-xl sm:text-3xl font-black text-white font-mono">{String(remaining.minutes).padStart(2, '0')}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">Minutes</p>
-                </div>
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5">
-                  <p className="text-xl sm:text-3xl font-black text-amber-400 font-mono">{String(remaining.seconds).padStart(2, '0')}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">Secondes</p>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="space-y-1 pt-1">
-                <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>Activation : {formatDate(subscription?.startedAt || subscription?.activatedAt)}</span>
-                  <span>Expiration : {formatDate(subscription?.expiresAt)}</span>
-                </div>
-                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
-                  <div 
-                    className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-orange-500 rounded-full transition-all duration-1000"
-                    style={{ width: `${durationProgress}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Renewal CTA & Action */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-              <p className="text-xs text-slate-300">
-                Besoin de prolonger votre accès avant expiration ?
-              </p>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Right: Compact Prolonger CTA Button */}
+              <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 shrink-0">
                 <button
                   type="button"
                   onClick={() => onSubscribePlan(subscription?.planId === 'weekly' ? 'monthly' : 'annual', 5000, 'Pass VIP Mensuel')}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95"
+                  className="w-full sm:w-auto px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                  title="Prolonger ou renouveler votre abonnement VIP"
                 >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>Prolonger mon abonnement</span>
+                  <Zap className="w-3.5 h-3.5 fill-slate-950" />
+                  <span>Prolonger</span>
                 </button>
               </div>
+
+            </div>
+
+            {/* Hairline Progress Bar */}
+            <div className="w-full h-1 bg-slate-800/80 rounded-full overflow-hidden mt-2.5">
+              <div 
+                className="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 rounded-full transition-all duration-1000"
+                style={{ width: `${durationProgress}%` }}
+              />
             </div>
           </div>
 
-          {/* Usage Analytics Grid under Subscription */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                <FileText className="w-5 h-5" />
+          {/* Usage Analytics Grid under Subscription (Ultra compact) */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 sm:p-3 flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0">
+                <FileText className="w-4 h-4" />
               </div>
-              <div>
-                <p className="text-[11px] text-slate-400 font-medium">Documents Créés</p>
-                <p className="text-lg font-black text-white">{documents.length} document(s)</p>
-              </div>
-            </div>
-
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <Download className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-[11px] text-slate-400 font-medium">Téléchargements Illimités</p>
-                <p className="text-lg font-black text-emerald-400">Illimité (0 FCFA)</p>
+              <div className="min-w-0">
+                <p className="text-[10px] text-slate-400 truncate font-medium">Documents</p>
+                <p className="text-xs sm:text-sm font-black text-white truncate">{documents.length}</p>
               </div>
             </div>
 
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                <Sparkles className="w-5 h-5" />
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 sm:p-3 flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                <Download className="w-4 h-4" />
               </div>
-              <div>
-                <p className="text-[11px] text-slate-400 font-medium">IA Dokya Générative</p>
-                <p className="text-lg font-black text-amber-400">Active (Gemini Pro)</p>
+              <div className="min-w-0">
+                <p className="text-[10px] text-slate-400 truncate font-medium">Exports</p>
+                <p className="text-xs sm:text-sm font-black text-emerald-400 truncate">Illimité</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 sm:p-3 flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 rounded-lg bg-teal-500/15 text-teal-400 flex items-center justify-center shrink-0">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] text-slate-400 truncate font-medium">IA Dokya</p>
+                <p className="text-xs sm:text-sm font-black text-teal-300 truncate">Active</p>
               </div>
             </div>
           </div>

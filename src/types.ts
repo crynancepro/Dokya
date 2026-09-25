@@ -680,7 +680,7 @@ export interface DokyaNotification {
   userId?: string;
   title: string;
   message: string;
-  type?: 'info' | 'success' | 'warning' | 'stock' | 'invoice' | 'commission' | 'order' | 'system';
+  type?: 'info' | 'success' | 'warning' | 'stock' | 'invoice' | 'commission' | 'order' | 'system' | 'recharge' | 'document' | 'subscription';
   read: boolean;
   link?: string;
   tabTarget?: string;
