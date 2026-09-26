@@ -4,7 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
-import { dbAdmin, FieldValue, executeAtomicPaymentCredit } from './lib/firebaseAdmin.js';
+import { dbAdmin, FieldValue, executeAtomicPaymentCredit, admin } from './lib/firebaseAdmin.js';
 import { verifyMoneyFusionWithOfficialApi } from './lib/moneyFusionVerify.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -4134,37 +4134,50 @@ app.post('/api/admin/users/:id/impersonate', requireAdmin, (req, res) => {
 });
 
 // 4. Force Unlock Documents for a user
-app.post('/api/admin/users/:id/unlock-documents', requireAdmin, (req, res) => {
+app.post('/api/admin/users/:id/unlock-documents', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { reason = 'Déblocage administratif forcé' } = req.body || {};
 
-    const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
-    if (userIndex < 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
+    const targetUserId = id;
+
+    // Atomic update in Firestore
+    try {
+      await dbAdmin.collection('users').doc(targetUserId).set({
+        hasForceUnlockedDocs: true,
+        unlockedDocsCount: 5,
+        subscriptionStatus: 'pro',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      console.log(`[Admin Unlock Docs] Firestore users/${targetUserId} débloqué avec succès`);
+    } catch (fsErr) {
+      console.warn(`[Admin Unlock Docs Firestore Warning for ${targetUserId}]:`, fsErr);
     }
 
-    adminStore.users[userIndex].hasForceUnlockedDocs = true;
-    adminStore.users[userIndex].unlockedDocsCount = (adminStore.users[userIndex].documentsCount || 1) + 3;
-    adminStore.users[userIndex].subscriptionStatus = 'pro';
-    adminStore.users[userIndex].updatedAt = new Date().toISOString();
+    const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
+    if (userIndex >= 0) {
+      adminStore.users[userIndex].hasForceUnlockedDocs = true;
+      adminStore.users[userIndex].unlockedDocsCount = (adminStore.users[userIndex].documentsCount || 1) + 5;
+      adminStore.users[userIndex].subscriptionStatus = 'pro';
+      adminStore.users[userIndex].updatedAt = new Date().toISOString();
+    }
 
     recordAuditLog(
       'document',
       'FORCE_UNLOCK_DOCUMENTS',
       adminEmail,
-      `Déblocage forcé de tous les documents générés pour ${adminStore.users[userIndex].email}. Motif: ${reason}`,
+      `Déblocage forcé de tous les documents générés pour ${id}. Motif: ${reason}`,
       { reason },
-      adminStore.users[userIndex].email,
-      adminStore.users[userIndex].uid,
+      id,
+      id,
       'success'
     );
 
     return res.json({
       success: true,
-      user: adminStore.users[userIndex],
-      message: `Documents de ${adminStore.users[userIndex].email} débloqués avec succès sans restriction.`
+      user: userIndex >= 0 ? adminStore.users[userIndex] : { uid: id, hasForceUnlockedDocs: true, subscriptionStatus: 'pro' },
+      message: `Documents de l'utilisateur débloqués avec succès sans restriction.`
     });
   } catch (err: any) {
     console.error('[Admin Unlock Docs Error]:', err);
@@ -4173,43 +4186,54 @@ app.post('/api/admin/users/:id/unlock-documents', requireAdmin, (req, res) => {
 });
 
 // 5. Suspend / Activate User Account
-app.post('/api/admin/users/:id/toggle-suspension', requireAdmin, (req, res) => {
+app.post('/api/admin/users/:id/toggle-suspension', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
     const { reason = 'Action administrative de conformité' } = req.body || {};
 
-    const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
-    if (userIndex < 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
-    }
-
-    if (adminStore.users[userIndex].role === 'admin' && adminStore.users[userIndex].email === 'peter25ngouala@gmail.com') {
+    if (id === 'peter25ngouala@gmail.com') {
       return res.status(400).json({ success: false, error: 'Impossible de suspendre le compte Super Admin principal.' });
     }
 
-    const currentStatus = adminStore.users[userIndex].status || 'active';
+    const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
+    const currentStatus = userIndex >= 0 ? (adminStore.users[userIndex].status || 'active') : 'active';
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
-    adminStore.users[userIndex].status = newStatus;
-    adminStore.users[userIndex].suspendedReason = newStatus === 'suspended' ? reason : undefined;
-    adminStore.users[userIndex].updatedAt = new Date().toISOString();
+
+    // Atomic update in Firestore
+    try {
+      await dbAdmin.collection('users').doc(id).set({
+        status: newStatus,
+        suspendedReason: newStatus === 'suspended' ? reason : null,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      console.log(`[Admin Toggle Suspend] Firestore users/${id} statut changé en ${newStatus}`);
+    } catch (fsErr) {
+      console.warn(`[Admin Toggle Suspend Firestore Warning for ${id}]:`, fsErr);
+    }
+
+    if (userIndex >= 0) {
+      adminStore.users[userIndex].status = newStatus;
+      adminStore.users[userIndex].suspendedReason = newStatus === 'suspended' ? reason : undefined;
+      adminStore.users[userIndex].updatedAt = new Date().toISOString();
+    }
 
     recordAuditLog(
       'security',
       newStatus === 'suspended' ? 'USER_ACCOUNT_SUSPENDED' : 'USER_ACCOUNT_REACTIVATED',
       adminEmail,
-      `${newStatus === 'suspended' ? 'Suspension' : 'Réactivation'} du compte de ${adminStore.users[userIndex].email}. Motif: ${reason}`,
+      `${newStatus === 'suspended' ? 'Suspension' : 'Réactivation'} du compte de ${id}. Motif: ${reason}`,
       { reason, newStatus },
-      adminStore.users[userIndex].email,
-      adminStore.users[userIndex].uid,
+      id,
+      id,
       newStatus === 'suspended' ? 'warning' : 'success'
     );
 
     return res.json({
       success: true,
-      user: adminStore.users[userIndex],
+      user: userIndex >= 0 ? adminStore.users[userIndex] : { uid: id, status: newStatus },
       status: newStatus,
-      message: `Compte ${adminStore.users[userIndex].email} ${newStatus === 'suspended' ? 'suspendu' : 'réactivé'} avec succès.`
+      message: `Compte ${newStatus === 'suspended' ? 'suspendu' : 'réactivé'} avec succès.`
     });
   } catch (err: any) {
     console.error('[Admin Toggle Suspend Error]:', err);
@@ -4217,92 +4241,150 @@ app.post('/api/admin/users/:id/toggle-suspension', requireAdmin, (req, res) => {
   }
 });
 
-// 6. Update User Personal Info
-app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
+// Helper for Updating User in Firestore & In-Memory Store
+async function handleAdminUpdateUser(req: any, res: any) {
   try {
-    const { id } = req.params;
+    const targetUserId = req.params?.id || req.body?.targetUserId || req.body?.userId || req.body?.id || req.body?.uid;
     const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
-    const { firstName, lastName, phone, city, targetJob, role, subscriptionStatus, balance } = req.body || {};
+    const { firstName, lastName, phone, city, targetJob, role, status, subscriptionStatus, balance, walletBalance, suspendedReason } = req.body || {};
 
-    const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
-    if (userIndex < 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, error: 'Identifiant utilisateur manquant.' });
     }
 
-    const user = adminStore.users[userIndex];
-    if (firstName !== undefined) user.firstName = firstName;
-    if (lastName !== undefined) user.lastName = lastName;
-    if (phone !== undefined) user.phone = phone;
-    if (city !== undefined) user.city = city;
-    if (targetJob !== undefined) user.targetJob = targetJob;
-    if (role !== undefined) user.role = role;
-    if (subscriptionStatus !== undefined) user.subscriptionStatus = subscriptionStatus;
-    if (balance !== undefined && !isNaN(Number(balance))) user.balance = Number(balance);
-    user.updatedAt = new Date().toISOString();
+    const firestoreUpdate: Record<string, any> = {
+      updatedAt: new Date().toISOString()
+    };
+
+    if (status !== undefined) {
+      if (status === 'actif' || status === 'active') {
+        firestoreUpdate.status = 'active';
+        firestoreUpdate.suspendedReason = null;
+      } else if (status === 'suspendu' || status === 'suspended') {
+        firestoreUpdate.status = 'suspended';
+        if (suspendedReason) firestoreUpdate.suspendedReason = suspendedReason;
+      } else {
+        firestoreUpdate.status = status;
+      }
+    }
+
+    if (role !== undefined) {
+      firestoreUpdate.role = role === 'admin' ? 'admin' : (role === 'user' ? 'candidate' : role);
+    }
+    if (firstName !== undefined) firestoreUpdate.firstName = firstName;
+    if (lastName !== undefined) firestoreUpdate.lastName = lastName;
+    if (phone !== undefined) firestoreUpdate.phone = phone;
+    if (city !== undefined) firestoreUpdate.city = city;
+    if (targetJob !== undefined) firestoreUpdate.targetJob = targetJob;
+    if (subscriptionStatus !== undefined) firestoreUpdate.subscriptionStatus = subscriptionStatus;
+    
+    const b = walletBalance !== undefined ? walletBalance : balance;
+    if (b !== undefined && !isNaN(Number(b))) {
+      firestoreUpdate.walletBalance = Number(b);
+      firestoreUpdate.balance = Number(b);
+    }
+
+    // Atomic update in Firestore
+    await dbAdmin.collection('users').doc(targetUserId).set(firestoreUpdate, { merge: true });
+    console.log(`[Admin PUT/PATCH User] Firestore users/${targetUserId} mis à jour avec succès:`, firestoreUpdate);
+
+    // Update in-memory store
+    const userIndex = adminStore.users.findIndex(u => u.uid === targetUserId || u.email.toLowerCase() === targetUserId.toLowerCase());
+    if (userIndex >= 0) {
+      Object.assign(adminStore.users[userIndex], firestoreUpdate);
+    }
 
     recordAuditLog(
       'admin_action',
       'USER_PROFILE_UPDATED',
       adminEmail,
-      `Mise à jour des informations personnelles de ${user.email} (${user.firstName} ${user.lastName})`,
-      { updatedFields: req.body },
-      user.email,
-      user.uid,
+      `Mise à jour des informations personnelles de ${targetUserId}`,
+      { updatedFields: firestoreUpdate },
+      targetUserId,
+      targetUserId,
       'success'
     );
 
     return res.json({
       success: true,
-      user,
-      message: `Profil de ${user.email} mis à jour avec succès.`
+      user: userIndex >= 0 ? adminStore.users[userIndex] : { uid: targetUserId, ...firestoreUpdate },
+      message: `Profil utilisateur mis à jour avec succès.`
     });
   } catch (err: any) {
     console.error('[Admin Update User Error]:', err);
     return res.status(500).json({ success: false, error: err.message || 'Erreur lors de la mise à jour du profil.' });
   }
-});
+}
 
-// 7. Delete User Account
-app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+// 6. Update User Personal Info (PUT / PATCH)
+app.put('/api/admin/users/:id', requireAdmin, handleAdminUpdateUser);
+app.patch('/api/admin/users/:id', requireAdmin, handleAdminUpdateUser);
+app.put('/api/admin/users', requireAdmin, handleAdminUpdateUser);
+app.patch('/api/admin/users', requireAdmin, handleAdminUpdateUser);
+
+// Helper for Deleting User Account from Auth & Firestore
+async function handleAdminDeleteUser(req: any, res: any) {
   try {
-    const { id } = req.params;
-    const adminEmail = (req.headers['x-admin-email'] || req.query?.adminEmail || 'peter25ngouala@gmail.com') as string;
+    const targetUserId = req.params?.id || req.body?.targetUserId || req.body?.userId || req.query?.id || req.query?.targetUserId || req.body?.id;
+    const adminEmail = (req.headers['x-admin-email'] || req.query?.adminEmail || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
 
-    const userIndex = adminStore.users.findIndex(u => u.uid === id || u.email.toLowerCase() === id.toLowerCase());
-    if (userIndex < 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, error: 'Identifiant utilisateur manquant pour la suppression.' });
     }
 
-    const user = adminStore.users[userIndex];
-    if (user.role === 'admin' && user.email === 'peter25ngouala@gmail.com') {
+    if (targetUserId === 'peter25ngouala@gmail.com') {
       return res.status(400).json({ success: false, error: 'Impossible de supprimer le compte Super Admin.' });
     }
 
-    adminStore.users.splice(userIndex, 1);
+    // 1. Supprimer l'utilisateur du registre Auth Firebase
+    if (admin && typeof admin.auth === 'function') {
+      try {
+        await admin.auth().deleteUser(targetUserId);
+        console.log(`[Admin DELETE] Utilisateur ${targetUserId} supprimé d'Auth avec succès`);
+      } catch (authErr: any) {
+        console.warn(`[Admin DELETE Auth Warning for ${targetUserId}]:`, authErr?.message || authErr);
+      }
+    }
+
+    // 2. Supprimer également son document principal dans Firestore
+    await dbAdmin.collection('users').doc(targetUserId).delete();
+    console.log(`[Admin DELETE] Document Firestore users/${targetUserId} supprimé avec succès`);
+
+    // 3. Retirer de la liste en mémoire
+    const userIndex = adminStore.users.findIndex(u => u.uid === targetUserId || u.email.toLowerCase() === targetUserId.toLowerCase());
+    let deletedEmail = targetUserId;
+    if (userIndex >= 0) {
+      deletedEmail = adminStore.users[userIndex].email;
+      adminStore.users.splice(userIndex, 1);
+    }
 
     recordAuditLog(
       'security',
       'USER_ACCOUNT_DELETED',
       adminEmail,
-      `Suppression définitive du compte de ${user.email} (${user.firstName} ${user.lastName}) par l'administrateur`,
-      { deletedUserEmail: user.email, deletedUserId: user.uid },
-      user.email,
-      user.uid,
+      `Suppression définitive du compte de ${deletedEmail} par l'administrateur`,
+      { deletedUserId: targetUserId, deletedEmail },
+      deletedEmail,
+      targetUserId,
       'error'
     );
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: `Le compte utilisateur ${user.email} a été définitivement supprimé.`
+      message: "Utilisateur supprimé"
     });
   } catch (err: any) {
     console.error('[Admin Delete User Error]:', err);
     return res.status(500).json({ success: false, error: err.message || 'Erreur lors de la suppression de l\'utilisateur.' });
   }
-});
+}
+
+// 7. Delete User Account (DELETE)
+app.delete('/api/admin/users/:id', requireAdmin, handleAdminDeleteUser);
+app.delete('/api/admin/users', requireAdmin, handleAdminDeleteUser);
 
 // 8. POST /api/admin/wallet/adjust - Adjust a user's wallet balance
-app.post('/api/admin/wallet/adjust', requireAdmin, (req, res) => {
+app.post('/api/admin/wallet/adjust', requireAdmin, async (req, res) => {
   try {
     const { userId, userEmail, amount, type = 'credit', reason = 'Ajustement Administrateur' } = req.body || {};
     const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
@@ -4316,38 +4398,26 @@ app.post('/api/admin/wallet/adjust', requireAdmin, (req, res) => {
       return res.status(400).json({ success: false, error: 'Le motif de l\'ajustement est obligatoire pour la traçabilité comptable.' });
     }
 
-    // Find user by userId or email
+    const targetUserId = userId || (userEmail ? userEmail.toLowerCase() : '');
+
+    // Get current balance from Firestore first
+    let currentBalance = 0;
+    try {
+      const userDoc = await dbAdmin.collection('users').doc(targetUserId).get();
+      if (userDoc.exists) {
+        const udata = userDoc.data();
+        currentBalance = Number(udata.walletBalance ?? udata.balance ?? 0);
+      }
+    } catch (fsGetErr) {
+      console.warn('[Admin Adjust Balance Firestore Get Warn]:', fsGetErr);
+    }
+
+    // Find user in in-memory store as fallback
     let userIndex = adminStore.users.findIndex(u => u.uid === userId || (userEmail && u.email.toLowerCase() === userEmail.toLowerCase()));
-    
-    if (userIndex < 0 && (userId || userEmail)) {
-      // Create user entry dynamically if needed
-      const newUser = {
-        uid: userId || `USR-${Date.now()}`,
-        email: userEmail || `${userId}@user.senegalcv.sn`,
-        firstName: 'Candidat',
-        lastName: '',
-        phone: '+221 77 000 00 00',
-        city: 'Dakar',
-        targetJob: 'Candidat',
-        balance: 0,
-        credits: 0,
-        role: 'candidate' as const,
-        subscriptionStatus: 'free' as const,
-        status: 'active' as const,
-        documentsCount: 0,
-        ordersCount: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      adminStore.users.push(newUser);
-      userIndex = adminStore.users.length - 1;
+    if (userIndex >= 0 && currentBalance === 0 && adminStore.users[userIndex].balance) {
+      currentBalance = Number(adminStore.users[userIndex].balance);
     }
 
-    if (userIndex < 0) {
-      return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
-    }
-
-    const currentBalance = Number(adminStore.users[userIndex].balance) || 0;
     let newBalance = currentBalance;
     let transactionAmount = 0;
 
@@ -4365,14 +4435,24 @@ app.post('/api/admin/wallet/adjust', requireAdmin, (req, res) => {
       transactionAmount = -delta;
     }
 
-    adminStore.users[userIndex].balance = newBalance;
-    adminStore.users[userIndex].updatedAt = new Date().toISOString();
+    // Atomic update in Firestore
+    await dbAdmin.collection('users').doc(targetUserId).set({
+      walletBalance: newBalance,
+      balance: newBalance,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    console.log(`[Admin Wallet Adjust] Firestore users/${targetUserId} walletBalance mis à jour: ${newBalance} FCFA`);
+
+    if (userIndex >= 0) {
+      adminStore.users[userIndex].balance = newBalance;
+      adminStore.users[userIndex].updatedAt = new Date().toISOString();
+    }
 
     const txId = `TX-ADM-${Date.now().toString().slice(-6)}`;
     const newTx = {
       id: txId,
-      userId: adminStore.users[userIndex].uid,
-      userEmail: adminStore.users[userIndex].email,
+      userId: targetUserId,
+      userEmail: userEmail || `${targetUserId}@user.senegalcv.sn`,
       type: 'admin_adjustment' as const,
       amount: transactionAmount,
       currency: 'XOF',
@@ -4385,25 +4465,32 @@ app.post('/api/admin/wallet/adjust', requireAdmin, (req, res) => {
       createdAt: new Date().toISOString()
     };
 
+    // Save transaction to Firestore
+    try {
+      await dbAdmin.collection('transactions').doc(txId).set(newTx);
+    } catch (txErr) {
+      console.warn('[Admin Adjust Save Transaction Warn]:', txErr);
+    }
+
     adminStore.transactions.unshift(newTx);
 
     recordAuditLog(
       'wallet',
       'WALLET_ADJUSTMENT',
       adminEmail,
-      `Ajustement solde de ${adminStore.users[userIndex].email} : ${type === 'credit' ? '+' : '-'}${delta.toLocaleString('fr-FR')} FCFA (Nouveau solde: ${newBalance.toLocaleString('fr-FR')} FCFA). Motif: ${reason}`,
+      `Ajustement solde de ${targetUserId} : ${type === 'credit' ? '+' : '-'}${delta.toLocaleString('fr-FR')} FCFA (Nouveau solde: ${newBalance.toLocaleString('fr-FR')} FCFA). Motif: ${reason}`,
       { amount: delta, type, newBalance, reason, txId },
-      adminStore.users[userIndex].email,
-      adminStore.users[userIndex].uid,
+      userEmail || targetUserId,
+      targetUserId,
       'success'
     );
 
     return res.json({
       success: true,
-      user: adminStore.users[userIndex],
+      user: userIndex >= 0 ? adminStore.users[userIndex] : { uid: targetUserId, balance: newBalance },
       transaction: newTx,
       newBalance,
-      message: `Solde de ${adminStore.users[userIndex].email} ajusté avec succès : ${newBalance.toLocaleString('fr-FR')} FCFA (${type === 'credit' ? '+' : '-'}${delta.toLocaleString('fr-FR')} FCFA).`
+      message: `Solde ajusté avec succès : ${newBalance.toLocaleString('fr-FR')} FCFA (${type === 'credit' ? '+' : '-'}${delta.toLocaleString('fr-FR')} FCFA).`
     });
   } catch (err: any) {
     console.error('[Admin Adjust Wallet Error]:', err);

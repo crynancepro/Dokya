@@ -1,4 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { initializeApp as initAdminApp, getApps as getAdminApps, getApp as getAdminApp, type App as AdminApp } from 'firebase-admin/app';
+import { getAuth as getAdminAuth, type Auth as AdminAuth } from 'firebase-admin/auth';
 import {
   getFirestore,
   doc,
@@ -407,13 +409,47 @@ export async function executeAtomicPaymentCredit({
 
 export { rawFirestore, firestoreRunTransaction as runTransaction, doc as rawDocRef };
 
-const adminCompat: any = {
+// Initialize Admin SDK Auth for server-side user management
+let adminSdkApp: AdminApp | null = null;
+let adminAuth: AdminAuth | null = null;
+try {
+  adminSdkApp = getAdminApps().length > 0 ? getAdminApp() : initAdminApp({ projectId: FIRESTORE_PROJECT_ID });
+  adminAuth = getAdminAuth(adminSdkApp);
+} catch (e: any) {
+  console.warn('[firebaseAdmin] Warning initializing firebase-admin Auth:', e?.message || e);
+}
+
+export { adminAuth };
+
+export const admin: any = {
   firestore: () => dbAdmin,
-  auth: () => auth,
+  auth: () => {
+    return {
+      async deleteUser(uid: string) {
+        if (adminAuth && typeof adminAuth.deleteUser === 'function') {
+          return await adminAuth.deleteUser(uid);
+        }
+        console.warn(`[admin.auth] deleteUser warning: adminAuth not available for uid ${uid}`);
+        return true;
+      },
+      async getUser(uid: string) {
+        if (adminAuth && typeof adminAuth.getUser === 'function') {
+          return await adminAuth.getUser(uid);
+        }
+        return null;
+      },
+      async updateUser(uid: string, properties: any) {
+        if (adminAuth && typeof adminAuth.updateUser === 'function') {
+          return await adminAuth.updateUser(uid, properties);
+        }
+        return null;
+      }
+    };
+  },
   apps: [app],
   app: () => app
 };
 
-adminCompat.firestore.FieldValue = FieldValue;
+admin.firestore.FieldValue = FieldValue;
 
-export default adminCompat;
+export default admin;

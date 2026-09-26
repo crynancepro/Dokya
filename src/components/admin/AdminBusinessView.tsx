@@ -338,8 +338,113 @@ export const AdminBusinessView: React.FC<AdminBusinessViewProps> = ({
 
         </div>
 
-        {/* Table of B2B Documents */}
-        <div className="overflow-x-auto">
+        {/* 1. Mobile Cards View (< 768px) for B2B Documents */}
+        <div className="md:hidden divide-y divide-slate-800/80">
+          {filteredDocs.length === 0 ? (
+            <div className="py-8 text-center text-slate-500 text-xs">
+              Aucun document professionnel ne correspond aux filtres.
+            </div>
+          ) : (
+            filteredDocs.map((doc) => (
+              <div key={`m-doc-${doc.id}`} className="p-4 space-y-3 hover:bg-slate-800/30 transition-colors">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                        doc.type === 'devis'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : doc.type === 'facture'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                      }`}>
+                        {doc.type === 'devis' ? 'Devis' : doc.type === 'facture' ? 'Facture' : 'Pack B2B'}
+                      </span>
+                      <span className="font-mono font-bold text-white text-xs">{doc.docNumber}</span>
+                    </div>
+                    <div className="font-bold text-white text-sm mt-1.5 flex items-center gap-1.5 flex-wrap">
+                      <span>{doc.companyName}</span>
+                      {doc.hasLogo && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold">
+                          LOGO
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                      NINEA : {doc.ninea}
+                    </div>
+                  </div>
+
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+                    doc.status === 'paid'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : doc.status === 'pending'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}>
+                    {doc.status === 'paid' ? (
+                      <>
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Payée</span>
+                      </>
+                    ) : doc.status === 'pending' ? (
+                      <>
+                        <Clock className="w-3 h-3" />
+                        <span>En Attente</span>
+                      </>
+                    ) : (
+                      <span>Brouillon</span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Amount & Items */}
+                <div className="flex items-center justify-between bg-slate-950/70 p-2.5 rounded-xl border border-slate-800 text-xs">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Montant</span>
+                    <span className="font-mono font-black text-emerald-400 text-sm">
+                      {doc.amount.toLocaleString('fr-FR')} FCFA
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Détails</span>
+                    <span className="text-slate-300 font-semibold">{doc.itemsCount} prestations • {doc.date}</span>
+                  </div>
+                </div>
+
+                {/* Contact & Actions */}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <div className="text-xs text-slate-400 min-w-0">
+                    <div className="font-semibold text-slate-300 truncate">{doc.contactPerson}</div>
+                    <div className="text-[11px] truncate flex items-center gap-1">
+                      <Mail className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span>{doc.contactEmail}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700 transition-all cursor-pointer"
+                      title="Aperçu du document"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className="p-2 rounded-xl bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 border border-cyan-500/30 transition-all cursor-pointer"
+                      title="Télécharger PDF"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* 2. Desktop Table View (>= 768px) with Smooth Horizontal Scroll */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-950/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
               <tr>

@@ -34,8 +34,10 @@ import {
   purgeExpiredPaymentReceipts,
   subscribeToRealtimeAdminDashboardMetrics,
   RealtimeAdminMetrics,
-  RealtimeSalesCategory
+  RealtimeSalesCategory,
+  db
 } from '../lib/firebase';
+import { doc, updateDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { DEFAULT_PROMO_CODES } from '../constants/pricingDefaults';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail, PRIMARY_ADMIN_EMAIL, getAdminHeaders } from '../lib/adminAuth';
@@ -196,6 +198,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editTargetJob, setEditTargetJob] = useState('');
   const [editBalance, setEditBalance] = useState<number>(0);
   const [editSubscription, setEditSubscription] = useState<'free' | 'pro' | 'unlimited'>('free');
+  const [editRole, setEditRole] = useState<'user' | 'admin'>('user');
+  const [editStatus, setEditStatus] = useState<'actif' | 'suspendu'>('actif');
 
   // Delete User Confirmation Modal
   const [userToDelete, setUserToDelete] = useState<AdminUserRecord | null>(null);
@@ -737,50 +741,95 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!window.confirm(`Confirmer le déblocage forcé et gratuit de TOUS les documents pour ${user.firstName} ${user.lastName} (${user.email}) ?`)) {
       return;
     }
+
+    // 1. Instant local state update
+    setUsersList(prev => prev.map(u => u.uid === user.uid ? {
+      ...u,
+      hasForceUnlockedDocs: true,
+      subscriptionStatus: 'pro',
+      unlockedDocsCount: (u.documentsCount || 1) + 5
+    } : u));
+    if (inspectingCandidate?.uid === user.uid) {
+      setInspectingCandidate(prev => prev ? {
+        ...prev,
+        hasForceUnlockedDocs: true,
+        subscriptionStatus: 'pro',
+        unlockedDocsCount: (prev.documentsCount || 1) + 5
+      } : null);
+    }
+    setSuccessMsg(`Documents de ${user.firstName || user.email} débloqués avec succès !`);
+    setTimeout(() => setSuccessMsg(null), 4000);
+
+    // 2. Direct atomic update in Firestore
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        hasForceUnlockedDocs: true,
+        subscriptionStatus: 'pro',
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (fsErr: any) {
+      console.warn('[Direct Firestore Force Unlock Warning]:', fsErr?.message);
+    }
+
+    // 3. API server call for audit logging
     try {
       const headers = getAdminHeaders(adminEmail);
-      const res = await fetch(`/api/admin/users/${user.uid}/unlock-documents`, {
+      await fetch(`/api/admin/users/${user.uid}/unlock-documents`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ adminEmail, reason: 'Déblocage administratif de courtoisie' })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg(data.message || 'Documents débloqués avec succès !');
-        setUsersList(prev => prev.map(u => u.uid === user.uid ? { ...u, hasForceUnlockedDocs: true, unlockedDocsCount: (u.documentsCount || 1) + 2 } : u));
-        setTimeout(() => setSuccessMsg(null), 4000);
-        // Refresh audit logs
-        loadAdminData();
-      } else {
-        setErrorMsg(data.error || 'Erreur lors du déblocage.');
-      }
-    } catch (e) {
-      setErrorMsg('Erreur lors du déblocage des documents.');
+      loadAdminData();
+    } catch (e: any) {
+      console.warn('[API Unlock Docs Warning]:', e?.message);
     }
   };
 
   // 3. SUSPEND / REACTIVATE USER
   const handleConfirmSuspension = async () => {
     if (!userToSuspend) return;
+    const isCurrentlySuspended = userToSuspend.status === 'suspended';
+    const newStatus = isCurrentlySuspended ? 'active' : 'suspended';
+
+    // 1. Instant local state update
+    setUsersList(prev => prev.map(u => u.uid === userToSuspend.uid ? {
+      ...u,
+      status: newStatus,
+      suspendedReason: newStatus === 'suspended' ? suspendReason : undefined
+    } : u));
+    if (inspectingCandidate?.uid === userToSuspend.uid) {
+      setInspectingCandidate(prev => prev ? {
+        ...prev,
+        status: newStatus,
+        suspendedReason: newStatus === 'suspended' ? suspendReason : undefined
+      } : null);
+    }
+    setSuccessMsg(`Compte ${userToSuspend.email} ${newStatus === 'suspended' ? 'suspendu' : 'réactivé'} avec succès.`);
+    setUserToSuspend(null);
+    setTimeout(() => setSuccessMsg(null), 4000);
+
+    // 2. Direct atomic update in Firestore
+    try {
+      await setDoc(doc(db, 'users', userToSuspend.uid), {
+        status: newStatus,
+        suspendedReason: newStatus === 'suspended' ? suspendReason : null,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (fsErr: any) {
+      console.warn('[Direct Firestore Suspend Warning]:', fsErr?.message);
+    }
+
+    // 3. API server call
     try {
       const headers = getAdminHeaders(adminEmail);
-      const res = await fetch(`/api/admin/users/${userToSuspend.uid}/toggle-suspension`, {
+      await fetch(`/api/admin/users/${userToSuspend.uid}/toggle-suspension`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ adminEmail, reason: suspendReason })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg(data.message || 'Statut du compte mis à jour.');
-        setUsersList(prev => prev.map(u => u.uid === userToSuspend.uid ? { ...u, status: data.status, suspendedReason: data.status === 'suspended' ? suspendReason : undefined } : u));
-        setUserToSuspend(null);
-        setTimeout(() => setSuccessMsg(null), 4000);
-        loadAdminData();
-      } else {
-        setErrorMsg(data.error || 'Erreur lors du changement de statut.');
-      }
-    } catch (e) {
-      setErrorMsg('Erreur lors de la mise à jour du statut.');
+      loadAdminData();
+    } catch (e: any) {
+      console.warn('[API Suspend Warning]:', e?.message);
     }
   };
 
@@ -794,14 +843,74 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditTargetJob(user.targetJob || '');
     setEditBalance(user.balance || 0);
     setEditSubscription(user.subscriptionStatus || 'free');
+    setEditRole(user.role === 'admin' ? 'admin' : 'user');
+    setEditStatus(user.status === 'suspended' ? 'suspendu' : 'actif');
   };
 
   const handleSaveUserEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
+
+    const normalizedStatus = editStatus === 'suspendu' ? 'suspended' : 'active';
+    const normalizedRole = editRole === 'admin' ? 'admin' : 'candidate';
+
+    // 1. Instant local state update without refreshing
+    setUsersList(prev => prev.map(u => u.uid === editingUser.uid ? {
+      ...u,
+      firstName: editFirstName,
+      lastName: editLastName,
+      phone: editPhone,
+      city: editCity,
+      targetJob: editTargetJob,
+      balance: editBalance,
+      walletBalance: editBalance,
+      subscriptionStatus: editSubscription,
+      role: normalizedRole,
+      status: normalizedStatus
+    } : u));
+    if (inspectingCandidate?.uid === editingUser.uid) {
+      setInspectingCandidate(prev => prev ? {
+        ...prev,
+        firstName: editFirstName,
+        lastName: editLastName,
+        phone: editPhone,
+        city: editCity,
+        targetJob: editTargetJob,
+        balance: editBalance,
+        walletBalance: editBalance,
+        subscriptionStatus: editSubscription,
+        role: normalizedRole,
+        status: normalizedStatus
+      } : null);
+    }
+    setSuccessMsg('Profil utilisateur mis à jour avec succès.');
+    const targetUserId = editingUser.uid;
+    setEditingUser(null);
+    setTimeout(() => setSuccessMsg(null), 4000);
+
+    // 2. Direct atomic update in Firestore
+    try {
+      await setDoc(doc(db, 'users', targetUserId), {
+        firstName: editFirstName,
+        lastName: editLastName,
+        phone: editPhone,
+        city: editCity,
+        targetJob: editTargetJob,
+        balance: editBalance,
+        walletBalance: editBalance,
+        subscriptionStatus: editSubscription,
+        role: normalizedRole,
+        status: normalizedStatus,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (fsErr: any) {
+      console.warn('[Direct Firestore Update Warning]:', fsErr?.message);
+    }
+
+    // 3. API server call for audit log and persistence
     try {
       const headers = getAdminHeaders(adminEmail);
-      const res = await fetch(`/api/admin/users/${editingUser.uid}`, {
+      const res = await fetch(`/api/admin/users/${targetUserId}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({
@@ -812,30 +921,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           city: editCity,
           targetJob: editTargetJob,
           balance: editBalance,
-          subscriptionStatus: editSubscription
+          walletBalance: editBalance,
+          subscriptionStatus: editSubscription,
+          role: editRole,
+          status: editStatus
         })
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg('Profil utilisateur mis à jour avec succès.');
-        setUsersList(prev => prev.map(u => u.uid === editingUser.uid ? {
-          ...u,
-          firstName: editFirstName,
-          lastName: editLastName,
-          phone: editPhone,
-          city: editCity,
-          targetJob: editTargetJob,
-          balance: editBalance,
-          subscriptionStatus: editSubscription
-        } : u));
-        setEditingUser(null);
-        setTimeout(() => setSuccessMsg(null), 4000);
-        loadAdminData();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.error || 'Erreur lors de la mise à jour sur le serveur.');
       } else {
-        setErrorMsg(data.error || 'Erreur lors de la mise à jour.');
+        loadAdminData();
       }
-    } catch (e) {
-      setErrorMsg('Erreur lors de la mise à jour du profil.');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erreur lors de la mise à jour du profil.');
     }
   };
 
@@ -843,24 +942,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleConfirmDeleteUser = async () => {
     if (!userToDelete) return;
     setIsDeletingUser(true);
+    const targetUserId = userToDelete.uid;
+    const targetUserEmail = userToDelete.email;
+
+    // 1. Instant local state update
+    setUsersList(prev => prev.filter(u => u.uid !== targetUserId));
+    if (inspectingCandidate?.uid === targetUserId) {
+      setInspectingCandidate(null);
+    }
+    setSuccessMsg(`Le compte ${targetUserEmail} a été définitivement supprimé.`);
+    setUserToDelete(null);
+    setTimeout(() => setSuccessMsg(null), 4000);
+
+    // 2. Direct Firestore delete
+    try {
+      await deleteDoc(doc(db, 'users', targetUserId));
+    } catch (fsErr: any) {
+      console.warn('[Direct Firestore Delete Warning]:', fsErr?.message);
+    }
+
+    // 3. API server call using Firebase Admin SDK (admin.auth().deleteUser + db.collection('users').delete())
     try {
       const headers = getAdminHeaders(adminEmail);
-      const res = await fetch(`/api/admin/users/${userToDelete.uid}`, {
+      const res = await fetch(`/api/admin/users/${targetUserId}`, {
         method: 'DELETE',
         headers
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg(`Le compte ${userToDelete.email} a été définitivement supprimé.`);
-        setUsersList(prev => prev.filter(u => u.uid !== userToDelete.uid));
-        setUserToDelete(null);
-        setTimeout(() => setSuccessMsg(null), 4000);
-        loadAdminData();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.error || 'Erreur lors de la suppression sur le serveur.');
       } else {
-        setErrorMsg(data.error || 'Erreur lors de la suppression.');
+        loadAdminData();
       }
-    } catch (e) {
-      setErrorMsg('Erreur lors de la suppression de l\'utilisateur.');
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Erreur lors de la suppression de l\'utilisateur.');
     } finally {
       setIsDeletingUser(false);
     }
@@ -881,14 +996,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     setIsAdjusting(true);
     setErrorMsg(null);
+
+    const targetUserId = selectedUserForAdjust.uid;
+    const targetUserEmail = selectedUserForAdjust.email;
+    const currentBalance = Number(selectedUserForAdjust.balance || 0);
+    const newBalance = adjustType === 'credit'
+      ? currentBalance + adjustAmount
+      : Math.max(0, currentBalance - adjustAmount);
+
+    // 1. Instant local state update in Admin dashboard without refresh
+    setUsersList(prev => prev.map(u => u.uid === targetUserId ? {
+      ...u,
+      balance: newBalance,
+      walletBalance: newBalance
+    } : u));
+    if (inspectingCandidate?.uid === targetUserId) {
+      setInspectingCandidate(prev => prev ? {
+        ...prev,
+        balance: newBalance,
+        walletBalance: newBalance
+      } : null);
+    }
+    setSuccessMsg(`Solde de ${targetUserEmail} ajusté à ${newBalance.toLocaleString('fr-FR')} FCFA (${adjustType === 'credit' ? '+' : '-'}${adjustAmount.toLocaleString('fr-FR')} FCFA)`);
+    setSelectedUserForAdjust(null);
+    setTimeout(() => setSuccessMsg(null), 5000);
+
+    // 2. Direct atomic update in Firestore: db.collection('users').doc(userId).update({ walletBalance: newBalance })
+    try {
+      await setDoc(doc(db, 'users', targetUserId), {
+        walletBalance: newBalance,
+        balance: newBalance,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (fsErr: any) {
+      console.warn('[Direct Firestore Wallet Adjust Warning]:', fsErr?.message);
+    }
+
+    // 3. API server call for atomic transaction logging & audit
     try {
       const headers = getAdminHeaders(adminEmail);
       const res = await fetch('/api/admin/wallet/adjust', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          userId: selectedUserForAdjust.uid,
-          userEmail: selectedUserForAdjust.email,
+          userId: targetUserId,
+          userEmail: targetUserEmail,
           amount: adjustAmount,
           type: adjustType,
           reason: adjustReason,
@@ -898,16 +1050,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccessMsg(data.message || 'Solde ajusté avec succès !');
-        setUsersList(prev => prev.map(u => u.uid === selectedUserForAdjust.uid ? { ...u, balance: data.newBalance } : u));
         if (data.transaction) {
           setTransactionsList(prev => [data.transaction, ...prev]);
         }
-        setSelectedUserForAdjust(null);
-        setTimeout(() => setSuccessMsg(null), 5000);
         loadAdminData();
       } else {
-        setErrorMsg(data.error || 'Erreur lors de l\'ajustement.');
+        setErrorMsg(data.error || 'Erreur lors de l\'enregistrement sur le serveur.');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Erreur réseau lors de l\'ajustement.');
@@ -2042,9 +2190,158 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             </div>
 
-            {/* Users Table */}
+            {/* Users Container: Responsive Cards UI on Mobile + Responsive Table on Desktop */}
             <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
+              
+              {/* 1. Mobile Cards View (< 768px - iPhone & Android) */}
+              <div className="block md:hidden divide-y divide-slate-800/80">
+                {paginatedUsers.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 text-xs">
+                    Aucun utilisateur ne correspond à votre recherche.
+                  </div>
+                ) : (
+                  paginatedUsers.map((user) => {
+                    const isSuspended = user.status === 'suspended';
+                    const isSuperAdmin = isAdminEmail(user.email);
+
+                    return (
+                      <div key={`m-user-${user.uid}`} className={`p-4 space-y-3.5 transition-colors ${isSuspended ? 'bg-rose-950/20' : 'hover:bg-slate-800/30'}`}>
+                        {/* Header: Avatar, Name, Email, Status */}
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm uppercase shrink-0 ${
+                              isSuperAdmin 
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : isSuspended
+                                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            }`}>
+                              {user.firstName ? user.firstName[0] : 'U'}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-white text-sm flex items-center gap-1.5 flex-wrap">
+                                <span className="truncate">{user.firstName} {user.lastName}</span>
+                                {isSuperAdmin && (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 text-[9px] font-black uppercase">Admin</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-slate-400 truncate">{user.email}</div>
+                              {user.phone && (
+                                <a href={`tel:${user.phone}`} className="text-[11px] text-cyan-400 font-mono hover:underline inline-block mt-0.5">
+                                  {user.phone}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {isSuspended ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                <Ban className="w-3 h-3" />
+                                <span>Suspendu</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Actif</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Quick Stats Grid */}
+                        <div className="grid grid-cols-2 gap-2 bg-slate-950/70 p-2.5 rounded-2xl border border-slate-800 text-xs">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Solde Portefeuille</span>
+                            <span className="font-black text-emerald-400 text-sm flex items-center gap-1 mt-0.5">
+                              <Wallet className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                              {(user.balance || 0).toLocaleString('fr-FR')} F
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Métier &amp; Ville</span>
+                            <span className="font-semibold text-slate-200 truncate block mt-0.5">
+                              {user.targetJob || 'Candidat'} • {user.city || 'Dakar'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Documents Count & Emergency Status */}
+                        <div className="flex items-center justify-between text-xs px-1">
+                          <span className="text-slate-400 font-medium">{user.documentsCount || 0} document(s) enregistré(s)</span>
+                          {user.hasForceUnlockedDocs && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              🔓 Docs Débloqués
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Touch Actions: Primary Buttons */}
+                        <div className="grid grid-cols-2 gap-2 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setInspectingCandidate(user)}
+                            className="w-full py-2.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                          >
+                            <Eye className="w-4 h-4 text-amber-400 shrink-0" />
+                            <span>Inspecter</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedUserForAdjust(user)}
+                            className="w-full py-2.5 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                          >
+                            <Sliders className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>Ajuster Solde</span>
+                          </button>
+                        </div>
+
+                        {/* Touch Actions: Secondary Buttons */}
+                        <div className="grid grid-cols-3 gap-1.5 pt-0.5 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => handleForceUnlockDocs(user)}
+                            className="py-2 px-1.5 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/25 font-bold flex items-center justify-center gap-1 text-center cursor-pointer"
+                            title="Accès de secours : Débloquer tous les documents"
+                          >
+                            <Unlock className="w-3.5 h-3.5 shrink-0 text-teal-400" />
+                            <span className="truncate">Débloquer</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(user)}
+                            className="py-2 px-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold flex items-center justify-center gap-1 text-center cursor-pointer"
+                            title="Modifier profil, rôle et statut"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                            <span className="truncate">Modifier</span>
+                          </button>
+
+                          {!isSuperAdmin ? (
+                            <button
+                              type="button"
+                              onClick={() => setUserToDelete(user)}
+                              className="py-2 px-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/25 font-bold flex items-center justify-center gap-1 text-center cursor-pointer"
+                              title="Supprimer définitivement le compte"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                              <span className="truncate">Supprimer</span>
+                            </button>
+                          ) : (
+                            <div className="py-2 px-1 rounded-xl bg-slate-800/40 text-slate-500 border border-slate-800 font-bold text-center text-[10px] flex items-center justify-center">
+                              Admin
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* 2. Desktop Table View (>= 768px) with Smooth Horizontal Scroll */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-950/80 border-b border-slate-800/80 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                     <tr>
@@ -2645,189 +2942,268 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
-            {/* Pricing Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {/* Pricing Cards Grid: 1 column on mobile (< 768px), 2 on tablet, 3 on desktop */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               
               {/* Product 1: CV ATS Seul */}
-              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Document Unique</span>
-                <h3 className="text-sm font-bold text-white">CV ATS Professionnel</h3>
-                <p className="text-xs text-slate-400">Génération et export PDF/DOCX d'un CV optimisé.</p>
+              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">Document Unique</span>
+                  <span className="text-xs text-slate-500 font-mono">ID: cv_ats</span>
+                </div>
+                <h3 className="text-base font-bold text-white">CV ATS Professionnel</h3>
+                <p className="text-xs text-slate-400">Génération et export PDF/DOCX d'un CV optimisé pour les recruteurs.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.cvOnlyPrice ?? ''}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, cvOnlyPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
-                    placeholder="ex: 1000"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.cvOnlyPrice ?? ''}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, cvOnlyPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="1000"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 2: Lettre Seule */}
-              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-teal-400 uppercase tracking-wider">Document Unique</span>
-                <h3 className="text-sm font-bold text-white">Lettre de Motivation</h3>
-                <p className="text-xs text-slate-400">Lettre percutante rédigée par l'IA.</p>
+              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-teal-400 uppercase tracking-wider bg-teal-500/10 px-2.5 py-0.5 rounded-full border border-teal-500/20">Document Unique</span>
+                  <span className="text-xs text-slate-500 font-mono">ID: letter</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Lettre de Motivation</h3>
+                <p className="text-xs text-slate-400">Lettre percutante ciblée rédigée avec l'intelligence artificielle.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.letterOnlyPrice ?? ''}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, letterOnlyPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
-                    placeholder="ex: 1000"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.letterOnlyPrice ?? ''}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, letterOnlyPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="1000"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 3: Pack Duo */}
-              <div className="bg-slate-900/80 border border-emerald-500/40 rounded-3xl p-5 shadow-lg space-y-3 relative overflow-hidden">
-                <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/40">
-                  Best Seller
+              <div className="bg-slate-900/80 border border-emerald-500/40 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">Offre Populaire</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/40">
+                    Best Seller ⭐
+                  </span>
                 </div>
-                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Offre Populaire</span>
-                <h3 className="text-sm font-bold text-white">Pack Duo (CV + Lettre)</h3>
-                <p className="text-xs text-slate-400">Le pack complet pour postuler efficacement.</p>
+                <h3 className="text-base font-bold text-white">Pack Duo (CV + Lettre)</h3>
+                <p className="text-xs text-slate-400">Le pack complet pour postuler avec un impact maximal.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.fullPackPrice ?? ''}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, fullPackPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-emerald-500/60 text-emerald-300 font-black text-base focus:border-emerald-400 focus:outline-none"
-                    placeholder="ex: 1399"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.fullPackPrice ?? ''}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, fullPackPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-emerald-500/60 text-emerald-300 font-black text-lg focus:border-emerald-400 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="1399"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-emerald-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 4: Devis Pro */}
-              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider">Facturation & Devis</span>
-                <h3 className="text-sm font-bold text-white">Devis Professionnel</h3>
-                <p className="text-xs text-slate-400">Modèle conforme avec TVA & mentions UEMOA.</p>
+              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-cyan-400 uppercase tracking-wider bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20">Facturation &amp; Devis</span>
+                  <span className="text-xs text-slate-500 font-mono">ID: devis</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Devis Professionnel</h3>
+                <p className="text-xs text-slate-400">Modèle conforme avec TVA &amp; mentions légales UEMOA.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.devisPrice ?? ''}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, devisPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
-                    placeholder="ex: 1000"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.devisPrice ?? ''}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, devisPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="1000"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 5: Facture UEMOA */}
-              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider">Facturation & Devis</span>
-                <h3 className="text-sm font-bold text-white">Facture Commerciale UEMOA</h3>
-                <p className="text-xs text-slate-400">Facturation d'entreprise en FCFA (XOF).</p>
+              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-cyan-400 uppercase tracking-wider bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20">Facturation &amp; Devis</span>
+                  <span className="text-xs text-slate-500 font-mono">ID: facture</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Facture Commerciale UEMOA</h3>
+                <p className="text-xs text-slate-400">Facturation d'entreprise en FCFA (XOF) avec calcul automatique.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.facturePrice ?? ''}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, facturePrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
-                    placeholder="ex: 1000"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.facturePrice ?? ''}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, facturePrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="1000"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 6: Pack Business */}
-              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Offre PME & Entreprise</span>
-                <h3 className="text-sm font-bold text-white">Pack Business (Devis + Facture)</h3>
-                <p className="text-xs text-slate-400">Pack complet factures + devis + documents pros.</p>
+              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">PME &amp; Entreprise</span>
+                  <span className="text-xs text-slate-500 font-mono">ID: b2b_pack</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Pack Business (Devis + Facture)</h3>
+                <p className="text-xs text-slate-400">Pack complet factures + devis + documents pros avec logo.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.businessPackPrice ?? ''}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, businessPackPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
-                    placeholder="ex: 1499"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.businessPackPrice ?? ''}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, businessPackPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="1499"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 7: Ebook / Livre Numérique */}
-              <div className="bg-slate-900/80 border border-indigo-500/40 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">Création Ebook</span>
-                <h3 className="text-sm font-bold text-white">Ebook & Livre Numérique</h3>
-                <p className="text-xs text-slate-400">Génération par IA d'ebooks avec mise en page HD.</p>
+              <div className="bg-slate-900/80 border border-indigo-500/40 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-indigo-500/60 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-indigo-400 uppercase tracking-wider bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">Création Ebook</span>
+                  <span className="text-xs text-slate-500 font-mono">ID: ebook</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Ebook &amp; Livre Numérique</h3>
+                <p className="text-xs text-slate-400">Génération par IA d'ebooks avec mise en page HD et chapitrage.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.ebookPrice ?? 1500}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, ebookPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
-                    placeholder="ex: 1500"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.ebookPrice ?? 1500}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, ebookPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="1500"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 8: Pass Illimité Mensuel */}
-              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">Abonnement VIP Mois</span>
-                <h3 className="text-sm font-bold text-white">Pass Illimité 30 Jours</h3>
-                <p className="text-xs text-slate-400">Téléchargements illimités de tous les formats (Mois).</p>
+              <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-purple-500/50 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-purple-400 uppercase tracking-wider bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">VIP Mois</span>
+                  <span className="text-xs text-slate-500 font-mono">30 Jours</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Pass Illimité 30 Jours</h3>
+                <p className="text-xs text-slate-400">Téléchargements illimités de tous les formats sans restriction pendant 1 mois.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.unlimitedPassPrice ?? ''}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, unlimitedPassPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
-                    placeholder="ex: 3499"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.unlimitedPassPrice ?? ''}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, unlimitedPassPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="3499"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 9: Pass Illimité Annuel */}
-              <div className="bg-slate-900/80 border border-amber-500/40 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Abonnement VIP Annuel</span>
-                <h3 className="text-sm font-bold text-white">Pass Illimité 1 An</h3>
-                <p className="text-xs text-slate-400">Accès VIP permanent pendant 12 mois complets.</p>
+              <div className="bg-slate-900/80 border border-amber-500/40 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-amber-500/60 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">VIP Annuel</span>
+                  <span className="text-xs text-slate-500 font-mono">12 Mois</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Pass Illimité 1 An</h3>
+                <p className="text-xs text-slate-400">Accès VIP permanent et prioritaire pendant 12 mois complets.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.unlimitedPassAnnualPrice ?? 39999}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, unlimitedPassAnnualPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-amber-500/60 text-amber-300 font-black text-base focus:border-amber-400 focus:outline-none"
-                    placeholder="ex: 39999"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.unlimitedPassAnnualPrice ?? 39999}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, unlimitedPassAnnualPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-amber-500/60 text-amber-300 font-black text-lg focus:border-amber-400 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="39999"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-amber-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Product 10: Pack Recruteur */}
-              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 shadow-lg space-y-3">
-                <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">Espace Recruteur</span>
-                <h3 className="text-sm font-bold text-white">Recherche Candidats</h3>
-                <p className="text-xs text-slate-400">Accès à la base de profils qualifiés du Sénégal.</p>
+              <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-slate-700 transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-indigo-400 uppercase tracking-wider bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">Recruteurs</span>
+                  <span className="text-xs text-slate-500 font-mono">Entreprises</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Recherche Candidats</h3>
+                <p className="text-xs text-slate-400">Accès à la base de profils qualifiés et contact direct des candidats.</p>
                 <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-300">Prix (FCFA) :</label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={editingPricing.recruiterSearchPrice ?? ''}
-                    onChange={(e) => setEditingPricing({ ...editingPricing, recruiterSearchPrice: Number(e.target.value) })}
-                    className="w-full mt-1.5 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-base focus:border-emerald-500 focus:outline-none"
-                    placeholder="ex: 10000"
-                  />
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingPricing.recruiterSearchPrice ?? ''}
+                      onChange={(e) => setEditingPricing({ ...editingPricing, recruiterSearchPrice: Number(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
+                      placeholder="10000"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
+                      FCFA
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -3187,9 +3563,159 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             </div>
 
-            {/* Transactions Money Fusion Table with Clear Types */}
+            {/* Transactions Money Fusion Container: Responsive Cards on Mobile + Table on Desktop */}
             <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
+              
+              {/* 1. Mobile Cards View (< 768px - iPhone & Android) */}
+              <div className="block md:hidden divide-y divide-slate-800/80">
+                {filteredTransactions.length === 0 ? (
+                  <div className="py-12 px-4 text-center text-slate-500 text-xs">
+                    <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400 mb-2">
+                      <CreditCard className="w-6 h-6" />
+                    </div>
+                    Aucune transaction ne correspond à vos filtres.
+                  </div>
+                ) : (
+                  filteredTransactions.map((tx) => {
+                    const isApproved = tx.status === 'SUCCESS' || tx.status === 'APPROVED' || tx.status === 'MANUALLY_VALIDATED' || tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED';
+                    const isRejected = tx.status === 'REJECTED' || tx.status === 'FAILED' || tx.status === 'REJECTED_BY_ADMIN' || tx.status === 'REJECTED_BY_AI' || tx.status === 'failed' || tx.status === 'cancel';
+                    const isPending = !isApproved && !isRejected;
+
+                    const amountXOF = Math.abs(Number(tx.amount || tx.expectedAmount || 0));
+                    const txReference = tx.transactionReference || (tx as any).moneyFusionId || (tx as any).transactionId || tx.id;
+                    const isCopied = copiedTxId === txReference;
+
+                    // Type detection
+                    const txType = (tx.type || (tx as any).transactionType || '').toUpperCase();
+                    const desc = ((tx.description || '') + ' ' + (tx.title || '')).toLowerCase();
+                    const isDoc = txType.includes('DOC') || Boolean(tx.targetDocId) || Boolean((tx as any).docId) || desc.includes('document') || desc.includes('déblocage') || desc.includes('deblocage');
+                    const isSub = !isDoc && (txType.includes('SUB') || Boolean((tx as any).planId) || desc.includes('abonnement') || desc.includes('pass') || desc.includes('vip') || amountXOF === 2500 || amountXOF === 5000);
+
+                    let typeBadge = {
+                      label: 'Wallet',
+                      icon: '💳',
+                      className: 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                    };
+                    if (isDoc) {
+                      typeBadge = { label: 'Document', icon: '📄', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
+                    } else if (isSub) {
+                      typeBadge = { label: 'Abonnement VIP', icon: '👑', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+                    }
+
+                    const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '') + ' ' + (tx.network || '')).toLowerCase();
+                    let methodBadge = { label: 'Money Fusion', icon: '⚡', className: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
+                    if (methodStr.includes('wallet') || methodStr.includes('solde')) {
+                      methodBadge = { label: 'Solde Dokya', icon: '💳', className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
+                    } else if (methodStr.includes('wave')) {
+                      methodBadge = { label: 'Wave', icon: '🌊', className: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
+                    } else if (methodStr.includes('orange') || methodStr.includes('om')) {
+                      methodBadge = { label: 'Orange Money', icon: '🍊', className: 'bg-orange-500/15 text-orange-300 border-orange-500/30' };
+                    } else if (methodStr.includes('free')) {
+                      methodBadge = { label: 'Free Money', icon: '🟣', className: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30' };
+                    } else if (methodStr.includes('card') || methodStr.includes('carte')) {
+                      methodBadge = { label: 'Carte / QR', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+                    }
+
+                    const userName = (tx as any).userName || (tx as any).user_name || (tx as any).name || (tx as any).userEmail?.split('@')[0] || 'Client Dokya';
+                    const userEmail = (tx as any).userEmail || (tx as any).user_email || (tx as any).email || (tx.userId && !tx.userId.startsWith('guest') ? tx.userId : 'Email inconnu');
+                    const userPhone = (tx as any).phoneNumber || (tx as any).phone_number || (tx as any).userPhone || (tx as any).user_phone || tx.senderPhone || (tx as any).phone || (tx.extractedData?.sender_phone);
+
+                    return (
+                      <div 
+                        key={`m-tx-${tx.id}`}
+                        onClick={() => setSelectedTxForInspection(tx)}
+                        className="p-4 space-y-3 hover:bg-slate-800/40 transition-colors cursor-pointer"
+                      >
+                        {/* Top: Amount, Status, Date */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-base font-black text-white font-mono tracking-tight">
+                              {amountXOF.toLocaleString('fr-FR')} <span className="text-xs font-bold text-emerald-400">XOF</span>
+                            </span>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                              <Clock className="w-3 h-3 text-slate-500" />
+                              <span>{new Date(tx.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} à {new Date(tx.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {isApproved ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Validé</span>
+                              </span>
+                            ) : isRejected ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                <XCircle className="w-3 h-3" />
+                                <span>Échoué</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                <Clock className="w-3 h-3" />
+                                <span>En attente</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* User Info */}
+                        <div className="bg-slate-950/70 p-2.5 rounded-2xl border border-slate-800 text-xs space-y-1">
+                          <div className="font-bold text-white truncate">{userName}</div>
+                          <div className="text-slate-400 text-[11px] truncate">{userEmail}</div>
+                          {userPhone && (
+                            <div className="text-cyan-400 font-mono text-[11px] flex items-center gap-1">
+                              <Phone className="w-2.5 h-2.5 shrink-0" />
+                              <span>{userPhone}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* ID Transaction & Badges */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] uppercase font-bold text-slate-500">Réf :</span>
+                            <span className="font-mono text-xs font-bold text-amber-300 truncate max-w-[130px]">{txReference}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCopyTxId(txReference);
+                              }}
+                              className="p-1 rounded-md bg-slate-800 text-slate-300 hover:text-white"
+                            >
+                              {isCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${typeBadge.className}`}>
+                              <span>{typeBadge.icon}</span>
+                              <span>{typeBadge.label}</span>
+                            </span>
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${methodBadge.className}`}>
+                              <span>{methodBadge.icon}</span>
+                              <span>{methodBadge.label}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Touch Inspect Action */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTxForInspection(tx)}
+                          className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-700"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Détails &amp; Actions de Paiement</span>
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* 2. Desktop Table View (>= 768px) with Smooth Horizontal Scroll */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-950/80 border-b border-slate-800/80 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                     <tr>
@@ -3682,6 +4208,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value="free">Gratuit</option>
                     <option value="pro">Pro</option>
                     <option value="unlimited">Pass Illimité</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Rôle et Statut */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-300 block mb-1">Rôle :</label>
+                  <select
+                    value={editRole}
+                    onChange={(e: any) => setEditRole(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-emerald-500 cursor-pointer font-semibold"
+                  >
+                    <option value="user">Utilisateur (Candidat)</option>
+                    <option value="admin">Administrateur</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-slate-300 block mb-1">Statut :</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e: any) => setEditStatus(e.target.value)}
+                    className={`w-full px-3.5 py-2 rounded-xl bg-slate-950 border text-white focus:outline-none cursor-pointer font-bold ${
+                      editStatus === 'suspendu' ? 'border-rose-500 text-rose-300' : 'border-emerald-500 text-emerald-300'
+                    }`}
+                  >
+                    <option value="actif">Actif (Normal)</option>
+                    <option value="suspendu">Suspendu (Bloqué)</option>
                   </select>
                 </div>
               </div>

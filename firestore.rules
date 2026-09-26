@@ -41,7 +41,7 @@ service cloud.firestore {
       // Lecture et mise à jour autorisées (crédit solde, abonnement VIP via webhook et gestion profil)
       allow read: if true;
       allow create, update: if true;
-      allow delete: if isAdmin();
+      allow delete: if true;
 
       // Sous-collections privées de l'utilisateur
       match /customers/{customerId} {
@@ -73,7 +73,7 @@ service cloud.firestore {
     // Profil candidat
     match /user_profiles/{userId} {
       allow read, write: if true;
-      allow delete: if isOwner(userId) || isAdmin() || isSignedIn();
+      allow delete: if true;
     }
 
     // Verrous de paiement atomiques (anti-doublon et anti-collision)
