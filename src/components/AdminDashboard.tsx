@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { AdminSidebar, AdminTabType } from './admin/AdminSidebar';
 import { AdminSalesTrendCurve } from './admin/AdminSalesTrendCurve';
+import { AdminMonthlyRevenueRecharts } from './admin/AdminMonthlyRevenueRecharts';
 import { MoneyFusionWebhookHealth } from './admin/MoneyFusionWebhookHealth';
 import { 
   auth, 
@@ -717,6 +718,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers,
         body: JSON.stringify({ adminEmail })
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur serveur (${res.status}) : ${text}`);
+      }
       const data = await res.json();
       if (res.ok && data.success) {
         startImpersonationSession(data.targetUser || user, adminEmail, '#editor');
@@ -927,8 +932,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           status: editStatus
         })
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur serveur (${res.status}) : ${text}`);
+      }
       const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         setErrorMsg(data.error || 'Erreur lors de la mise à jour sur le serveur.');
       } else {
         loadAdminData();
@@ -968,8 +977,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur serveur (${res.status}) : ${text}`);
+      }
       const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         setErrorMsg(data.error || 'Erreur lors de la suppression sur le serveur.');
       } else {
         loadAdminData();
@@ -1042,14 +1055,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           userId: targetUserId,
           userEmail: targetUserEmail,
           amount: adjustAmount,
+          action: adjustType === 'credit' ? 'add' : 'remove',
           type: adjustType,
           reason: adjustReason,
           adminEmail
         })
       });
 
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur serveur (${res.status}) : ${text}`);
+      }
+
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (data.success) {
         if (data.transaction) {
           setTransactionsList(prev => [data.transaction, ...prev]);
         }
@@ -1078,23 +1097,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           userId: user.uid,
           userEmail: user.email,
           amount: bonusAmount,
+          action: 'add',
           type: 'credit',
           reason: 'Bonus fidélité administrateur',
           adminEmail
         })
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur serveur (${res.status}) : ${text}`);
+      }
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (data.success) {
         setSuccessMsg(`Bonus de +${bonusAmount} FCFA accordé à ${user.firstName} !`);
-        setUsersList(prev => prev.map(u => u.uid === user.uid ? { ...u, balance: data.newBalance } : u));
+        setUsersList(prev => prev.map(u => u.uid === user.uid ? { ...u, balance: data.newBalance, walletBalance: data.newBalance } : u));
         if (data.transaction) {
           setTransactionsList(prev => [data.transaction, ...prev]);
         }
         setTimeout(() => setSuccessMsg(null), 4000);
         loadAdminData();
       }
-    } catch (e) {
-      setErrorMsg('Erreur lors de l\'attribution du bonus.');
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Erreur lors de l\'attribution du bonus.');
     }
   };
 
@@ -2013,6 +2037,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Visualisation Recharts : Courbe Fluide des Revenus Mensuels & Transactions */}
+            <AdminMonthlyRevenueRecharts transactions={transactionsList} onRefresh={loadAdminData} />
 
             {/* Courbe Visuelle Épurée des Ventes (30 Derniers Jours - Money Fusion Direct) */}
             <AdminSalesTrendCurve transactions={transactionsList} onRefresh={loadAdminData} />
@@ -3484,6 +3511,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
             </div>
+
+            {/* Visualisation Recharts : Courbe Fluide des Revenus Mensuels */}
+            <AdminMonthlyRevenueRecharts transactions={transactionsList} onRefresh={loadAdminData} />
 
             {/* Filter & Export Bar */}
             <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">

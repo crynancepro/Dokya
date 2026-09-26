@@ -20,6 +20,17 @@ function getServerAdminDb() {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// CORS & Preflight support for admin and API endpoints
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-email, x-admin-key, x-user-email, x-user-role, x-admin-role');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Lazy init Gemini client
 function getGenAIClient() {
   const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
@@ -4386,17 +4397,17 @@ app.delete('/api/admin/users', requireAdmin, handleAdminDeleteUser);
 // 8. POST /api/admin/wallet/adjust - Adjust a user's wallet balance
 app.post('/api/admin/wallet/adjust', requireAdmin, async (req, res) => {
   try {
-    const { userId, userEmail, amount, type = 'credit', reason = 'Ajustement Administrateur' } = req.body || {};
+    const { userId, userEmail, amount, action, type, reason } = req.body || {};
     const adminEmail = (req.headers['x-admin-email'] || req.body?.adminEmail || 'peter25ngouala@gmail.com') as string;
 
-    const delta = Number(amount);
-    if (!delta || delta <= 0) {
+    const delta = Math.abs(Number(amount));
+    if (!delta || delta <= 0 || isNaN(delta)) {
       return res.status(400).json({ success: false, error: 'Montant d\'ajustement invalide (doit être supérieur à 0 FCFA).' });
     }
 
-    if (!reason || reason.trim().length < 3) {
-      return res.status(400).json({ success: false, error: 'Le motif de l\'ajustement est obligatoire pour la traçabilité comptable.' });
-    }
+    const resolvedAction = (action || type || 'add').toLowerCase();
+    const isCredit = resolvedAction === 'add' || resolvedAction === 'credit' || resolvedAction === 'ajouter' || resolvedAction === '+';
+    const effectiveReason = reason && reason.trim().length >= 2 ? reason : (isCredit ? 'Ajout de solde administrateur' : 'Retrait de solde administrateur');
 
     const targetUserId = userId || (userEmail ? userEmail.toLowerCase() : '');
 
@@ -4421,7 +4432,7 @@ app.post('/api/admin/wallet/adjust', requireAdmin, async (req, res) => {
     let newBalance = currentBalance;
     let transactionAmount = 0;
 
-    if (type === 'credit') {
+    if (isCredit) {
       newBalance = currentBalance + delta;
       transactionAmount = delta;
     } else {
@@ -4431,7 +4442,7 @@ app.post('/api/admin/wallet/adjust', requireAdmin, async (req, res) => {
           error: `Débit impossible : Le solde actuel de l'utilisateur est de ${currentBalance.toLocaleString('fr-FR')} FCFA, inférieur au montant à retirer (${delta.toLocaleString('fr-FR')} FCFA).`
         });
       }
-      newBalance = currentBalance - delta;
+      newBalance = Math.max(0, currentBalance - delta);
       transactionAmount = -delta;
     }
 
@@ -4478,8 +4489,8 @@ app.post('/api/admin/wallet/adjust', requireAdmin, async (req, res) => {
       'wallet',
       'WALLET_ADJUSTMENT',
       adminEmail,
-      `Ajustement solde de ${targetUserId} : ${type === 'credit' ? '+' : '-'}${delta.toLocaleString('fr-FR')} FCFA (Nouveau solde: ${newBalance.toLocaleString('fr-FR')} FCFA). Motif: ${reason}`,
-      { amount: delta, type, newBalance, reason, txId },
+      `Ajustement solde de ${targetUserId} : ${isCredit ? '+' : '-'}${delta.toLocaleString('fr-FR')} FCFA (Nouveau solde: ${newBalance.toLocaleString('fr-FR')} FCFA). Motif: ${effectiveReason}`,
+      { amount: delta, type: isCredit ? 'credit' : 'debit', action: isCredit ? 'add' : 'remove', newBalance, reason: effectiveReason, txId },
       userEmail || targetUserId,
       targetUserId,
       'success'
@@ -4487,10 +4498,11 @@ app.post('/api/admin/wallet/adjust', requireAdmin, async (req, res) => {
 
     return res.json({
       success: true,
-      user: userIndex >= 0 ? adminStore.users[userIndex] : { uid: targetUserId, balance: newBalance },
+      user: userIndex >= 0 ? adminStore.users[userIndex] : { uid: targetUserId, balance: newBalance, walletBalance: newBalance },
       transaction: newTx,
       newBalance,
-      message: `Solde ajusté avec succès : ${newBalance.toLocaleString('fr-FR')} FCFA (${type === 'credit' ? '+' : '-'}${delta.toLocaleString('fr-FR')} FCFA).`
+      walletBalance: newBalance,
+      message: `Solde ajusté avec succès : ${newBalance.toLocaleString('fr-FR')} FCFA (${isCredit ? '+' : '-'}${delta.toLocaleString('fr-FR')} FCFA).`
     });
   } catch (err: any) {
     console.error('[Admin Adjust Wallet Error]:', err);
