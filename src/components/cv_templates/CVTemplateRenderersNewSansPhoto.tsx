@@ -389,8 +389,12 @@ export const CVTemplateRenderersNewSansPhoto: React.FC<CVTemplateInternalProps> 
   // -------------------------------------------------------------
   if (activeStyle === 'bauhaus_modern') {
     return (
-      <div className="w-full bg-white p-8 sm:p-10 font-sans text-slate-900">
-        <div className="bg-slate-950 text-white p-6 rounded-none mb-6 relative overflow-hidden" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+      <div className="w-full bg-white flex-1 flex flex-col font-sans text-slate-900">
+        <div 
+          data-cv-header="true"
+          className="cv-header-banner bg-slate-950 text-white rounded-none relative overflow-hidden" 
+          style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500 rounded-bl-full opacity-90"></div>
           <h1 className="text-3xl font-black uppercase tracking-tighter relative z-10">{personalInfo.firstName} {personalInfo.lastName}</h1>
           <p className="text-xs font-bold text-amber-400 uppercase tracking-widest mt-1 relative z-10">{personalInfo.targetJob}</p>
@@ -401,7 +405,8 @@ export const CVTemplateRenderersNewSansPhoto: React.FC<CVTemplateInternalProps> 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        <div className="cv-body-content p-8 space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           <div className="md:col-span-8 space-y-6">
             <div style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="text-xs font-black uppercase tracking-widest text-slate-950 border-b-2 border-slate-950 pb-1 mb-2">Profil & Objectifs</h2>
@@ -455,6 +460,7 @@ export const CVTemplateRenderersNewSansPhoto: React.FC<CVTemplateInternalProps> 
             </div>
             {renderCustomSections()}
           </div>
+        </div>
         </div>
       </div>
     );
@@ -620,8 +626,12 @@ export const CVTemplateRenderersNewSansPhoto: React.FC<CVTemplateInternalProps> 
   // -------------------------------------------------------------
   if (activeStyle === 'atlantic_navy') {
     return (
-      <div className="w-full bg-white p-8 sm:p-10 font-sans text-slate-900">
-        <div className="bg-gradient-to-r from-sky-900 to-blue-900 text-white p-6 sm:p-8 mb-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+      <div className="w-full bg-white flex-1 flex flex-col font-sans text-slate-900">
+        <div 
+          data-cv-header="true"
+          className="cv-header-banner bg-gradient-to-r from-sky-900 to-blue-900 text-white" 
+          style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+        >
           <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight">{personalInfo.firstName} {personalInfo.lastName}</h1>
           <p className="text-xs font-bold text-sky-200 uppercase tracking-widest mt-1">{personalInfo.targetJob}</p>
           <div className="flex flex-wrap gap-4 text-xs text-sky-100 mt-3 font-medium">
@@ -631,7 +641,7 @@ export const CVTemplateRenderersNewSansPhoto: React.FC<CVTemplateInternalProps> 
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="cv-body-content p-8 space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
           <div style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
             <h2 className="text-xs font-black uppercase tracking-widest text-sky-950 border-b-2 border-sky-800 pb-1 mb-2">Synthèse de Carrière</h2>
             <p className="text-xs text-slate-700 leading-relaxed">{profileSummary}</p>
@@ -1442,8 +1452,12 @@ export const CVTemplateRenderersNewSansPhoto: React.FC<CVTemplateInternalProps> 
   // -------------------------------------------------------------
   if (activeStyle === 'supply_chain') {
     return (
-      <div className="w-full bg-white p-8 sm:p-10 font-sans text-slate-900">
-        <div className="bg-amber-500 text-white p-5 mb-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+      <div className="w-full bg-white flex-1 flex flex-col font-sans text-slate-900">
+        <div 
+          data-cv-header="true"
+          className="cv-header-banner bg-amber-500 text-white" 
+          style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+        >
           <span className="text-[10px] font-black tracking-widest uppercase opacity-90 block">Supply Chain & Operations</span>
           <h1 className="text-2xl sm:text-3xl font-black uppercase">{personalInfo.firstName} {personalInfo.lastName}</h1>
           <p className="text-xs font-bold tracking-wide uppercase opacity-95">{personalInfo.targetJob || 'Responsable Logistique & Fret'}</p>
@@ -1454,7 +1468,7 @@ export const CVTemplateRenderersNewSansPhoto: React.FC<CVTemplateInternalProps> 
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="cv-body-content p-8 space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
           <div style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
             <h2 className="text-xs font-black uppercase tracking-widest text-amber-800 border-b-2 border-amber-500 pb-1 mb-2">Profil Opérationnel</h2>
             <p className="text-xs text-slate-700 leading-relaxed">{profileSummary}</p>

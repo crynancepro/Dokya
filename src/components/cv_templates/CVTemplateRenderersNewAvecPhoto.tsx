@@ -270,8 +270,12 @@ export const CVTemplateRenderersNewAvecPhoto: React.FC<CVTemplateInternalProps> 
   // -------------------------------------------------------------
   if (activeStyle === 'photo_silicon_exec') {
     return (
-      <div className="w-full bg-white p-8 sm:p-10 font-sans text-slate-900">
-        <div className="bg-gradient-to-r from-indigo-900 via-blue-900 to-slate-900 text-white p-6 sm:p-8 rounded-2xl mb-6 shadow-md flex items-center justify-between gap-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+      <div className="w-full bg-white flex-1 flex flex-col font-sans text-slate-900">
+        <div 
+          data-cv-header="true"
+          className="cv-header-banner bg-gradient-to-r from-indigo-900 via-blue-900 to-slate-900 text-white flex items-center justify-between gap-6" 
+          style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+        >
           <div className="space-y-1">
             <span className="text-[10px] font-mono font-bold text-indigo-300 uppercase tracking-widest">Leadership & Scale</span>
             <h1 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">{personalInfo.firstName} {personalInfo.lastName}</h1>
@@ -291,7 +295,7 @@ export const CVTemplateRenderersNewAvecPhoto: React.FC<CVTemplateInternalProps> 
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
           <div style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
             <h2 className="text-xs font-black uppercase tracking-widest text-slate-950 border-b-2 border-indigo-700 pb-1 mb-2">Executive Summary</h2>
             <p className="text-xs text-slate-700 leading-relaxed">{profileSummary}</p>

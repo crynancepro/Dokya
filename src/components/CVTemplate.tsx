@@ -3,6 +3,7 @@ import { CVFormData, AIOptimizedData, TemplateStyle, Experience, Education } fro
 import { Mail, Phone, MapPin, Globe, Linkedin, Award, Briefcase, GraduationCap, Sparkles, User, CheckCircle2, Code, Terminal, Crown, Rocket, Zap, ChevronRight, TrendingUp, Move, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
 import { CVTemplateRenderersNewSansPhoto } from './cv_templates/CVTemplateRenderersNewSansPhoto';
 import { CVTemplateRenderersNewAvecPhoto } from './cv_templates/CVTemplateRenderersNewAvecPhoto';
+export { CVDivider } from './cv_templates/CVTemplateTypes';
 
 export interface CVTemplateProps {
   formData?: CVFormData;
@@ -235,11 +236,15 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
         maxWidth: '210mm',
         minHeight: '297mm',
         boxSizing: 'border-box',
+        margin: '0 auto',
+        position: 'relative',
+        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        ['--accent-color' as any]: themeHex
       }}
-      className={`bg-white text-slate-800 shadow-xl rounded-none print:shadow-none print:rounded-none border border-slate-200 transition-all relative w-[210mm] min-w-[210mm] max-w-[210mm] mx-auto min-h-[297mm] flex flex-col justify-between ${fontClass} ${fontSizeClass} a4-document-root`}
+      className={`bg-white text-slate-800 shadow-xl rounded-none print:shadow-none print:rounded-none border border-slate-200 transition-all relative w-[210mm] min-w-[210mm] max-w-[210mm] mx-auto min-h-[297mm] flex flex-col justify-between overflow-hidden ${fontClass} ${fontSizeClass} a4-document-root`}
     >
       {/* Subtle Watermark Overlay when in unpaid preview mode */}
       {!unlocked && (
@@ -262,11 +267,18 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 1: MODERNE (En-tête Coloré & Layout Fluide) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'moderne' && (
-        <div className="w-full bg-white">
+        <div className="w-full bg-white flex-1 flex flex-col">
           {/* Header Banner */}
           <div 
-            className="p-6 sm:p-7 text-white relative overflow-hidden"
-            style={{ backgroundColor: themeHex }}
+            data-cv-header="true"
+            className="cv-header-banner text-white relative overflow-hidden"
+            style={{ 
+              backgroundColor: themeHex,
+              width: '100%',
+              margin: 0,
+              padding: '24px 32px',
+              boxSizing: 'border-box'
+            }}
           >
             <div className="relative z-10 max-w-3xl">
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight uppercase">
@@ -312,7 +324,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
           </div>
 
           {/* Main Body with Dynamic Section Reordering */}
-          <div className={`p-6 sm:p-7 space-y-5 ${alignClass} bg-white`}>
+          <div className={`cv-body-content space-y-5 ${alignClass} bg-white flex-1`} style={{ padding: '32px', boxSizing: 'border-box' }}>
             {sectionOrder.map((sectionKey) => {
               if (sectionKey === 'summary' && !formData.hideSummary) {
                 return (
@@ -542,7 +554,8 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 2: CLASSIQUE (Formel, Épuré, Traditionnel) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'classique' && (
-        <div className="p-8 sm:p-10 space-y-6 bg-white">
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
           {/* Centered Traditional Header */}
           <div className="text-center border-b-2 pb-5" style={{ borderColor: themeHex }}>
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight uppercase">
@@ -630,6 +643,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
               </div>
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -637,9 +651,23 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 3: ELEGANT (2 Colonnes avec Sidebar Sombre à Gauche) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'elegant' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 min-h-[1000px] bg-white">
+        <div 
+          className="cv-sidebar-layout w-full bg-white flex flex-row items-stretch flex-1 min-h-[297mm]"
+          style={{ display: 'flex', flexDirection: 'row', alignItems: 'stretch', minHeight: '297mm', width: '100%', boxSizing: 'border-box' }}
+        >
           {/* Dark Sidebar */}
-          <div className="p-6 text-white space-y-6" style={{ backgroundColor: '#1e293b' }}>
+          <div 
+            className="cv-sidebar text-white space-y-6" 
+            style={{ 
+              backgroundColor: '#1e293b', 
+              width: '33.333%', 
+              minWidth: '33.333%', 
+              maxWidth: '33.333%',
+              alignSelf: 'stretch', 
+              padding: '32px 24px', 
+              boxSizing: 'border-box' 
+            }}
+          >
             <div className="space-y-1.5">
               <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 font-bold text-xl mb-3">
                 {personalInfo.firstName ? personalInfo.firstName[0] : 'A'}
@@ -684,7 +712,10 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
           </div>
 
           {/* Right Main Content */}
-          <div className="md:col-span-2 p-7 space-y-6 bg-white">
+          <div 
+            className="cv-body-content space-y-6 bg-white flex-1"
+            style={{ width: '66.666%', padding: '32px', boxSizing: 'border-box' }}
+          >
             <div className="space-y-1">
               <h2 className="text-xs font-black uppercase tracking-widest text-slate-800 mb-1 border-b-2 border-indigo-600 pb-1">
                 Profil Professionnel
@@ -748,9 +779,13 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 4: CREATIVE (Design Dynamique & ATS Épuré) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'creative' && (
-        <div className="p-6 sm:p-8 space-y-6 bg-white">
+        <div className="w-full bg-white flex-1 flex flex-col">
           {/* Creative Top Banner */}
-          <div className="bg-slate-900 p-6 rounded-none text-white relative overflow-hidden">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-slate-900 text-white relative overflow-hidden"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box' }}
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
@@ -770,7 +805,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
           </div>
 
           {/* Profile Section */}
-          <div className="space-y-1">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <h2 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b-2 border-indigo-600 pb-1 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-indigo-600" />
               <span>Pitch & Profil Professionnel</span>
@@ -778,7 +813,6 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             <p className="text-xs text-slate-700 leading-relaxed font-medium pt-1">
               {profileSummary}
             </p>
-          </div>
 
           {/* Experiences */}
           <div>
@@ -847,6 +881,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
               </div>
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -854,10 +889,11 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 5: EXECUTIVE / CADRE (Style Haute Direction & Rigueur) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'executive' && (
-        <div className="p-8 sm:p-10 space-y-6 bg-white">
-          {/* Executive Top Accent */}
-          <div className="h-1.5 w-full" style={{ backgroundColor: themeHex }}></div>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          {/* Executive Top Accent Banner */}
+          <div data-cv-header="true" className="cv-header-banner w-full" style={{ height: '6px', backgroundColor: themeHex, width: '100%', margin: 0, boxSizing: 'border-box' }}></div>
 
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
           {/* Executive Header Block */}
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 border-b border-slate-300 pb-6">
             <div>
@@ -950,6 +986,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
               </div>
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -957,7 +994,8 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 6: MINIMAL (Format Épuré & Fortement Optimisé ATS) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'minimal' && (
-        <div className="p-8 sm:p-10 space-y-5 font-sans">
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div className="cv-body-content space-y-5 font-sans bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
           {/* Minimalist Top Bar */}
           <div className="border-b border-slate-900 pb-3">
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
@@ -1041,6 +1079,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
               {languages.map(l => `${l.name} (${l.level})`).join(', ')}
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -1048,9 +1087,13 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 7: TECH & DATA (Design Développeur & Stack Épurée) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'tech' && (
-        <div className="w-full font-mono text-xs bg-white">
+        <div className="w-full font-mono text-xs bg-white flex-1 flex flex-col">
           {/* Dark Header with Code Aesthetic */}
-          <div className="bg-slate-950 p-6 sm:p-7 text-slate-100 border-b-2 border-emerald-500">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-slate-950 text-slate-100 border-b-2 border-emerald-500"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box' }}
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight font-sans">
@@ -1071,7 +1114,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
           </div>
 
           {/* Tech Content Body */}
-          <div className="p-6 sm:p-7 space-y-5 font-sans bg-white">
+          <div className="cv-body-content space-y-5 font-sans bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             {/* System Profile */}
             <div className="space-y-1">
               <h2 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b pb-1 flex items-center gap-2 font-mono text-emerald-600">
@@ -1159,7 +1202,8 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 8: CHRONO COMPACT (Timeline Chronologique & Layout Dense) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'compact' && (
-        <div className="p-6 sm:p-8 space-y-5 bg-white">
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div className="cv-body-content space-y-5 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
           {/* Compact Top Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-slate-900 pb-4">
             <div>
@@ -1250,6 +1294,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
               </div>
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -1257,7 +1302,8 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 9: PRESTIGE (Luxe, Finance, Conseil & Juridique) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'prestige' && (
-        <div className="p-8 sm:p-10 space-y-6 bg-white">
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
           {/* Double Gold Line Frame Top */}
           <div className="border-t-2 border-b border-amber-600/40 py-5 text-center">
             <div className="flex justify-center mb-1">
@@ -1352,6 +1398,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
               </div>
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -1359,9 +1406,13 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 10: STARTUP & GROWTH (Proactif, Impact & Business) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'startup' && (
-        <div className="p-6 sm:p-8 space-y-6 bg-white">
+        <div className="w-full bg-white flex-1 flex flex-col">
           {/* Vibrant Top Header */}
-          <div className="bg-slate-900 p-6 rounded-none text-white">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-slate-900 text-white relative overflow-hidden"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box' }}
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
@@ -1381,7 +1432,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
           </div>
 
           {/* High Impact Pitch */}
-          <div className="space-y-1">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <h2 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b-2 border-violet-600 pb-1 flex items-center gap-2">
               <Zap className="w-4 h-4 text-violet-600" />
               <span>Pitch Candidat</span>
@@ -1389,7 +1440,6 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             <p className="text-xs text-slate-700 leading-relaxed font-medium pt-1">
               {profileSummary}
             </p>
-          </div>
 
           {/* Key Experiences */}
           <div>
@@ -1456,6 +1506,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
               </div>
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -1463,8 +1514,12 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 11: PHOTO EXECUTIVE (Cadre Photo Executive Prestige) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_executive' && (
-        <div className="w-full bg-white">
-          <div className="bg-slate-950 text-white p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6 relative overflow-hidden border-b-4 border-amber-500" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-slate-950 text-white flex flex-col sm:flex-row items-center gap-6 relative overflow-hidden border-b-4 border-amber-500"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+          >
             <div className="relative shrink-0">
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-4 border-amber-400 bg-slate-800 flex items-center justify-center">
                 {personalInfo.photoUrl ? (
@@ -1491,7 +1546,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             </div>
           </div>
 
-          <div className="p-6 sm:p-8 space-y-6 bg-white">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <div className="space-y-1" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="text-xs font-black uppercase tracking-widest text-slate-900 border-b pb-1 flex items-center gap-2">
                 <Crown className="w-4 h-4 text-amber-600 shrink-0" />
@@ -1556,8 +1611,12 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 12: PHOTO MODERN (Design Photo Pro Split) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_modern' && (
-        <div className="w-full bg-white">
-          <div className="bg-slate-900 text-white p-5 sm:p-7 flex items-center justify-between gap-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-slate-900 text-white flex items-center justify-between gap-6"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+          >
             <div className="space-y-1.5 flex-1 min-w-0">
               <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white leading-tight">
                 {personalInfo.firstName} {personalInfo.lastName}
@@ -1593,7 +1652,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             </div>
           </div>
 
-          <div className="p-5 sm:p-7 space-y-5 bg-white">
+          <div className="cv-body-content space-y-5 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <div className="space-y-1" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="font-black text-slate-900 uppercase text-xs border-b pb-1 tracking-wider">Profil Professionnel</h2>
               <p className="text-xs text-slate-800 leading-relaxed font-medium pt-1">{profileSummary}</p>
@@ -1660,8 +1719,21 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 13: PHOTO CREATIVE (Studio Photo & Sidebar Sombre) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_creative' && (
-        <div className="w-full flex flex-col sm:flex-row bg-white">
-          <div className="w-full sm:w-1/3 bg-slate-900 text-white p-5 space-y-5">
+        <div 
+          className="cv-sidebar-layout w-full flex flex-row items-stretch min-h-full flex-1 bg-white"
+          style={{ display: 'flex', flexDirection: 'row', alignItems: 'stretch', minHeight: '100%', width: '100%', boxSizing: 'border-box' }}
+        >
+          <div 
+            className="cv-sidebar bg-slate-900 text-white space-y-5"
+            style={{ 
+              width: '33.333%', 
+              minWidth: '33.333%', 
+              maxWidth: '33.333%', 
+              alignSelf: 'stretch', 
+              padding: '32px 20px', 
+              boxSizing: 'border-box' 
+            }}
+          >
             <div className="flex flex-col items-center text-center" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-violet-400 mb-2.5 bg-slate-800 flex items-center justify-center shrink-0">
                 {personalInfo.photoUrl ? (
@@ -1723,7 +1795,10 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             )}
           </div>
 
-          <div className="w-full sm:w-2/3 p-5 sm:p-7 space-y-5 bg-white">
+          <div 
+            className="cv-body-content flex-1 space-y-5 bg-white"
+            style={{ width: '66.666%', padding: '32px', boxSizing: 'border-box' }}
+          >
             <div className="space-y-1" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="font-black text-slate-900 uppercase text-xs border-b pb-1 tracking-wider">Résumé Professionnel</h2>
               <p className="text-xs text-slate-800 font-medium leading-relaxed pt-1">{profileSummary}</p>
@@ -1773,8 +1848,9 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 14: PHOTO MINIMAL (Épuré Chic avec Photo à Droite) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_minimal' && (
-        <div className="w-full p-6 sm:p-8 space-y-6 bg-white">
-          <div className="flex items-center justify-between border-b-2 border-slate-900 pb-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
+            <div className="flex items-center justify-between border-b-2 border-slate-900 pb-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
             <div>
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase tracking-tight">
                 {personalInfo.firstName} {personalInfo.lastName}
@@ -1849,6 +1925,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
               </div>
             </div>
           </div>
+          </div>
         </div>
       )}
 
@@ -1856,8 +1933,12 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 15: PHOTO CORPORATE (Style Bancaire & Cadre Doré) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_corporate' && (
-        <div className="w-full bg-white">
-          <div className="bg-sky-950 text-white p-6 sm:p-8 flex items-center justify-between gap-6 border-b-4 border-amber-400" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-sky-950 text-white flex items-center justify-between gap-6 border-b-4 border-amber-400"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+          >
             <div className="space-y-1">
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">{personalInfo.firstName} {personalInfo.lastName}</h1>
               <p className="text-xs font-bold text-sky-200 uppercase tracking-wider">{personalInfo.targetJob}</p>
@@ -1876,7 +1957,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             </div>
           </div>
 
-          <div className="p-6 sm:p-8 space-y-6 bg-white">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <div className="space-y-1" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="font-extrabold text-slate-900 uppercase text-xs border-b pb-1 tracking-wider">Résumé de Carrière</h2>
               <p className="text-xs text-slate-800 leading-relaxed font-medium pt-1">{profileSummary}</p>
@@ -1937,8 +2018,12 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 16: PHOTO TECH (Tech Leader Photo & Stack) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_tech' && (
-        <div className="w-full bg-white">
-          <div className="bg-slate-950 text-emerald-400 p-6 sm:p-8 flex items-center justify-between gap-6 border-b border-slate-800" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-slate-950 text-emerald-400 flex items-center justify-between gap-6 border-b border-slate-800"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+          >
             <div className="space-y-2">
               <h1 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tight">
                 {personalInfo.firstName} <span className="text-emerald-400">{personalInfo.lastName}</span>
@@ -1961,7 +2046,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             </div>
           </div>
 
-          <div className="p-6 sm:p-8 space-y-6 bg-white">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <div className="space-y-1 font-mono text-xs" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="text-emerald-700 font-bold border-b pb-1 uppercase tracking-wider">Profil & Synthèse Tech</h2>
               <p className="text-slate-800 leading-relaxed font-sans text-xs pt-1">{profileSummary}</p>
@@ -2023,8 +2108,21 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 17: PHOTO SIDEBAR (Full Vertical Sidebar with Portrait) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_sidebar' && (
-        <div className="w-full flex flex-col sm:flex-row bg-white">
-          <div className="w-full sm:w-1/3 bg-slate-50 p-5 space-y-5 border-r border-slate-200">
+        <div 
+          className="cv-sidebar-layout w-full flex flex-row items-stretch min-h-full flex-1 bg-white"
+          style={{ display: 'flex', flexDirection: 'row', alignItems: 'stretch', minHeight: '100%', width: '100%', boxSizing: 'border-box' }}
+        >
+          <div 
+            className="cv-sidebar bg-slate-50 space-y-5 border-r border-slate-200"
+            style={{ 
+              width: '33.333%', 
+              minWidth: '33.333%', 
+              maxWidth: '33.333%', 
+              alignSelf: 'stretch', 
+              padding: '32px 20px', 
+              boxSizing: 'border-box' 
+            }}
+          >
             <div className="flex flex-col items-center text-center" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-slate-300 mb-2.5 bg-slate-200 shrink-0">
                 {personalInfo.photoUrl ? (
@@ -2084,7 +2182,10 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             )}
           </div>
 
-          <div className="w-full sm:w-2/3 p-5 sm:p-7 space-y-5 bg-white">
+          <div 
+            className="cv-body-content flex-1 space-y-5 bg-white"
+            style={{ width: '66.666%', padding: '32px', boxSizing: 'border-box' }}
+          >
             <div className="space-y-1" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="font-extrabold text-slate-900 uppercase text-xs border-b pb-1 tracking-wider">Résumé Professionnel</h2>
               <p className="text-xs text-slate-800 font-medium leading-relaxed pt-1">{profileSummary}</p>
@@ -2134,8 +2235,12 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 18: PHOTO HORIZON (Bicolore Horizontal & Avatar) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_horizon' && (
-        <div className="w-full bg-white">
-          <div className="bg-slate-900 text-white p-6 sm:p-8 flex items-center justify-between gap-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-slate-900 text-white flex items-center justify-between gap-6"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+          >
             <div>
               <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">{personalInfo.firstName} {personalInfo.lastName}</h1>
               <p className="text-sm font-extrabold text-indigo-300 uppercase tracking-wider">{personalInfo.targetJob}</p>
@@ -2154,7 +2259,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             </div>
           </div>
 
-          <div className="p-6 sm:p-8 space-y-6 bg-white">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <div className="space-y-1" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="font-extrabold text-slate-900 uppercase text-xs border-b pb-1 tracking-wider">Aperçu Candidat</h2>
               <p className="text-xs text-slate-800 font-medium leading-relaxed pt-1">{profileSummary}</p>
@@ -2213,8 +2318,12 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 19: PHOTO IMPACT (BTP, Industrie, Ingénierie & Photo) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_impact' && (
-        <div className="w-full bg-white">
-          <div className="bg-amber-500 text-slate-950 p-6 sm:p-8 flex items-center justify-between gap-6 border-b-4 border-slate-950" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-amber-500 text-slate-950 flex items-center justify-between gap-6 border-b-4 border-slate-950"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+          >
             <div>
               <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-slate-950">{personalInfo.firstName} {personalInfo.lastName}</h1>
               <p className="text-sm font-black uppercase tracking-wider text-slate-950 mt-0.5">{personalInfo.targetJob}</p>
@@ -2233,7 +2342,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             </div>
           </div>
 
-          <div className="p-6 sm:p-8 space-y-6 bg-white">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <div className="space-y-1" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="font-black text-slate-950 uppercase text-xs border-b pb-1 tracking-wider">Résumé d'Impact</h2>
               <p className="text-xs text-slate-950 font-medium leading-relaxed pt-1">{profileSummary}</p>
@@ -2292,8 +2401,12 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
       {/* STYLE 20: PHOTO MEDICAL (Bio-Santé, Médical & Soin) */}
       {/* ------------------------------------------------------------- */}
       {activeStyle === 'photo_medical' && (
-        <div className="w-full bg-white">
-          <div className="bg-teal-800 text-white p-6 sm:p-8 flex items-center justify-between gap-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+        <div className="w-full bg-white flex-1 flex flex-col">
+          <div 
+            data-cv-header="true"
+            className="cv-header-banner bg-teal-800 text-white flex items-center justify-between gap-6"
+            style={{ width: '100%', margin: 0, padding: '24px 32px', boxSizing: 'border-box', pageBreakInside: 'avoid', breakInside: 'avoid' }}
+          >
             <div className="space-y-1">
               <h1 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tight">{personalInfo.firstName} {personalInfo.lastName}</h1>
               <p className="text-xs font-bold text-teal-100 uppercase tracking-wider">{personalInfo.targetJob}</p>
@@ -2312,7 +2425,7 @@ export const CVTemplate: React.FC<CVTemplateProps> = ({
             </div>
           </div>
 
-          <div className="p-6 sm:p-8 space-y-6 bg-white">
+          <div className="cv-body-content space-y-6 bg-white flex-1" style={{ padding: '32px', boxSizing: 'border-box' }}>
             <div className="space-y-1" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <h2 className="font-black text-slate-900 uppercase text-xs border-b pb-1 tracking-wider">Engagements & Profil Soignant</h2>
               <p className="text-xs text-slate-800 font-medium leading-relaxed pt-1">{profileSummary}</p>

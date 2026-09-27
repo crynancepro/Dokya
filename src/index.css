@@ -328,7 +328,71 @@
   max-width: 210mm !important;
   min-height: 297mm !important;
   box-sizing: border-box !important;
+  margin: 0 auto !important;
+  position: relative !important;
+  overflow: hidden !important;
   flex-shrink: 0 !important;
+}
+
+/* Ensure box-sizing: border-box on all elements inside A4 documents */
+.a4-document-root *,
+#cv-preview * {
+  box-sizing: border-box !important;
+}
+
+/* 2. CORRECTION DES BANNIÈRES ET EN-TÊTES COLORÉS (HEADERS & BANNERS) */
+.a4-document-root .cv-header-banner,
+#cv-preview .cv-header-banner,
+.a4-document-root [data-cv-header="true"],
+#cv-preview [data-cv-header="true"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 24px 32px !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+/* 2b. MODÈLES AVEC SIDEBAR COLORÉE (display: flex et align-self: stretch) */
+.a4-document-root .cv-sidebar-layout,
+#cv-preview .cv-sidebar-layout {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  min-height: 297mm !important;
+  flex: 1 1 auto !important;
+  box-sizing: border-box !important;
+}
+
+.a4-document-root .cv-sidebar,
+#cv-preview .cv-sidebar {
+  align-self: stretch !important;
+  min-height: 100% !important;
+  height: auto !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+}
+
+/* 3. UNIFORMISATION DES LIGNES SÉPARATRICES (DIVIDERS) */
+.cv-divider,
+hr.cv-divider,
+.a4-document-root hr,
+#cv-preview hr {
+  width: 100% !important;
+  border: none !important;
+  border-top: 2px solid var(--accent-color, #3b82f6) !important;
+  margin: 12px 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* 4. CONTRAINTES ET LISIBILITÉ DU CORPS DES CV (PADDING 32PX) */
+.a4-document-root .cv-body-content,
+#cv-preview .cv-body-content {
+  padding: 32px !important;
+  box-sizing: border-box !important;
 }
 
 /* Prevent text shrinking or responsive stacking inside A4 containers */

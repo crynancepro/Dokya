@@ -704,7 +704,7 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
 
         // Render page cleanly to canvas with desktop viewport evaluation
         const canvas = await html2canvas(pageEl, {
-          scale: 2.2,
+          scale: 2,
           useCORS: true,
           allowTaint: true,
           logging: false,
@@ -828,7 +828,7 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
 
       // Capture high-fidelity canvas with desktop width emulation
       const canvas = await html2canvas(element, {
-        scale: 2.2,
+        scale: 2,
         useCORS: true,
         logging: false,
         allowTaint: true,
