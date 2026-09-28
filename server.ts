@@ -3111,10 +3111,15 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       : (resolvedType === 'subscription' ? `Abonnement Dokya ${targetPlanId || 'VIP'}` : "Rechargement Wallet Dokya");
 
     // 3. TRANSMISSION DU MONTANT ET DES MÉTADONNÉES DANS /api/moneyfusion/checkout
-    // Transmets impérativement le montant sous les clés amount et totalPrice dans le body et dans personal_Info
+    // Prise en charge des frais par le marchand (fee_take_over) : l'utilisateur reçoit le montant exact rechargé
     const paymentData = {
       amount: Number(targetAmount),
       totalPrice: Number(targetAmount),
+      fee_take_over: true,
+      frais: false,
+      frais_client: false,
+      frais_marchand: true,
+      fee_charge: 'merchant',
       article: [
         { [articleLabel]: Number(targetAmount) }
       ],
@@ -3125,6 +3130,9 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
           type: resolvedType,
           plan: targetPlanId || "",
           amount: Number(targetAmount),
+          expectedAmount: Number(targetAmount),
+          nominalAmount: Number(targetAmount),
+          fee_take_over: true,
           userEmail: targetUserEmail,
           transactionId: transactionId
         }
@@ -3340,7 +3348,21 @@ app.post('/api/webhooks/moneyfusion', async (req, res) => {
 
     // 3. LE PAIEMENT EST CONFIRMÉ :
     const effectiveUserId = (transaction?.userId && transaction.userId !== 'guest') ? transaction.userId : userId;
-    const effectiveAmount = Math.round(Number(validatedAmount || transaction?.amount || transaction?.expectedAmount || amount || 0));
+    
+    // Le montant crédité doit être le montant nominal exact rechargé X FCFA (sans déduction de frais marchand)
+    const nominalRechargedAmount = Math.round(Number(
+      transaction?.expectedAmount ||
+      transaction?.nominalAmount ||
+      transaction?.amount ||
+      personalInfo.expectedAmount ||
+      personalInfo.nominalAmount ||
+      personalInfo.amount ||
+      amount ||
+      validatedAmount ||
+      0
+    ));
+
+    const effectiveAmount = nominalRechargedAmount > 0 ? nominalRechargedAmount : Math.round(Number(validatedAmount || 0));
 
     if (effectiveAmount <= 0) {
       console.warn(`[Money Fusion Webhook] Montant détecté à 0 FCFA pour ${searchId}. Aucun crédit.`);

@@ -2,9 +2,22 @@
  * API Route: /api/moneyfusion/checkout
  * 100% autonome - Compatible Vercel Serverless Function & Next.js App Router
  * Capture obligatoire du téléphone Mobile Money et montant > 0 FCFA
+ * Prise en charge intégrale des frais de transaction par le marchand (fee_take_over)
  */
 
-import { db } from '../../lib/firebaseAdmin.js';
+// Helper asynchrone dynamique pour charger la base Firestore sans risque ERR_REQUIRE_ESM
+let _cachedDb: any = null;
+async function getFirestoreDb(): Promise<any> {
+  if (_cachedDb) return _cachedDb;
+  try {
+    const mod = await import('../../lib/firebaseAdmin.js');
+    _cachedDb = mod.db || mod.dbAdmin || null;
+    return _cachedDb;
+  } catch (err: any) {
+    console.warn('[Checkout API] Warning chargement Firestore DB (repli sécurisé):', err?.message || err);
+    return null;
+  }
+}
 
 interface MoneyFusionRequestBody {
   amount?: number | string;
@@ -69,6 +82,7 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
   const nowIso = new Date().toISOString();
 
   // 3. Création de la transaction dans Firestore 'transactions' avec statut PENDING
+  const db = await getFirestoreDb();
   if (db && typeof db.collection === 'function') {
     try {
       const pendingTx = {
@@ -84,6 +98,8 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
         typeLabel: 'Recharge Solde',
         amount: numericAmount,
         expectedAmount: numericAmount,
+        nominalAmount: numericAmount,
+        fee_take_over: true,
         currency: 'XOF',
         status: 'PENDING',
         paymentGateway: 'Money Fusion',
@@ -108,10 +124,17 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
     targetEndpoint = 'https://api.moneyfusion.net/api/v1/payments';
   }
 
-  // 4. Transmission à Money Fusion avec montant exact, numéro de téléphone et métadonnées
+  // 4. Transmission à Money Fusion avec prise en charge des frais par le marchand (fee_take_over)
+  // L'utilisateur doit impérativement recevoir le montant exact rechargé X FCFA
   const paymentData = {
     amount: Number(numericAmount),
     totalPrice: Number(numericAmount),
+    // Configuration officielle de prise en charge des frais par le marchand
+    fee_take_over: true,
+    frais: false,
+    frais_client: false,
+    frais_marchand: true,
+    fee_charge: 'merchant',
     article: [
       { "Rechargement Wallet Dokya": Number(numericAmount) }
     ],
@@ -123,6 +146,9 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
         userName: targetName,
         phoneNumber: targetPhone,
         amount: Number(numericAmount),
+        expectedAmount: Number(numericAmount),
+        nominalAmount: Number(numericAmount),
+        fee_take_over: true,
         type: 'wallet_recharge'
       }
     ],
@@ -131,6 +157,7 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
     return_url: returnUrl,
     webhook_url: webhookUrl
   };
+
 
   if (apiKey || process.env.MONEYFUSION_API_URL) {
     try {
@@ -160,6 +187,10 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
                 checkoutUrl: checkoutUrl,
                 status: 'PENDING',
                 isProcessed: false,
+                amount: numericAmount,
+                expectedAmount: numericAmount,
+                nominalAmount: numericAmount,
+                fee_take_over: true,
                 createdAt: nowIso,
                 updatedAt: nowIso
               }, { merge: true });
@@ -177,6 +208,8 @@ export async function processMoneyFusionCheckout(body: MoneyFusionRequestBody) {
                   phoneNumber: targetPhone,
                   amount: numericAmount,
                   expectedAmount: numericAmount,
+                  nominalAmount: numericAmount,
+                  fee_take_over: true,
                   currency: 'XOF',
                   type: 'wallet_recharge',
                   status: 'PENDING',

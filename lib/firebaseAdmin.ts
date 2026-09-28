@@ -1,6 +1,4 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { initializeApp as initAdminApp, getApps as getAdminApps, getApp as getAdminApp, type App as AdminApp } from 'firebase-admin/app';
-import { getAuth as getAdminAuth, type Auth as AdminAuth } from 'firebase-admin/auth';
 import {
   getFirestore,
   doc,
@@ -409,38 +407,56 @@ export async function executeAtomicPaymentCredit({
 
 export { rawFirestore, firestoreRunTransaction as runTransaction, doc as rawDocRef };
 
-// Initialize Admin SDK Auth for server-side user management
-let adminSdkApp: AdminApp | null = null;
-let adminAuth: AdminAuth | null = null;
-try {
-  adminSdkApp = getAdminApps().length > 0 ? getAdminApp() : initAdminApp({ projectId: FIRESTORE_PROJECT_ID });
-  adminAuth = getAdminAuth(adminSdkApp);
-} catch (e: any) {
-  console.warn('[firebaseAdmin] Warning initializing firebase-admin Auth:', e?.message || e);
+// Lazy helper to load firebase-admin Auth dynamically on demand
+// (Prevents ERR_REQUIRE_ESM on jose/jwks-rsa at module evaluation time on Vercel)
+async function getAdminAuthClient(): Promise<any> {
+  try {
+    const { getAuth } = await import('firebase-admin/auth');
+    const { getApps, getApp, initializeApp: initAdminApp } = await import('firebase-admin/app');
+    const adminSdkApp = getApps().length > 0 ? getApp() : initAdminApp({ projectId: FIRESTORE_PROJECT_ID });
+    return getAuth(adminSdkApp);
+  } catch (err: any) {
+    console.warn('[firebaseAdmin] Dynamic firebase-admin Auth unavailable:', err?.message || err);
+    return null;
+  }
 }
 
-export { adminAuth };
+export const adminAuth: any = null;
 
 export const admin: any = {
   firestore: () => dbAdmin,
   auth: () => {
     return {
       async deleteUser(uid: string) {
-        if (adminAuth && typeof adminAuth.deleteUser === 'function') {
-          return await adminAuth.deleteUser(uid);
+        try {
+          const authClient = await getAdminAuthClient();
+          if (authClient && typeof authClient.deleteUser === 'function') {
+            return await authClient.deleteUser(uid);
+          }
+        } catch (e: any) {
+          console.warn(`[admin.auth] deleteUser warning for ${uid}:`, e?.message || e);
         }
-        console.warn(`[admin.auth] deleteUser warning: adminAuth not available for uid ${uid}`);
         return true;
       },
       async getUser(uid: string) {
-        if (adminAuth && typeof adminAuth.getUser === 'function') {
-          return await adminAuth.getUser(uid);
+        try {
+          const authClient = await getAdminAuthClient();
+          if (authClient && typeof authClient.getUser === 'function') {
+            return await authClient.getUser(uid);
+          }
+        } catch (e: any) {
+          console.warn(`[admin.auth] getUser warning for ${uid}:`, e?.message || e);
         }
         return null;
       },
       async updateUser(uid: string, properties: any) {
-        if (adminAuth && typeof adminAuth.updateUser === 'function') {
-          return await adminAuth.updateUser(uid, properties);
+        try {
+          const authClient = await getAdminAuthClient();
+          if (authClient && typeof authClient.updateUser === 'function') {
+            return await authClient.updateUser(uid, properties);
+          }
+        } catch (e: any) {
+          console.warn(`[admin.auth] updateUser warning for ${uid}:`, e?.message || e);
         }
         return null;
       }
@@ -453,3 +469,4 @@ export const admin: any = {
 admin.firestore.FieldValue = FieldValue;
 
 export default admin;
+

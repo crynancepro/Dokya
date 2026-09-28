@@ -108,7 +108,23 @@ export default async function handler(req: any, res: any) {
 
     // 4. LE PAIEMENT EST 100% CONFIRMÉ (statut 'paid' / 'success') :
     const effectiveUserId = (transaction?.userId && transaction.userId !== 'guest') ? transaction.userId : userId;
-    const effectiveAmount = Math.round(Number(validatedAmount || transaction?.amount || transaction?.expectedAmount || rawAmount || 0));
+
+    // Le montant crédité à l'utilisateur doit impérativement être le montant exact rechargé X FCFA (ex: 300 FCFA),
+    // sans aucune déduction de frais (le marchand prend en charge les frais de transaction).
+    // Priorité absolue au montant nominal attendu initialement (expectedAmount / nominalAmount / amount).
+    const nominalRechargedAmount = Math.round(Number(
+      transaction?.expectedAmount ||
+      transaction?.nominalAmount ||
+      transaction?.amount ||
+      personalInfo.expectedAmount ||
+      personalInfo.nominalAmount ||
+      personalInfo.amount ||
+      rawAmount ||
+      validatedAmount ||
+      0
+    ));
+
+    const effectiveAmount = nominalRechargedAmount > 0 ? nominalRechargedAmount : Math.round(Number(validatedAmount || 0));
 
     if (effectiveAmount <= 0) {
       console.warn(`[Money Fusion Webhook] Montant détecté à 0 FCFA pour ${searchId}. Aucun crédit.`);
