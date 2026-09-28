@@ -5,6 +5,11 @@ import {
   BarChart3, Activity, ShieldCheck, ChevronRight, Layers
 } from 'lucide-react';
 import { TransactionRecord } from '../../types';
+import { 
+  isRealCashInflow, 
+  parseTransactionAmount, 
+  parseTransactionDate 
+} from '../../utils/revenueUtils';
 
 interface AdminSalesTrendCurveProps {
   transactions: TransactionRecord[];
@@ -22,79 +27,6 @@ interface DayData {
   revenue: number;
   count: number;
   methods: string[];
-}
-
-// Helper to extract numeric amount from any transaction shape
-function parseTransactionAmount(tx: any): number {
-  if (!tx) return 0;
-
-  const candidateFields = [
-    tx.amount,
-    tx.expectedAmount,
-    tx.extractedAmount,
-    tx.paidAmount,
-    tx.totalAmount,
-    tx.pricePaid,
-    tx.montant,
-    tx.price,
-    tx.total,
-    tx.rechargeAmount,
-    tx.extractedData?.amount,
-    tx.extractedData?.expectedAmount,
-    tx.paymentDetails?.amount,
-    tx.paymentDetails?.price
-  ];
-
-  for (const val of candidateFields) {
-    if (val !== undefined && val !== null) {
-      if (typeof val === 'number' && !isNaN(val) && val > 0) {
-        return val;
-      }
-      if (typeof val === 'string') {
-        const cleaned = val.replace(/[^0-9.-]/g, '');
-        const num = parseFloat(cleaned);
-        if (!isNaN(num) && num > 0) {
-          return num;
-        }
-      }
-    }
-  }
-
-  // Fallback by service/description if payment was approved but amount was stored as 0 or undefined
-  const typeStr = (tx.type || tx.transactionType || '').toLowerCase();
-  const descStr = ((tx.description || '') + ' ' + (tx.title || '')).toLowerCase();
-
-  if (typeStr.includes('sub') || descStr.includes('pass') || descStr.includes('vip') || descStr.includes('abonnement')) {
-    if (descStr.includes('semaine') || descStr.includes('weekly')) return 2500;
-    return 5000;
-  }
-  if (typeStr.includes('ebook') || descStr.includes('ebook') || descStr.includes('livre')) {
-    return 3000;
-  }
-  if (typeStr.includes('duo') || descStr.includes('pack duo')) {
-    return 1500;
-  }
-  if (typeStr.includes('doc') || descStr.includes('cv') || descStr.includes('lettre') || descStr.includes('facture') || descStr.includes('devis')) {
-    return 1000;
-  }
-
-  return 1000; // sensible positive fallback for any validated transaction
-}
-
-// Helper to parse date to Date object
-function parseTransactionDate(raw: any): Date | null {
-  if (!raw) return null;
-  try {
-    if (raw instanceof Date) return raw;
-    if (typeof raw.toDate === 'function') return raw.toDate();
-    if (raw.seconds) return new Date(raw.seconds * 1000);
-    if (typeof raw === 'number') return new Date(raw);
-    if (typeof raw === 'string') {
-      const d = new Date(raw);
-      if (!isNaN(d.getTime())) return d;
-    }
-  } catch {}
-  return null;
 }
 
 export const AdminSalesTrendCurve: React.FC<AdminSalesTrendCurveProps> = ({ 
@@ -158,18 +90,13 @@ export const AdminSalesTrendCurve: React.FC<AdminSalesTrendCurveProps> = ({
     let sum = 0;
     let countTotal = 0;
 
-    // Filter approved transactions
+    // Filter approved transactions representing real cash inflows
     transactions.forEach((tx) => {
-      const isApproved = 
-        tx.status === 'APPROVED' || 
-        tx.status === 'VALIDATED_BY_AI' || 
-        tx.status === 'success' || 
-        tx.status === 'COMPLETED' || 
-        tx.status === 'MANUALLY_VALIDATED';
+      // Règle Dokya : Seules les entrées d'argent réelles (recharges + achats directs) constituent le CA
+      // Les achats réglés avec le solde interne (Wallet) sont exclus pour éviter les doublons
+      if (!isRealCashInflow(tx)) return;
 
-      if (!isApproved) return;
-
-      const dateObj = parseTransactionDate(tx.createdAt || tx.approvedAt || (tx as any).updatedAt);
+      const dateObj = parseTransactionDate(tx.createdAt || (tx as any).approvedAt || (tx as any).updatedAt);
       if (!dateObj) return;
 
       const txIso = dateObj.toISOString().split('T')[0];
@@ -329,13 +256,13 @@ export const AdminSalesTrendCurve: React.FC<AdminSalesTrendCurveProps> = ({
               <span>Courbe des Ventes Encaissées</span>
               <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-xs flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {isDemoPreview ? 'Simulation Visuelle' : 'Firestore Réel'}
+                {isDemoPreview ? 'Simulation Visuelle' : 'Encaissements Réels'}
               </span>
             </h3>
           </div>
           
           <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
-            Suivi quotidien des flux validés via Webhook Money Fusion (Wave, Orange Money, Moov, MTN & Cartes).
+            Flux financiers réels encaissés jour par jour (Recharges Money Fusion / Wave / OM & Achats directs). Les achats réglés avec le solde interne (wallet) sont exclus pour éliminer tout doublon.
           </p>
         </div>
 

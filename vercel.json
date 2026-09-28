@@ -21,7 +21,7 @@
     },
     {
       "source": "/api/moneyfusion/verify",
-      "destination": "/api/payment"
+      "destination": "/api/moneyfusion/verify"
     },
     {
       "source": "/api/pricing",

@@ -25,6 +25,11 @@ import {
   BarChart2
 } from 'lucide-react';
 import { TransactionRecord } from '../../types';
+import { 
+  isRealCashInflow, 
+  parseTransactionAmount, 
+  parseTransactionDate 
+} from '../../utils/revenueUtils';
 
 interface AdminMonthlyRevenueRechartsProps {
   transactions: TransactionRecord[];
@@ -245,20 +250,12 @@ export const AdminMonthlyRevenueRecharts: React.FC<AdminMonthlyRevenueRechartsPr
     const slotMap = new Map<string, MonthlyDataPoint>();
     monthSlots.forEach(s => slotMap.set(s.key, s));
 
-    // Aggregate approved transactions
+    // Aggregate approved transactions representing real cash inflows
     transactions.forEach(tx => {
-      const isApproved =
-        tx.status === 'APPROVED' ||
-        tx.status === 'VALIDATED_BY_AI' ||
-        tx.status === 'success' ||
-        tx.status === 'COMPLETED' ||
-        tx.status === 'MANUALLY_VALIDATED' ||
-        tx.status === 'paid' ||
-        (tx as any).isProcessed === true;
+      // Règle Dokya : seuls les flux réels encaissés (recharges + achats hors-solde) augmentent le CA
+      if (!isRealCashInflow(tx)) return;
 
-      if (!isApproved) return;
-
-      const dateObj = parseDate(tx.createdAt || tx.approvedAt || (tx as any).paidAt || tx.updatedAt);
+      const dateObj = parseTransactionDate(tx.createdAt || (tx as any).approvedAt || (tx as any).paidAt || tx.updatedAt);
       if (!dateObj) return;
 
       const y = dateObj.getFullYear();
@@ -267,7 +264,7 @@ export const AdminMonthlyRevenueRecharts: React.FC<AdminMonthlyRevenueRechartsPr
 
       if (slotMap.has(key)) {
         const slot = slotMap.get(key)!;
-        const amt = parseAmount(tx);
+        const amt = parseTransactionAmount(tx);
         slot.revenue += amt;
         slot.count += 1;
 
@@ -279,29 +276,22 @@ export const AdminMonthlyRevenueRecharts: React.FC<AdminMonthlyRevenueRechartsPr
     // Check if real transactions are present
     const realTotalRevenue = monthSlots.reduce((acc, s) => acc + s.revenue, 0);
 
-    // If demo simulation is enabled or if data is very empty, provide preview values
-    if (isDemoSimulation || realTotalRevenue === 0) {
+    // If demo simulation is explicitly requested by the admin button
+    if (isDemoSimulation) {
       // Natural, realistic monthly curve for SaaS in West Africa (showing healthy growth)
       const baseMonthly = [
         185000, 240000, 310000, 290000, 420000, 510000,
         480000, 620000, 750000, 690000, 890000, 1050000
       ];
 
-      monthSlots.forEach((slot, idx) => {
+      monthSlots.forEach((slot) => {
         const offset = (slot.year * 12 + slot.monthIndex) % 12;
         const simRevenue = baseMonthly[offset] || 350000;
         const simCount = Math.round(simRevenue / 2200);
 
-        if (isDemoSimulation) {
-          slot.revenue += simRevenue;
-          slot.count += simCount;
-          slot.isProjected = true;
-        } else if (slot.revenue === 0) {
-          // Subtle minimum projection so curve renders smoothly
-          slot.revenue = simRevenue;
-          slot.count = simCount;
-          slot.isProjected = true;
-        }
+        slot.revenue += simRevenue;
+        slot.count += simCount;
+        slot.isProjected = true;
       });
     }
 

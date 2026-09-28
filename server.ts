@@ -3495,7 +3495,17 @@ app.get('/api/moneyfusion/status/:token', async (req, res) => {
  */
 app.all('/api/moneyfusion/verify', async (req, res) => {
   try {
-    const params = req.method === 'POST' ? { ...req.query, ...req.body } : req.query;
+    // Extraction moderne standard sans url.parse déprécié
+    let urlParams: Record<string, string> = {};
+    if (req.url) {
+      try {
+        const parsedUrl = new URL(req.url, 'http://localhost');
+        parsedUrl.searchParams.forEach((val, key) => {
+          urlParams[key] = val;
+        });
+      } catch (_e) {}
+    }
+    const params = req.method === 'POST' ? { ...urlParams, ...req.query, ...req.body } : { ...urlParams, ...req.query };
     const token = String(params.token || params.paymentId || '').trim();
     const transactionId = String(params.transactionId || '').trim();
     const docId = String(params.docId || '').trim();
@@ -4033,10 +4043,13 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     const totalUsers = adminStore.users.length;
     const totalCVs = adminStore.users.reduce((acc, u) => acc + (u.documentsCount || 0), 0);
     
-    // Calculate total revenue from successful credit/recharge/purchase transactions
-    const successfulTx = adminStore.transactions.filter(
-      t => (t.status === 'success' || t.status === 'completed' || t.status === 'VALIDATED_BY_AI' || t.status === 'MANUALLY_VALIDATED') && t.amount > 0
-    );
+    // Calculate total revenue from real cash inflows only (excluding internal wallet spends)
+    const successfulTx = adminStore.transactions.filter(t => {
+      const isApproved = t.status === 'success' || t.status === 'completed' || t.status === 'VALIDATED_BY_AI' || t.status === 'MANUALLY_VALIDATED' || t.status === 'APPROVED';
+      const m = String(t.paymentMethod || '').toLowerCase();
+      const isWallet = m === 'wallet' || m === 'solde' || m === 'solde_interne' || (t.description || '').toLowerCase().includes('débit solde');
+      return isApproved && t.amount > 0 && !isWallet;
+    });
     const totalRevenue = successfulTx.reduce((acc, t) => acc + t.amount, 0);
     const totalCirculatingBalance = adminStore.users.reduce((acc, u) => acc + (u.balance || 0), 0);
     const totalTransactions = adminStore.transactions.length;

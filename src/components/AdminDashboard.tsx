@@ -16,6 +16,15 @@ import { AdminSalesTrendCurve } from './admin/AdminSalesTrendCurve';
 import { AdminMonthlyRevenueRecharts } from './admin/AdminMonthlyRevenueRecharts';
 import { MoneyFusionWebhookHealth } from './admin/MoneyFusionWebhookHealth';
 import { 
+  isRealCashInflow, 
+  isPaidWithInternalWallet, 
+  isTransactionApproved,
+  computeFilteredFinancialStats, 
+  CATimeFilter, 
+  parseTransactionAmount, 
+  parseTransactionDate 
+} from '../utils/revenueUtils';
+import { 
   auth, 
   savePricingToFirestore, 
   savePromoCodeToFirestore, 
@@ -161,6 +170,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [txStatusFilter, setTxStatusFilter] = useState<string>('all');
   const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'document' | 'subscription' | 'wallet'>('all');
   const [txMethodFilter, setTxMethodFilter] = useState<string>('all');
+  // Requirement 5 : Filtre de période sur les reçus/transactions (Aujourd'hui par défaut)
+  const [txPeriodFilter, setTxPeriodFilter] = useState<'today' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'all'>('today');
+
+  // Requirement 4 : Filtres temporels dynamiques sur le Chiffre d'Affaires
+  const [caPeriodFilter, setCaPeriodFilter] = useState<CATimeFilter>('today');
+  const [caCustomStart, setCaCustomStart] = useState<string>('');
+  const [caCustomEnd, setCaCustomEnd] = useState<string>('');
 
   // Transaction Inspection & Action State
   const [selectedTxForInspection, setSelectedTxForInspection] = useState<TransactionRecord | null>(null);
@@ -456,6 +472,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [filteredUsers, userPage, usersPerPage]);
 
   // Métriques de suivi automatisé Money Fusion avec répartition par types : Document, Abonnement, Rechargement Wallet
+  // Règle Dokya : Seules les entrées d'argent réelles comptent dans le CA. Les achats par solde interne sont exclus pour éliminer tout doublon.
   const moneyFusionMetrics = useMemo(() => {
     let totalRevenue = 0;
     let validatedCount = 0;
@@ -465,37 +482,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     let subscriptionRevenue = 0;
     let walletCount = 0;
     let walletRevenue = 0;
+    let internalWalletSpentRevenue = 0;
+    let internalWalletSpentCount = 0;
     const creditedUsersSet = new Set<string>();
 
     transactionsList.forEach((tx) => {
-      const isApproved = tx.status === 'APPROVED' || tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED' || tx.status === 'MANUALLY_VALIDATED';
-      const amt = Math.abs(Number(tx.amount || tx.expectedAmount || 0));
+      const isApproved = isTransactionApproved(tx);
+      if (!isApproved) return;
+
+      const amt = parseTransactionAmount(tx);
+      if (amt <= 0) return;
+
+      const isWalletPaid = isPaidWithInternalWallet(tx);
 
       // Détection claire du type (Document, Abonnement ou Wallet)
       const txType = (tx.type || (tx as any).transactionType || '').toUpperCase();
       const desc = ((tx.description || '') + ' ' + (tx.title || '')).toLowerCase();
       const isDoc = txType.includes('DOC') || Boolean(tx.targetDocId) || Boolean((tx as any).docId) || desc.includes('document') || desc.includes('déblocage') || desc.includes('deblocage');
       const isSub = !isDoc && (txType.includes('SUB') || Boolean((tx as any).planId) || desc.includes('abonnement') || desc.includes('pass') || desc.includes('vip') || amt === 2500 || amt === 5000);
-      const isWallet = !isDoc && !isSub;
 
-      if (isApproved) {
-        totalRevenue += amt;
-        validatedCount++;
-        const userKey = tx.userId || (tx as any).userEmail;
-        if (userKey && userKey !== 'anonymous') {
-          creditedUsersSet.add(userKey);
-        }
+      // Cas 1 : Paiement par solde interne (débit wallet) -> exclus du CA global
+      if (isWalletPaid) {
+        internalWalletSpentRevenue += amt;
+        internalWalletSpentCount++;
+        if (isDoc) documentCount++;
+        if (isSub) subscriptionCount++;
+        return;
+      }
 
-        if (isDoc) {
-          documentCount++;
-          documentRevenue += amt;
-        } else if (isSub) {
-          subscriptionCount++;
-          subscriptionRevenue += amt;
-        } else {
-          walletCount++;
-          walletRevenue += amt;
-        }
+      // Cas 2 : Entrée d'argent réelle (Recharge wallet OU achat direct hors-solde)
+      totalRevenue += amt;
+      validatedCount++;
+      const userKey = tx.userId || (tx as any).userEmail;
+      if (userKey && userKey !== 'anonymous') {
+        creditedUsersSet.add(userKey);
+      }
+
+      if (isDoc) {
+        documentCount++;
+        documentRevenue += amt;
+      } else if (isSub) {
+        subscriptionCount++;
+        subscriptionRevenue += amt;
+      } else {
+        walletCount++;
+        walletRevenue += amt;
       }
     });
 
@@ -508,13 +539,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       subscriptionRevenue,
       walletCount,
       walletRevenue,
+      internalWalletSpentRevenue,
+      internalWalletSpentCount,
       creditedUsersCount: creditedUsersSet.size,
     };
   }, [transactionsList]);
 
-  // Filtered Transactions Money Fusion
+  // Filtered Transactions Money Fusion avec filtre par Période (Requirement 5 : Aujourd'hui par défaut)
   const filteredTransactions = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const thisWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday, 0, 0, 0, 0).getTime();
+    const lastWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday - 7, 0, 0, 0, 0).getTime();
+    const lastWeekEnd = new Date(lastWeekStart + 7 * 864e5 - 1).getTime();
+
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0).getTime();
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).getTime();
+
     return transactionsList.filter((t) => {
+      // 1. Filtre par Période (Requirement 5 : Aujourd'hui par défaut)
+      if (txPeriodFilter !== 'all') {
+        const txDate = parseTransactionDate(t.createdAt || (t as any).approvedAt || (t as any).updatedAt);
+        if (!txDate) return false;
+        const txTime = txDate.getTime();
+
+        if (txPeriodFilter === 'today') {
+          if (txTime < todayStart || txTime > todayEnd) return false;
+        } else if (txPeriodFilter === 'this_week') {
+          if (txTime < thisWeekStart || txTime > now.getTime()) return false;
+        } else if (txPeriodFilter === 'last_week') {
+          if (txTime < lastWeekStart || txTime > lastWeekEnd) return false;
+        } else if (txPeriodFilter === 'this_month') {
+          if (txTime < thisMonthStart || txTime > now.getTime()) return false;
+        } else if (txPeriodFilter === 'last_month') {
+          if (txTime < lastMonthStart || txTime > lastMonthEnd) return false;
+        }
+      }
+
+      // 2. Recherche textuelle
       if (txSearch) {
         const query = txSearch.toLowerCase().trim();
         const matchesId = t.id.toLowerCase().includes(query);
@@ -582,83 +649,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return true;
     });
-  }, [transactionsList, txSearch, txStatusFilter, txTypeFilter, txMethodFilter]);
+  }, [transactionsList, txSearch, txStatusFilter, txTypeFilter, txMethodFilter, txPeriodFilter]);
 
-  // Financial Analytics & Metrics (Aujourd'hui, Cette Semaine, Ce Mois, Global)
+  // Requirement 4 : Calcul dynamique certifié du Chiffre d'Affaires avec filtres temporels
+  const dynamicCAStats = useMemo(() => {
+    return computeFilteredFinancialStats(transactionsList, caPeriodFilter, caCustomStart, caCustomEnd);
+  }, [transactionsList, caPeriodFilter, caCustomStart, caCustomEnd]);
+
+  // Financial Analytics & Metrics (Aujourd'hui, Cette Semaine, Ce Mois, Global) - Règle anti-doublon appliquée
   const financialStats = useMemo(() => {
-    if (realtimeMetrics) {
-      return {
-        todayRevenue: realtimeMetrics.todayRevenue,
-        weekRevenue: realtimeMetrics.weekRevenue,
-        monthRevenue: realtimeMetrics.monthRevenue,
-        totalRevenue: realtimeMetrics.totalRevenue,
-        validatedCount: realtimeMetrics.successfulCount,
-        rejectedCount: realtimeMetrics.failedCount,
-        pendingCount: realtimeMetrics.pendingCount,
-        successRate: realtimeMetrics.successRate
-      };
-    }
-
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-
-    // Calcul début de semaine (Lundi)
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const startOfWeek = new Date(now.setDate(diff));
-    startOfWeek.setHours(0, 0, 0, 0);
-
-    // Calcul début de mois
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    let todayRevenue = 0;
-    let weekRevenue = 0;
-    let monthRevenue = 0;
-    let totalRevenue = 0;
-
-    let validatedCount = 0;
-    let rejectedCount = 0;
-    let pendingCount = 0;
-
-    transactionsList.forEach((tx) => {
-      const isValidated = tx.status === 'VALIDATED_BY_AI' || tx.status === 'success' || tx.status === 'COMPLETED' || tx.status === 'MANUALLY_VALIDATED';
-      const isRejected = tx.status === 'REJECTED_BY_AI' || tx.status === 'REJECTED_BY_ADMIN' || tx.status === 'failed' || tx.status === 'cancel';
-      const isPending = tx.status === 'pending' || tx.status === 'PENDING_ADMIN_VALIDATION';
-
-      if (isValidated) validatedCount++;
-      else if (isRejected) rejectedCount++;
-      else if (isPending) pendingCount++;
-
-      if (isValidated) {
-        const amt = tx.extractedAmount || tx.expectedAmount || Math.abs(tx.amount) || 0;
-        totalRevenue += amt;
-
-        try {
-          const txDate = new Date(tx.createdAt);
-          if (txDate.toISOString().split('T')[0] === todayStr) {
-            todayRevenue += amt;
-          }
-          if (txDate >= startOfWeek) {
-            weekRevenue += amt;
-          }
-          if (txDate >= startOfMonth) {
-            monthRevenue += amt;
-          }
-        } catch (_e) {}
-      }
-    });
+    const validated = dynamicCAStats.totalValidatedCount;
+    const rejected = transactionsList.filter(t => t.status === 'REJECTED' || t.status === 'failed' || t.status === 'REJECTED_BY_AI' || t.status === 'REJECTED_BY_ADMIN').length;
+    const pending = transactionsList.filter(t => t.status === 'PENDING' || t.status === 'WAITING_FOR_ADMIN' || t.status === 'WAITING_VALIDATION').length;
+    const successRate = (validated + rejected) > 0 ? Math.round((validated / (validated + rejected)) * 100) : 100;
 
     return {
-      todayRevenue,
-      weekRevenue,
-      monthRevenue,
-      totalRevenue,
-      validatedCount,
-      rejectedCount,
-      pendingCount,
-      successRate: (validatedCount + rejectedCount) > 0 ? Math.round((validatedCount / (validatedCount + rejectedCount)) * 100) : 100
+      todayRevenue: dynamicCAStats.todayRevenue,
+      weekRevenue: dynamicCAStats.thisWeekRevenue,
+      monthRevenue: dynamicCAStats.thisMonthRevenue,
+      totalRevenue: dynamicCAStats.totalRevenue,
+      validatedCount: validated,
+      rejectedCount: rejected,
+      pendingCount: pending,
+      successRate
     };
-  }, [realtimeMetrics, transactionsList]);
+  }, [dynamicCAStats, transactionsList]);
 
   // Effective Real-Time KPIs derived directly from Firestore
   const effectiveKPIs = useMemo(() => {
@@ -1965,16 +1980,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             </div>
 
-            {/* Financial Performance Breakdown Widget (Jour, Semaine, Mois, Total) */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-900/90 to-emerald-950/30 border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+            {/* Financial Performance Breakdown Widget avec Filtres Temporels Dynamiques (Requirement 4) */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-900/90 to-emerald-950/30 border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5">
+              
+              {/* Header avec Titre et Bouton Journal */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
                 <div>
                   <h2 className="text-base font-black text-white flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-emerald-400" />
-                    <span>Statistiques Financières & Encaissements Réels</span>
+                    <span>Chiffre d'Affaires & Encaissements Réels</span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Données certifiées en temps réel via Webhook Money Fusion Direct (Wave, Orange Money, Free Money).
+                    Comptabilisation stricte des entrées d'argent réelles (Recharges Money Fusion / Wave / OM & Ventes directes). Les achats réglés avec le solde interne sont exclus pour éliminer tout doublon.
                   </p>
                 </div>
                 <button
@@ -1987,6 +2004,123 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
 
+              {/* Filtres Temporels Dynamiques sur le Chiffre d'Affaires (Requirement 4) */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-emerald-400" /> Période :
+                  </span>
+
+                  {[
+                    { id: 'today', label: "Aujourd'hui" },
+                    { id: 'this_week', label: 'Semaine en cours' },
+                    { id: 'last_week', label: 'Semaine précédente' },
+                    { id: 'this_month', label: 'Mois en cours' },
+                    { id: 'last_month', label: 'Mois précédent' },
+                    { id: 'all', label: 'Global (Tout)' },
+                    { id: 'custom', label: 'Personnalisé 📅' }
+                  ].map((p) => {
+                    const isActive = caPeriodFilter === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setCaPeriodFilter(p.id as CATimeFilter)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
+                            : 'text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Formulaire Date Début / Fin si Période Personnalisée */}
+                {caPeriodFilter === 'custom' && (
+                  <div className="flex items-center gap-2 flex-wrap pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800">
+                    <input
+                      type="date"
+                      value={caCustomStart}
+                      onChange={(e) => setCaCustomStart(e.target.value)}
+                      className="px-2.5 py-1 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                      title="Date de début"
+                    />
+                    <span className="text-xs text-slate-400 font-bold">au</span>
+                    <input
+                      type="date"
+                      value={caCustomEnd}
+                      onChange={(e) => setCaCustomEnd(e.target.value)}
+                      className="px-2.5 py-1 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+                      title="Date de fin"
+                    />
+                    {(caCustomStart || caCustomEnd) && (
+                      <button
+                        type="button"
+                        onClick={() => { setCaCustomStart(''); setCaCustomEnd(''); setCaPeriodFilter('today'); }}
+                        className="px-2 py-1 text-[11px] rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
+                      >
+                        Réinitialiser
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Module Hero : Chiffre d'Affaires Encaissé sur la Période Sélectionnée */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">
+                      Chiffre d'Affaires Encaissé — {dynamicCAStats.periodLabel}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      Règle Anti-Doublon Active 🛡️
+                    </span>
+                  </div>
+                  <div className="text-2xl sm:text-4xl font-black text-white mt-1 tracking-tight flex items-baseline gap-2">
+                    <span>{dynamicCAStats.filteredRevenue.toLocaleString('fr-FR')}</span>
+                    <span className="text-sm sm:text-base font-bold text-emerald-400">FCFA</span>
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-3">
+                    <span className="flex items-center gap-1 text-slate-300 font-semibold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      {dynamicCAStats.filteredCount} entrée(s) réelle(s)
+                    </span>
+                    <span>•</span>
+                    <span>Panier moyen : <strong className="text-slate-200">{dynamicCAStats.averageBasket.toLocaleString('fr-FR')} FCFA</strong></span>
+                  </div>
+                </div>
+
+                {/* Répartition Recharges vs Ventes directes vs Consommation Solde */}
+                <div className="flex flex-wrap items-center gap-2 border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-5">
+                  <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                    <div className="text-[10px] uppercase font-bold text-purple-400">Recharges Portefeuille (CA)</div>
+                    <div className="text-sm font-black text-purple-200 mt-0.5">
+                      {dynamicCAStats.filteredWalletRecharges.toLocaleString('fr-FR')} <span className="text-[10px]">FCFA</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20">
+                    <div className="text-[10px] uppercase font-bold text-teal-400">Achats Directs Hors-Solde (CA)</div>
+                    <div className="text-sm font-black text-teal-200 mt-0.5">
+                      {dynamicCAStats.filteredDirectSales.toLocaleString('fr-FR')} <span className="text-[10px]">FCFA</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800" title="Consommation interne : ces montants ne réaugmentent pas le CA car déjà comptés à la recharge">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Achats via Solde Interne</div>
+                    <div className="text-sm font-black text-slate-300 mt-0.5">
+                      {dynamicCAStats.internalWalletSpentRevenue.toLocaleString('fr-FR')} <span className="text-[10px] text-slate-500">FCFA</span>
+                    </div>
+                    <div className="text-[9px] text-amber-400/80">Non compté en double 🛡️</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Compteurs Comparatifs Rapides (Aujourd'hui, Cette Semaine, Ce Mois-ci, Taux de Succès) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
                 <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                   <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Aujourd'hui</div>
@@ -1994,10 +2128,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="h-7 w-24 bg-slate-800 animate-pulse rounded-lg my-1"></div>
                   ) : (
                     <div className="text-lg sm:text-xl font-black text-emerald-400 mt-1">
-                      {financialStats.todayRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
+                      {dynamicCAStats.todayRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
                     </div>
                   )}
-                  <div className="text-[10px] text-slate-500 mt-0.5">Minuit à maintenant</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Minuit à maintenant ({dynamicCAStats.todayCount} flux)</div>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
@@ -2006,10 +2140,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="h-7 w-24 bg-slate-800 animate-pulse rounded-lg my-1"></div>
                   ) : (
                     <div className="text-lg sm:text-xl font-black text-white mt-1">
-                      {financialStats.weekRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
+                      {dynamicCAStats.thisWeekRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
                     </div>
                   )}
-                  <div className="text-[10px] text-slate-500 mt-0.5">7 derniers jours</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Précédente : <strong className="text-slate-400">{dynamicCAStats.lastWeekRevenue.toLocaleString('fr-FR')} FCFA</strong>
+                  </div>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
@@ -2018,10 +2154,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="h-7 w-24 bg-slate-800 animate-pulse rounded-lg my-1"></div>
                   ) : (
                     <div className="text-lg sm:text-xl font-black text-white mt-1">
-                      {financialStats.monthRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
+                      {dynamicCAStats.thisMonthRevenue.toLocaleString('fr-FR')} <span className="text-xs font-semibold text-emerald-400">FCFA</span>
                     </div>
                   )}
-                  <div className="text-[10px] text-slate-500 mt-0.5">Depuis le 1er du mois</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Mois préc. : <strong className="text-slate-400">{dynamicCAStats.lastMonthRevenue.toLocaleString('fr-FR')} FCFA</strong>
+                  </div>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30">
@@ -2033,7 +2171,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {financialStats.successRate}%
                     </div>
                   )}
-                  <div className="text-[10px] text-emerald-400/80 mt-0.5">{financialStats.validatedCount} paiements validés</div>
+                  <div className="text-[10px] text-emerald-400/80 mt-0.5">{dynamicCAStats.totalValidatedCount} flux réels validés</div>
                 </div>
               </div>
             </div>
@@ -3530,6 +3668,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Filtre par Période (Requirement 5 : Aujourd'hui sélectionné par défaut) */}
+                <div className="flex items-center gap-1.5 bg-slate-900 border border-blue-500/50 rounded-xl px-2.5 py-1.5 shadow-sm">
+                  <Calendar className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <select
+                    value={txPeriodFilter}
+                    onChange={(e: any) => setTxPeriodFilter(e.target.value)}
+                    className="bg-transparent text-xs font-black text-white focus:outline-none cursor-pointer"
+                    title="Filtrer les transactions par période temporelle (Aujourd'hui par défaut)"
+                  >
+                    <option value="today" className="bg-slate-900 text-white">📅 Aujourd'hui (Par défaut)</option>
+                    <option value="this_week" className="bg-slate-900 text-white">📅 Semaine en cours</option>
+                    <option value="last_week" className="bg-slate-900 text-white">📅 Semaine précédente</option>
+                    <option value="this_month" className="bg-slate-900 text-white">📅 Mois en cours</option>
+                    <option value="last_month" className="bg-slate-900 text-white">📅 Mois précédent</option>
+                    <option value="all" className="bg-slate-900 text-white">🌐 Tout l'historique (Global)</option>
+                  </select>
+                </div>
+
                 {/* Filtre Statut */}
                 <select
                   value={txStatusFilter}
@@ -3593,17 +3749,117 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             </div>
 
+            {/* Bannière de Notification de Période & Navigation Rapide (Requirement 5) */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse"></span>
+                <span className="text-slate-300 font-medium">
+                  Affichage : <strong className="text-white font-extrabold">
+                    {txPeriodFilter === 'today' ? "Aujourd'hui (Journée en cours)" :
+                     txPeriodFilter === 'this_week' ? "Cette Semaine" :
+                     txPeriodFilter === 'last_week' ? "Semaine précédente" :
+                     txPeriodFilter === 'this_month' ? "Ce Mois-ci" :
+                     txPeriodFilter === 'last_month' ? "Mois précédent" : "Tout l'historique global"}
+                  </strong>
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                  {filteredTransactions.length} transaction(s) trouvée(s)
+                </span>
+                {txPeriodFilter === 'today' && (
+                  <span className="text-[10px] text-slate-400 italic">
+                    (Par défaut, seules les transactions de ce jour sont affichées)
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Accès rapide :</span>
+                {txPeriodFilter !== 'today' && (
+                  <button
+                    type="button"
+                    onClick={() => setTxPeriodFilter('today')}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Aujourd'hui
+                  </button>
+                )}
+                {txPeriodFilter !== 'last_week' && (
+                  <button
+                    type="button"
+                    onClick={() => setTxPeriodFilter('last_week')}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Semaine précédente
+                  </button>
+                )}
+                {txPeriodFilter !== 'last_month' && (
+                  <button
+                    type="button"
+                    onClick={() => setTxPeriodFilter('last_month')}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Mois précédent
+                  </button>
+                )}
+                {txPeriodFilter !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setTxPeriodFilter('all')}
+                    className="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 text-xs font-bold border border-blue-500/30 cursor-pointer"
+                  >
+                    Tout l'historique 🌐
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Transactions Money Fusion Container: Responsive Cards on Mobile + Table on Desktop */}
             <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
               
               {/* 1. Mobile Cards View (< 768px - iPhone & Android) */}
               <div className="block md:hidden divide-y divide-slate-800/80">
                 {filteredTransactions.length === 0 ? (
-                  <div className="py-12 px-4 text-center text-slate-500 text-xs">
-                    <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400 mb-2">
+                  <div className="py-12 px-4 text-center space-y-3">
+                    <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400">
                       <CreditCard className="w-6 h-6" />
                     </div>
-                    Aucune transaction ne correspond à vos filtres.
+                    <div className="text-sm font-bold text-white">
+                      {txPeriodFilter === 'today' 
+                        ? "Aucune transaction enregistrée aujourd'hui" 
+                        : "Aucune transaction trouvée pour cette période"}
+                    </div>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                      {txPeriodFilter === 'today' 
+                        ? "Par défaut, Dokya n'affiche que les reçus et paiements de la journée en cours pour vous offrir une vue quotidienne nette."
+                        : "Aucun paiement n'a été enregistré avec ces critères."}
+                    </p>
+                    <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                      {txPeriodFilter !== 'last_week' && (
+                        <button
+                          type="button"
+                          onClick={() => setTxPeriodFilter('last_week')}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                        >
+                          Semaine précédente
+                        </button>
+                      )}
+                      {txPeriodFilter !== 'last_month' && (
+                        <button
+                          type="button"
+                          onClick={() => setTxPeriodFilter('last_month')}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                        >
+                          Mois précédent
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setTxPeriodFilter('all')}
+                        className="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold"
+                      >
+                        Voir tout l'historique
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   filteredTransactions.map((tx) => {
@@ -3767,7 +4023,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400 mb-2">
                             <CreditCard className="w-6 h-6" />
                           </div>
-                          Aucune transaction Money Fusion correspondant aux filtres.
+                          <div className="text-sm font-bold text-white mb-1">
+                            {txPeriodFilter === 'today' 
+                              ? "Aucune transaction enregistrée aujourd'hui" 
+                              : "Aucune transaction trouvée pour cette période"}
+                          </div>
+                          <p className="text-xs text-slate-400 max-w-md mx-auto mb-4">
+                            {txPeriodFilter === 'today'
+                              ? "Par défaut, l'affichage quotidien ne montre que les reçus et paiements de ce jour. Utilisez les filtres pour consulter la semaine précédente, le mois précédent ou tout l'historique."
+                              : "Aucun paiement ne correspond aux filtres de recherche ou de statut actuels."}
+                          </p>
+                          <div className="flex items-center justify-center gap-2">
+                            {txPeriodFilter !== 'last_week' && (
+                              <button
+                                type="button"
+                                onClick={() => setTxPeriodFilter('last_week')}
+                                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                              >
+                                Semaine précédente
+                              </button>
+                            )}
+                            {txPeriodFilter !== 'last_month' && (
+                              <button
+                                type="button"
+                                onClick={() => setTxPeriodFilter('last_month')}
+                                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                              >
+                                Mois précédent
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setTxPeriodFilter('all')}
+                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md"
+                            >
+                              Voir tout l'historique
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ) : (

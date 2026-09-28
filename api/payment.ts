@@ -127,8 +127,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try { body = JSON.parse(raw); } catch { body = {}; }
     }
 
+    let urlParams: Record<string, string> = {};
+    if (typeof req.url === 'string' && req.url.trim() !== '') {
+      try {
+        const parsedUrl = new URL(req.url, 'http://localhost');
+        parsedUrl.searchParams.forEach((val, key) => {
+          urlParams[key] = val;
+        });
+      } catch (_e) {}
+    }
+
     const query = req.query || {};
-    const payload = { ...query, ...(body || {}) };
+    const payload = { ...urlParams, ...query, ...(body || {}) };
 
     // Détermination de l'action demandée
     let action = String(payload.action || payload.type || '').trim().toLowerCase();
