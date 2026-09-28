@@ -84,17 +84,17 @@ service cloud.firestore {
     // 2. Documents & CV générés (déblocage immédiat par webhooks)
     match /user_documents/{docId} {
       allow read, list, write, create, update: if true;
-      allow delete: if isDocOwner() || isAdmin() || isSignedIn();
+      allow delete: if true;
     }
 
     match /documents/{docId} {
       allow read, list, write, create, update: if true;
-      allow delete: if isDocOwner() || isAdmin() || isSignedIn();
+      allow delete: if true;
     }
 
     match /generated_cvs/{cvId} {
       allow read, list, write, create, update: if true;
-      allow delete: if isDocOwner() || isAdmin() || isSignedIn();
+      allow delete: if true;
     }
 
     // 3. Produits & Inventaire
