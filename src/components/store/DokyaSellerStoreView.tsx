@@ -32,7 +32,9 @@ import {
   Store,
   Layers,
   HelpCircle,
-  Truck
+  Truck,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -63,6 +65,63 @@ import {
   slugify 
 } from '../../lib/storeService';
 import { auth } from '../../lib/firebase';
+
+// Helper to compress and resize local image files before saving
+function compressImageFile(
+  file: File, 
+  maxWidth = 1200, 
+  maxHeight = 1200, 
+  quality = 0.85
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (readerEvent) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(readerEvent.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Attempt modern webp format first, fallback to jpeg
+        try {
+          const webpData = canvas.toDataURL('image/webp', quality);
+          if (webpData.startsWith('data:image/webp')) {
+            resolve(webpData);
+            return;
+          }
+        } catch {
+          // fallback
+        }
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error("Échec du décodage de l'image."));
+      img.src = readerEvent.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Échec de la lecture du fichier."));
+    reader.readAsDataURL(file);
+  });
+}
 
 interface DokyaSellerStoreViewProps {
   profile: CandidateProfile;
@@ -100,6 +159,42 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
   const [productPrice, setProductPrice] = useState<number | string>(5000);
   const [productCategory, setProductCategory] = useState('Services & Formations');
   const [productImages, setProductImages] = useState<string>('https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80');
+  const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
+  const [imageUploadLoading, setImageUploadLoading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Traitement et optimisation du fichier image importé
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setImageUploadError("Veuillez sélectionner un fichier image valide (JPG, PNG, WebP).");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      setImageUploadError("L'image est trop volumineuse (maximum 15 Mo).");
+      return;
+    }
+
+    setImageUploadLoading(true);
+    setImageUploadError(null);
+
+    try {
+      const compressedDataUrl = await compressImageFile(file, 1200, 1200, 0.85);
+      setProductImages(compressedDataUrl);
+      showToast("Image importée et optimisée avec succès !");
+    } catch (err: any) {
+      console.error('Erreur compression image:', err);
+      setImageUploadError("Impossible de traiter cette image. Réessayez ou utilisez un lien web.");
+    } finally {
+      setImageUploadLoading(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   const [productSaleType, setProductSaleType] = useState<ProductSaleType>('direct_order');
   const [productRedirectUrl, setProductRedirectUrl] = useState('');
   const [productCustomSlug, setProductCustomSlug] = useState('');
@@ -182,6 +277,8 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     setProductPrice(5000);
     setProductCategory('Services & Formations');
     setProductImages('https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80');
+    setImageInputMode('upload');
+    setImageUploadError(null);
     setProductSaleType('direct_order');
     setProductRedirectUrl('');
     setProductCustomSlug('');
@@ -194,7 +291,10 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     setProductDescription(prod.description);
     setProductPrice(prod.price);
     setProductCategory(prod.category || 'Services & Formations');
-    setProductImages(prod.images?.[0] || '');
+    const existingImg = prod.images?.[0] || '';
+    setProductImages(existingImg);
+    setImageInputMode(existingImg.startsWith('data:') ? 'upload' : 'url');
+    setImageUploadError(null);
     setProductSaleType(prod.saleType);
     setProductRedirectUrl(prod.redirectUrl || '');
     setProductCustomSlug(prod.slug);
@@ -215,8 +315,10 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
       const sellerName = storeProfile?.storeName || storeNameInput || profile.personalInfo?.firstName || 'Vendeur';
       const sellerPhone = storeProfile?.whatsappNumber || profile.personalInfo?.phone || '';
 
-      const imagesArray = productImages.split(',').map(s => s.trim()).filter(Boolean);
-      if (imagesArray.length === 0) {
+      const imagesArray: string[] = [];
+      if (productImages && productImages.trim()) {
+        imagesArray.push(productImages.trim());
+      } else {
         imagesArray.push('https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80');
       }
 
@@ -1163,19 +1265,171 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                 />
               </div>
 
-              {/* Image URL */}
-              <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Lien Image Principale (URL)
-                </label>
-                <input 
-                  type="url"
-                  value={productImages}
-                  onChange={(e) => setProductImages(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500"
-                />
-                <p className="text-[11px] text-slate-500 mt-1">Vous pouvez utiliser une image Unsplash, Imgur ou votre propre hébergeur d'images.</p>
+              {/* Image Produit : Upload depuis l'appareil OU Lien web (URL) */}
+              <div className="space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Photo / Image du Produit ou Service *
+                  </label>
+                  
+                  {/* Onglets sélecteur de mode : Fichier vs URL */}
+                  <div className="inline-flex items-center gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageInputMode('upload');
+                        setImageUploadError(null);
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        imageInputMode === 'upload'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Importer fichier</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageInputMode('url');
+                        setImageUploadError(null);
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        imageInputMode === 'url'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <LinkIcon className="w-3.5 h-3.5" />
+                      <span>Lien web (URL)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* OPTION 1: Importer depuis l'appareil */}
+                {imageInputMode === 'upload' && (
+                  <div>
+                    <input 
+                      type="file"
+                      ref={fileInputRef}
+                      accept="image/*"
+                      onChange={handleImageFileChange}
+                      className="hidden"
+                    />
+                    <div 
+                      onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all ${
+                        imageUploadLoading 
+                          ? 'border-indigo-500/50 bg-indigo-950/20 opacity-70' 
+                          : 'border-slate-800 hover:border-indigo-500/60 bg-slate-950/60 hover:bg-slate-950'
+                      }`}
+                    >
+                      {imageUploadLoading ? (
+                        <div className="flex flex-col items-center justify-center space-y-2 py-2">
+                          <div className="w-8 h-8 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin"></div>
+                          <p className="text-xs text-indigo-300 font-semibold">Optimisation et traitement de l'image en cours...</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
+                            <Upload className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-white">
+                              Cliquez pour choisir une photo ou capture depuis votre appareil
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              JPG, PNG, WebP (Téléphone, Galerie, PC) • Redimensionnement & optimisation auto
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* OPTION 2: Lien web de l'image (URL) */}
+                {imageInputMode === 'url' && (
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <LinkIcon className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input 
+                        type="url"
+                        value={productImages}
+                        onChange={(e) => {
+                          setProductImages(e.target.value);
+                          setImageUploadError(null);
+                        }}
+                        placeholder="https://images.unsplash.com/... ou lien de votre image"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Collez le lien direct (URL) vers votre image en ligne (ex: Unsplash, Imgur, Cloudinary, votre site).
+                    </p>
+                  </div>
+                )}
+
+                {/* Message d'erreur s'il y a un souci */}
+                {imageUploadError && (
+                  <p className="text-xs text-rose-400 flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-xl">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{imageUploadError}</span>
+                  </p>
+                )}
+
+                {/* Aperçu en direct de l'image sélectionnée */}
+                {productImages && (
+                  <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-2 flex items-center gap-3">
+                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shrink-0">
+                      <img 
+                        src={productImages} 
+                        alt="Aperçu produit" 
+                        className="w-full h-full object-cover"
+                        onError={() => setImageUploadError("L'image n'a pas pu être affichée. Vérifiez le lien ou importez un fichier.")}
+                      />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Image prête</span>
+                        </span>
+                        <span className="text-[10px] text-slate-500 truncate">
+                          {productImages.startsWith('data:') ? 'Fichier importé' : 'Lien URL'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 truncate mt-1">
+                        {productImages.startsWith('data:') ? 'Photo optimisée (haute qualité & chargement rapide)' : productImages}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 pr-1">
+                      {imageInputMode === 'upload' && (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition-colors cursor-pointer"
+                        >
+                          Changer
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProductImages('');
+                          setImageUploadError(null);
+                        }}
+                        className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors cursor-pointer"
+                        title="Retirer l'image"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* TYPE DE VENTE: Option A (Redirection) vs Option B (Commande Directe) */}
