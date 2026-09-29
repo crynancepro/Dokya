@@ -105,7 +105,17 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read, list: if true;
-      allow create, update, delete: if isSignedIn() || isAdmin();
+      allow create, update, delete: if true;
+    }
+
+    match /store_orders/{orderId} {
+      allow read, list: if true;
+      allow create, update, delete: if true;
+    }
+
+    match /seller_stores/{storeId} {
+      allow read, list: if true;
+      allow create, update, delete: if true;
     }
 
     match /notifications/{notifId} {

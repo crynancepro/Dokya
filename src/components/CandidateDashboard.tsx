@@ -45,6 +45,7 @@ import { DokyaBusinessView } from './DokyaBusinessView';
 import { DokyaAffiliateView } from './DokyaAffiliateView';
 import { DokyaSupportChat } from './DokyaSupportChat';
 import { NotificationBell } from './NotificationBell';
+import { DokyaSellerStoreView } from './store/DokyaSellerStoreView';
 
 interface CandidateDashboardProps {
   onLoadDocumentToEditor: (formData: CVFormData, aiData: any) => void;
@@ -58,6 +59,8 @@ interface CandidateDashboardProps {
   onLoadBusinessDocToEditor?: (data: BusinessDocData, docId?: string) => void;
   onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture', business?: UserBusiness) => void;
   onOpenDedicatedPreview?: (docItem: SavedUserDocument) => void;
+  onOpenPublicProduct?: (slug: string) => void;
+  onOpenPublicStore?: (username: string) => void;
 }
 
 export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
@@ -71,7 +74,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   onOpenInterviewPrepDocument,
   onLoadBusinessDocToEditor,
   onOpenInvoiceGenerator,
-  onOpenDedicatedPreview
+  onOpenDedicatedPreview,
+  onOpenPublicProduct,
+  onOpenPublicStore
 }) => {
   const [user, setUser] = useState<FirebaseUser | null>(auth.currentUser);
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab | string>(initialTab);
@@ -951,6 +956,12 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                         <span className="hidden sm:inline">Pôle Dokya Business • Ventes</span>
                       </>
                     )
+                    : activeSidebarTab === 'store' || activeSidebarTab === 'boutique' ? (
+                      <>
+                        <span className="sm:hidden">Ma Boutique</span>
+                        <span className="hidden sm:inline">Ma Boutique & Liens de Vente</span>
+                      </>
+                    )
                     : activeSidebarTab === 'affiliation' ? (
                       <>
                         <span className="sm:hidden">Affiliation (20%)</span>
@@ -1720,7 +1731,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1">
                             <span className="text-slate-400">Total :</span>
                             <span className="font-mono font-black text-white">
-                              {((docItem.businessDocData.items || []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0)).toLocaleString('fr-FR')} {docItem.businessDocData.currency || 'FCFA'}
+                              {(Number((docItem.businessDocData.items || []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0)) || 0).toLocaleString('fr-FR')} {docItem.businessDocData.currency || 'FCFA'}
                             </span>
                           </div>
                         )}
@@ -1872,6 +1883,19 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     onLoadBusinessDocToEditor(invoiceDocData);
                   }
                 }}
+              />
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB: BOUTIQUE & LIENS DE VENTE (PRODUITS, RECHARTS & COMMANDES DOKYA)     */}
+          {/* ========================================================================= */}
+          {(activeSidebarTab === 'store' || activeSidebarTab === 'boutique' || activeSidebarTab === 'ventes') && (
+            <div className="space-y-6 animate-in fade-in">
+              <DokyaSellerStoreView
+                profile={profile}
+                onOpenPublicProduct={onOpenPublicProduct}
+                onOpenPublicStore={onOpenPublicStore}
               />
             </div>
           )}

@@ -25,7 +25,9 @@ import {
   Building2,
   Users,
   MessageSquare,
-  Boxes
+  Boxes,
+  ShoppingBag,
+  Store
 } from 'lucide-react';
 import { CandidateProfile, SavedUserDocument, isUserVipActive } from '../types';
 import { auth } from '../lib/firebase';
@@ -40,6 +42,7 @@ export type SidebarTab =
   | 'entretiens'
   | 'business'
   | 'inventory'
+  | 'store'
   | 'affiliation'
   | 'help'
   | 'support'
@@ -342,6 +345,28 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
                 }`} />
                 <span>Stock & Inventaire</span>
               </div>
+            </button>
+
+            {/* 2.3c Dokya Boutique : Mes Produits & Liens de Vente */}
+            <button
+              id="nav-dokya-store"
+              type="button"
+              onClick={() => handleNavClick('store')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
+                activeTab === 'store' || activeTab === 'boutique'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <ShoppingBag className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'store' || activeTab === 'boutique' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
+                <span>Boutique & Liens</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                Shop ✨
+              </span>
             </button>
 
             {/* 2.4 Parrainage & Affiliation */}

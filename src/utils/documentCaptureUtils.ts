@@ -259,7 +259,7 @@ export async function shareDocumentWithCaptureOnWhatsApp(
     shareText += `🔢 *Réf :* ${params.docNumber}\n`;
   }
   if (params.totalAmount) {
-    shareText += `💰 *Montant :* ${params.totalAmount.toLocaleString('fr-FR')} ${params.currency || 'FCFA'}\n`;
+    shareText += `💰 *Montant :* ${(Number(params.totalAmount) || 0).toLocaleString('fr-FR')} ${params.currency || 'FCFA'}\n`;
   }
   shareText += `\n📸 *Capture haute résolution jointe.*\n`;
   shareText += `🔗 *Lien certifié Dokya :* ${shareLinkUrl}`;

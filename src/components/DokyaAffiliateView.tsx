@@ -696,7 +696,7 @@ export const DokyaAffiliateView: React.FC<DokyaAffiliateViewProps> = ({ profile 
                   >
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-1.5 font-bold text-white">
-                        <span>{req.amount.toLocaleString('fr-FR')} FCFA</span>
+                        <span>{(Number(req.amount) || 0).toLocaleString('fr-FR')} FCFA</span>
                         <span className={`text-[9px] px-1.5 py-0.2 rounded font-black uppercase ${
                           req.network === 'wave' ? 'bg-cyan-500/20 text-cyan-300' : 'orange-500/20 text-orange-300'
                         }`}>
@@ -892,8 +892,8 @@ export const DokyaAffiliateView: React.FC<DokyaAffiliateViewProps> = ({ profile 
 
                           {/* Achats Cumulés */}
                           <td className="py-3.5 px-4 text-slate-300 font-bold">
-                            {user.totalSpent > 0 ? (
-                              <span>{user.totalSpent.toLocaleString('fr-FR')} FCFA</span>
+                            {(Number(user.totalSpent) || 0) > 0 ? (
+                              <span>{(Number(user.totalSpent) || 0).toLocaleString('fr-FR')} FCFA</span>
                             ) : (
                               <span className="text-slate-500">0 FCFA</span>
                             )}
@@ -901,9 +901,9 @@ export const DokyaAffiliateView: React.FC<DokyaAffiliateViewProps> = ({ profile 
 
                           {/* Vos Gains */}
                           <td className="py-3.5 px-4 text-right">
-                            {user.commissionEarned > 0 ? (
+                            {(Number(user.commissionEarned) || 0) > 0 ? (
                               <span className="font-black text-emerald-400 text-sm">
-                                +{user.commissionEarned.toLocaleString('fr-FR')} FCFA
+                                +{(Number(user.commissionEarned) || 0).toLocaleString('fr-FR')} FCFA
                               </span>
                             ) : (
                               <span className="text-slate-500 text-xs italic">
@@ -1021,11 +1021,11 @@ export const DokyaAffiliateView: React.FC<DokyaAffiliateViewProps> = ({ profile 
                         </td>
 
                         <td className="py-3.5 px-4 text-slate-300 font-bold">
-                          {comm.totalAmount.toLocaleString('fr-FR')} FCFA
+                          {(Number(comm.totalAmount) || 0).toLocaleString('fr-FR')} FCFA
                         </td>
 
                         <td className="py-3.5 px-4 font-black text-emerald-400">
-                          +{comm.affiliateCommission.toLocaleString('fr-FR')} FCFA
+                          +{(Number(comm.affiliateCommission) || 0).toLocaleString('fr-FR')} FCFA
                         </td>
 
                         <td className="py-3.5 px-4 text-right">

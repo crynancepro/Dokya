@@ -1046,3 +1046,77 @@ export interface SupportConversation {
   createdAt?: any;
   updatedAt?: any;
 }
+
+// ============================================================================
+// MODULE BOUTIQUE & LIENS DE VENTE (DOKYA STORE & SELLER PRODUCTS)
+// ============================================================================
+export type ProductSaleType = 'redirect' | 'direct_order';
+export type ProductStatus = 'active' | 'archived' | 'draft';
+
+export interface ProductItem {
+  id: string;
+  userId: string; // Propriétaire du produit / vendeur
+  sellerUsername: string; // ex: 'moussa-diop' pour dokya.site/b/moussa-diop
+  sellerName: string;
+  sellerPhone?: string;
+  sellerEmail?: string;
+  sellerWhatsapp?: string;
+  title: string;
+  slug: string; // ex: 'formation-cv-ats' pour dokya.site/p/formation-cv-ats
+  description: string;
+  price: number; // Montant en FCFA
+  currency: string; // 'FCFA'
+  category?: string;
+  images: string[];
+  saleType: ProductSaleType;
+  redirectUrl?: string; // Si Option A (Redirection externe)
+  enableDirectOrder?: boolean; // Si Option B (Formulaire direct Dokya)
+  status: ProductStatus;
+  viewsCount?: number;
+  ordersCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StoreOrderStatus = 'pending' | 'validated' | 'delivered' | 'cancelled';
+
+export interface StoreOrder {
+  id: string; // ex: 'CMD-174829'
+  productId: string;
+  productSlug?: string;
+  productTitle: string;
+  productPrice: number;
+  productImage?: string;
+  sellerId: string;
+  sellerUsername: string;
+  buyerName: string;
+  buyerPhone: string; // WhatsApp ou Téléphone
+  buyerAddress: string; // Ville, quartier ou adresse de livraison
+  buyerNotes?: string;
+  quantity: number;
+  totalAmount: number; // total = price * quantity
+  currency: string;
+  status: StoreOrderStatus;
+  paymentMethod?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SellerStoreProfile {
+  id: string; // store_{userId}
+  userId: string;
+  username: string; // Identifiant boutique unique (ex: 'moussa')
+  storeName: string;
+  tagline?: string;
+  description?: string;
+  logoUrl?: string;
+  bannerUrl?: string;
+  whatsappNumber?: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  country?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

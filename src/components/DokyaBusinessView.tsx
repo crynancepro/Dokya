@@ -455,11 +455,11 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
           </div>
           <div className="space-y-0.5">
             <div className="text-base sm:text-xl font-black text-emerald-400 font-mono tracking-tight truncate">
-              {stats.totalFactureFCFA.toLocaleString('fr-FR')}{' '}
+              {(Number(stats.totalFactureFCFA) || 0).toLocaleString('fr-FR')}{' '}
               <span className="text-[10px] sm:text-xs text-emerald-300 font-normal">FCFA</span>
             </div>
             <p className="text-[10px] sm:text-[11px] text-slate-500 truncate">
-              Encaissé : {stats.payeesFCFA.toLocaleString('fr-FR')} F
+              Encaissé : {(Number(stats.payeesFCFA) || 0).toLocaleString('fr-FR')} F
             </p>
           </div>
         </div>
@@ -482,7 +482,7 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
             <div className={`text-base sm:text-xl font-black font-mono tracking-tight truncate ${
               stats.impayesFCFA > 0 ? 'text-amber-400' : 'text-slate-400'
             }`}>
-              {stats.impayesFCFA.toLocaleString('fr-FR')}{' '}
+              {(Number(stats.impayesFCFA) || 0).toLocaleString('fr-FR')}{' '}
               <span className="text-[10px] sm:text-xs font-normal">FCFA</span>
             </div>
             <p className="text-[10px] sm:text-[11px] text-amber-300/80 truncate">
@@ -730,13 +730,13 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
                       <div>
                         <span className="text-[10px] text-slate-500 block font-medium">Total Facturé</span>
                         <span className="text-xs font-bold text-white font-mono">
-                          {fin.totalBilled.toLocaleString('fr-FR')} F
+                          {(Number(fin.totalBilled) || 0).toLocaleString('fr-FR')} F
                         </span>
                       </div>
                       <div className="border-l border-slate-800 pl-2">
                         <span className="text-[10px] text-slate-500 block font-medium">Impayés</span>
                         <span className={`text-xs font-bold font-mono ${hasUnpaid ? 'text-amber-400 font-black' : 'text-emerald-400'}`}>
-                          {fin.totalUnpaid.toLocaleString('fr-FR')} F
+                          {(Number(fin.totalUnpaid) || 0).toLocaleString('fr-FR')} F
                         </span>
                       </div>
                     </div>
@@ -884,7 +884,7 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
                           {/* Montant TTC */}
                           <td className="py-3.5 px-4">
                             <span className="font-mono font-black text-white text-sm">
-                              {inv.totalTTC.toLocaleString('fr-FR')} {inv.currency || 'FCFA'}
+                              {(Number(inv.totalTTC) || 0).toLocaleString('fr-FR')} {inv.currency || 'FCFA'}
                             </span>
                           </td>
 
@@ -1273,19 +1273,19 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
                   <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
                     <span className="text-[10px] text-slate-500 block font-bold uppercase">Total Facturé</span>
                     <span className="text-sm font-black text-white font-mono">
-                      {fin.totalBilled.toLocaleString('fr-FR')} F
+                      {(Number(fin.totalBilled) || 0).toLocaleString('fr-FR')} F
                     </span>
                   </div>
                   <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
                     <span className="text-[10px] text-slate-500 block font-bold uppercase">Encaissé (Payé)</span>
                     <span className="text-sm font-black text-emerald-400 font-mono">
-                      {(fin.totalBilled - fin.totalUnpaid).toLocaleString('fr-FR')} F
+                      {((Number(fin.totalBilled) || 0) - (Number(fin.totalUnpaid) || 0)).toLocaleString('fr-FR')} F
                     </span>
                   </div>
                   <div className={`p-3 rounded-xl border text-center ${fin.totalUnpaid > 0 ? 'bg-amber-950/30 border-amber-500/40' : 'bg-slate-950 border-slate-800'}`}>
                     <span className="text-[10px] text-amber-400 block font-bold uppercase">Impayé Dû</span>
                     <span className={`text-sm font-black font-mono ${fin.totalUnpaid > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-                      {fin.totalUnpaid.toLocaleString('fr-FR')} F
+                      {(Number(fin.totalUnpaid) || 0).toLocaleString('fr-FR')} F
                     </span>
                   </div>
                 </div>
@@ -1399,7 +1399,7 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
                                   {inv.issueDate || '—'}
                                 </td>
                                 <td className="py-2.5 px-3 font-mono font-bold text-white">
-                                  {inv.totalTTC.toLocaleString('fr-FR')} F
+                                  {(Number(inv.totalTTC) || 0).toLocaleString('fr-FR')} F
                                 </td>
                                 <td className="py-2.5 px-3">
                                   {inv.type === 'devis' ? (

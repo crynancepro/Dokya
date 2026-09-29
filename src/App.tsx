@@ -175,9 +175,11 @@ export type MainAppView =
 
 interface AppProps {
   onOpenAdmin?: () => void;
+  onOpenPublicProduct?: (slug: string) => void;
+  onOpenPublicStore?: (username: string) => void;
 }
 
-export default function App({ onOpenAdmin }: AppProps = {}) {
+export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStore }: AppProps = {}) {
   // Authentication status
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(auth.currentUser);
 
@@ -1234,7 +1236,7 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
   };
 
   const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name || !!ebookData?.title;
-  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || (activeTab as string) === 'business' || (activeTab as string) === 'clients' || activeTab === 'help' || activeTab === 'support';
+  const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || (activeTab as string) === 'business' || (activeTab as string) === 'clients' || (activeTab as string) === 'store' || (activeTab as string) === 'boutique' || activeTab === 'help' || activeTab === 'support';
   const isLandingView = activeTab === 'landing';
   const isTemplatesView = activeTab === 'templates';
 
@@ -1356,6 +1358,8 @@ export default function App({ onOpenAdmin }: AppProps = {}) {
           onLoadDocumentToEditor={handleLoadDocumentToEditor}
           onSelectService={handleSelectService}
           onOpenAdmin={onOpenAdmin}
+          onOpenPublicProduct={onOpenPublicProduct}
+          onOpenPublicStore={onOpenPublicStore}
           onSignOut={handleSignOut}
           onOpenInterviewPrepDocument={(prepData) => {
             setInterviewPrepData(prepData);
