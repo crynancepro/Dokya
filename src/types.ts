@@ -46,7 +46,7 @@ export interface Language {
   level: 'Débutant' | 'Intermédiaire' | 'Avancé' | 'Courant' | 'Bilingue / Maternelle';
 }
 
-export type GenerationMode = 'cv_only' | 'letter_only' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'pass_illimite';
+export type GenerationMode = 'cv_only' | 'letter_only' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'pass_illimite';
 
 export interface EbookCoverProposal {
   id: string;
@@ -269,6 +269,7 @@ export interface BusinessDocData {
   status?: 'brouillon' | 'envoye' | 'valide' | 'paye';
   customerId?: string;
   businessId?: string;
+  orderId?: string;
   paymentStatus?: 'PAID' | 'UNPAID';
   quoteStatus?: 'BROUILLON' | 'EN_ATTENTE' | 'ACCEPTE' | 'REFUSE';
   paidAt?: string;
@@ -842,31 +843,33 @@ export interface ImpersonatedSession {
 }
 
 export interface PlatformPricingConfig {
-  cvOnlyPrice: number;       // 1000 FCFA
-  letterOnlyPrice: number;   // 1000 FCFA
-  fullPackPrice: number;     // 1399 FCFA (Pack Emploi CV + Lettre)
-  devisPrice: number;        // 1000 FCFA
-  facturePrice: number;      // 1000 FCFA
-  businessPackPrice: number; // 1499 FCFA (Pack Business Devis + Facture)
-  ebookPrice?: number;       // 1500 FCFA (Génération Ebook Complet)
-  unlimitedPassPrice: number;// 3499 FCFA (Pass Illimité Mois)
-  unlimitedPassMonthlyPrice?: number; // 3499 FCFA
-  unlimitedPassAnnualPrice?: number;  // 39999 FCFA (Pass Illimité Annuel)
-  recruiterSearchPrice: number; // 10000 FCFA
-  currency: string;          // 'FCFA'
+  cvOnlyPrice: number;       // 1.99 $
+  letterOnlyPrice: number;   // 1.99 $
+  fullPackPrice: number;     // 2.99 $
+  devisPrice: number;        // 1.99 $
+  facturePrice: number;      // 1.99 $
+  businessPackPrice: number; // 2.99 $
+  ebookPrice?: number;       // (Optionnel legacy)
+  unlimitedPassPrice: number;// 9.99 $ (Pass Mensuel)
+  unlimitedPassMonthlyPrice?: number; // 9.99 $
+  unlimitedPassSemesterPrice?: number;// 47.95 $ (6 Mois)
+  unlimitedPassAnnualPrice?: number;  // 71.90 $ (1 An)
+  recruiterSearchPrice: number; // 15.00 $
+  currency: string;          // 'USD' ($)
   updatedAt: string;
   updatedBy?: string;
 }
 
 export interface PromoCode {
   id: string;
-  code: string;              // e.g. 'TERANGA20', 'PROMO1000'
-  discountType: 'percentage' | 'fixed'; // percentage (e.g. 20%) or fixed (e.g. 500 FCFA)
-  discountValue: number;     // 20 or 500
-  minOrderAmount?: number;   // e.g. 1000 FCFA
+  code: string;              // e.g. 'TERANGA20', 'PROMO50'
+  discountType: 'percentage' | 'fixed'; // percentage (e.g. 50%) or fixed
+  discountValue: number;     // 50 or 10
+  minOrderAmount?: number;   // e.g. 0 $
   maxUsageLimit?: number;    // e.g. 100 uses
   currentUsageCount: number; // e.g. 14 uses
   active: boolean;
+  isPublished?: boolean;     // Switch "Publier" pour appliquer publiquement sur la Landing Page et au checkout
   expiresAt?: string;
   description: string;
   createdAt: string;

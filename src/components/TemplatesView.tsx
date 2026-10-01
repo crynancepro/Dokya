@@ -17,11 +17,10 @@ import {
 } from 'lucide-react';
 
 interface TemplatesViewProps {
-  initialService?: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook';
+  initialService?: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business';
   onSelectCVTemplate: (templateId: TemplateStyle, accentColor?: string) => void;
   onSelectLetterTemplate: (styleId: string, letterType: CoverLetterType) => void;
   onSelectBusinessTemplate: (docType: 'devis' | 'facture' | 'pack_business', templateId: string, themeStyle?: 'indigo' | 'emerald' | 'amber' | 'slate') => void;
-  onSelectEbookTemplate: () => void;
   onBackToDashboard: () => void;
 }
 
@@ -30,7 +29,6 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({
   onSelectCVTemplate,
   onSelectLetterTemplate,
   onSelectBusinessTemplate,
-  onSelectEbookTemplate,
   onBackToDashboard,
 }) => {
   const activeService = initialService;
@@ -74,23 +72,14 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({
           price: "1 000 FCFA"
         };
       case 'pack_business':
+      default:
         return {
           title: "Galerie Exclusive : Pack Business Duo (Devis + Facture)",
           subtitle: "Générez simultanément un devis et une facture synchronisés avec la même charte graphique.",
           badge: "Pack Business Duo",
           icon: Package,
           accentBg: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-          price: "1 499 FCFA"
-        };
-      case 'ebook':
-      default:
-        return {
-          title: "Galerie & Assistant : Ebook & Rapport Pro KDP",
-          subtitle: "Mise en page automatique au standard A4 / 6x9 pouces avec table des matières et chapitres IA.",
-          badge: "Ebook & Guide Numérique",
-          icon: BookOpen,
-          accentBg: "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20",
-          price: "3 000 FCFA"
+          price: "2.99 $"
         };
     }
   };
@@ -150,29 +139,6 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({
           onSelectTemplate={(tplId, theme) => onSelectBusinessTemplate(activeService, tplId, theme)}
           onGoServices={onBackToDashboard}
         />
-      )}
-
-      {activeService === 'ebook' && (
-        <div className="p-8 sm:p-12 rounded-3xl bg-slate-900/90 border border-slate-800 text-center space-y-6">
-          <div className="w-16 h-16 rounded-3xl bg-fuchsia-600/20 text-fuchsia-400 flex items-center justify-center mx-auto">
-            <BookOpen className="w-8 h-8" />
-          </div>
-          <div className="max-w-md mx-auto space-y-2">
-            <h3 className="text-xl font-black text-white">Générateur d'Ebook & Rapport Amazon KDP</h3>
-            <p className="text-xs text-slate-400">
-              Mise en page automatique au standard A4 / 6x9 pouces avec table des matières, chapitres et 4e de couverture.
-            </p>
-          </div>
-          <div>
-            <button
-              type="button"
-              onClick={onSelectEbookTemplate}
-              className="px-6 py-3.5 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black text-xs shadow-lg shadow-fuchsia-600/30 transition-all cursor-pointer"
-            >
-              Lancer l'assistant Ebook →
-            </button>
-          </div>
-        </div>
       )}
 
     </div>

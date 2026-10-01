@@ -92,18 +92,57 @@ export async function saveProduct(product: Partial<ProductItem> & { userId: stri
     console.warn('[StoreService] Erreur écriture Firestore product, sauvegarde locale:', err);
   }
 
-  // 2. Sauvegarde Cache Local
+  // 2. Sauvegarde Cache Local (par userId et par sellerUsername pour affichage vitrine instantané)
   try {
-    const localKey = `${LOCAL_PRODUCTS_PREFIX}${product.userId}`;
-    const raw = localStorage.getItem(localKey);
-    const existing: ProductItem[] = raw ? JSON.parse(raw) : [];
-    const index = existing.findIndex(p => p.id === id);
-    if (index >= 0) {
-      existing[index] = completeProduct;
-    } else {
-      existing.unshift(completeProduct);
+    const keysToUpdate = [
+      `${LOCAL_PRODUCTS_PREFIX}${product.userId}`,
+      `${LOCAL_PRODUCTS_PREFIX}${completeProduct.sellerUsername}`
+    ];
+    for (const localKey of keysToUpdate) {
+      const raw = localStorage.getItem(localKey);
+      const existing: ProductItem[] = raw ? JSON.parse(raw) : [];
+      const index = existing.findIndex(p => p.id === id);
+      if (index >= 0) {
+        existing[index] = completeProduct;
+      } else {
+        existing.unshift(completeProduct);
+      }
+      localStorage.setItem(localKey, JSON.stringify(existing));
     }
-    localStorage.setItem(localKey, JSON.stringify(existing));
+  } catch (_e) {}
+
+  // 3. Garantir la présence et synchronisation du profil vendeur dans seller_stores
+  try {
+    if (product.userId && completeProduct.sellerUsername) {
+      const storeRef = doc(db, SELLER_STORES_COLLECTION, product.userId);
+      await setDoc(storeRef, {
+        userId: product.userId,
+        username: completeProduct.sellerUsername,
+        storeName: completeProduct.sellerName || `Boutique ${completeProduct.sellerUsername}`,
+        whatsappNumber: completeProduct.sellerWhatsapp || completeProduct.sellerPhone || '',
+        phone: completeProduct.sellerPhone || '',
+        city: 'Dakar',
+        country: 'Sénégal',
+        tagline: 'Vendeur officiel Dokya',
+        updatedAt: now
+      }, { merge: true });
+
+      const storeObj: SellerStoreProfile = {
+        id: `store_${product.userId}`,
+        userId: product.userId,
+        username: completeProduct.sellerUsername,
+        storeName: completeProduct.sellerName || `Boutique ${completeProduct.sellerUsername}`,
+        whatsappNumber: completeProduct.sellerWhatsapp || completeProduct.sellerPhone || '',
+        phone: completeProduct.sellerPhone || '',
+        city: 'Dakar',
+        country: 'Sénégal',
+        tagline: 'Vendeur officiel Dokya',
+        createdAt: now,
+        updatedAt: now
+      };
+      localStorage.setItem(`${LOCAL_STORE_PREFIX}${product.userId}`, JSON.stringify(storeObj));
+      localStorage.setItem(`${LOCAL_STORE_PREFIX}${completeProduct.sellerUsername}`, JSON.stringify(storeObj));
+    }
   } catch (_e) {}
 
   return completeProduct;
@@ -327,6 +366,58 @@ export async function fetchSellerOrders(sellerId: string): Promise<StoreOrder[]>
 }
 
 /**
+ * Récupère une commande spécifique par son ID (Firestore ou Cache local)
+ */
+export async function fetchStoreOrderById(orderId: string): Promise<StoreOrder | null> {
+  if (!orderId) return null;
+  const cleanId = orderId.trim();
+
+  // 1. Recherche directe dans Firestore par ID de document
+  try {
+    const docRef = doc(db, STORE_ORDERS_COLLECTION, cleanId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as StoreOrder;
+    }
+  } catch (err) {
+    console.warn('[StoreService] Erreur fetchStoreOrderById doc Firestore:', err);
+  }
+
+  // 2. Recherche par query champ "id" dans Firestore
+  try {
+    const q = query(
+      collection(db, STORE_ORDERS_COLLECTION),
+      where('id', '==', cleanId)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs[0].data() as StoreOrder;
+    }
+  } catch (err) {
+    console.warn('[StoreService] Erreur fetchStoreOrderById query Firestore:', err);
+  }
+
+  // 3. Fallback scan des commandes locales en cache
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(LOCAL_ORDERS_PREFIX)) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const list: StoreOrder[] = JSON.parse(raw);
+            const found = list.find(o => o.id === cleanId || o.id.toLowerCase() === cleanId.toLowerCase());
+            if (found) return found;
+          }
+        }
+      }
+    }
+  } catch (_e) {}
+
+  return null;
+}
+
+/**
  * Met à jour le statut d'une commande (En attente, Validée, Livrée, Annulée)
  */
 export async function updateStoreOrderStatus(
@@ -364,25 +455,26 @@ export async function updateStoreOrderStatus(
 }
 
 /**
- * Récupère le profil boutique d'un vendeur ou par son nom d'utilisateur
+ * Récupère le profil boutique d'un vendeur et TOUS ses produits créés (par username ou userId)
  */
 export async function fetchSellerStore(usernameOrUserId: string): Promise<{
   profile: SellerStoreProfile | null;
   products: ProductItem[];
 }> {
-  const cleanKey = slugify(usernameOrUserId);
+  const cleanKey = slugify(usernameOrUserId || '');
   let profile: SellerStoreProfile | null = null;
-  let products: ProductItem[] = [];
+  const productMap = new Map<string, ProductItem>();
 
+  // 1. Recherche du profil de boutique dans Firestore
   try {
-    // Recherche par username
+    // A. Recherche par username
     let q = query(
       collection(db, SELLER_STORES_COLLECTION),
       where('username', '==', cleanKey)
     );
     let snap = await getDocs(q);
 
-    // Si pas trouvé, recherche par userId
+    // B. Si pas trouvé, recherche par userId
     if (snap.empty) {
       q = query(
         collection(db, SELLER_STORES_COLLECTION),
@@ -398,45 +490,122 @@ export async function fetchSellerStore(usernameOrUserId: string): Promise<{
     console.warn('[StoreService] Erreur fetchSellerStore profile:', err);
   }
 
-  // Récupérer les produits du vendeur
-  const targetUserId = profile?.userId || usernameOrUserId;
-  try {
-    const qProd = query(
-      collection(db, PRODUCTS_COLLECTION),
-      where('userId', '==', targetUserId),
-      where('status', '==', 'active')
-    );
-    const snapProd = await getDocs(qProd);
-    snapProd.forEach(d => products.push(d.data() as ProductItem));
-  } catch (err) {
-    // Si la requête composée échoue, query simple
-    try {
-      const qSimple = query(
-        collection(db, PRODUCTS_COLLECTION),
-        where('userId', '==', targetUserId)
-      );
-      const snapSimple = await getDocs(qSimple);
-      snapSimple.forEach(d => {
-        const p = d.data() as ProductItem;
-        if (p.status === 'active') products.push(p);
-      });
-    } catch (_e) {}
-  }
-
-  // Fallback cache local si vide
+  // 2. Fallback cache local pour le profil
   if (!profile) {
     try {
-      const rawStore = localStorage.getItem(`${LOCAL_STORE_PREFIX}${usernameOrUserId}`);
+      const rawStore = localStorage.getItem(`${LOCAL_STORE_PREFIX}${cleanKey}`) || 
+                        localStorage.getItem(`${LOCAL_STORE_PREFIX}${usernameOrUserId}`);
       if (rawStore) profile = JSON.parse(rawStore);
     } catch (_e) {}
   }
 
-  if (products.length === 0) {
+  const targetUserId = profile?.userId || (usernameOrUserId.length > 20 ? usernameOrUserId : '');
+
+  // 3. Récupération des produits du vendeur dans Firestore
+  // A. Requête directe par sellerUsername (crucial pour dokya.site/b/[username])
+  try {
+    const qByUsername = query(
+      collection(db, PRODUCTS_COLLECTION),
+      where('sellerUsername', '==', cleanKey)
+    );
+    const snapU = await getDocs(qByUsername);
+    snapU.forEach(d => {
+      const p = d.data() as ProductItem;
+      if (p.status !== 'archived') {
+        productMap.set(p.id, p);
+      }
+    });
+  } catch (_e) {
+    console.warn('[StoreService] Erreur query products by sellerUsername:', _e);
+  }
+
+  // B. Requête par userId si identifié
+  if (targetUserId) {
     try {
-      const rawProds = localStorage.getItem(`${LOCAL_PRODUCTS_PREFIX}${targetUserId}`);
-      if (rawProds) {
-        const all: ProductItem[] = JSON.parse(rawProds);
-        products = all.filter(p => p.status === 'active');
+      const qByUser = query(
+        collection(db, PRODUCTS_COLLECTION),
+        where('userId', '==', targetUserId)
+      );
+      const snapUser = await getDocs(qByUser);
+      snapUser.forEach(d => {
+        const p = d.data() as ProductItem;
+        if (p.status !== 'archived') {
+          productMap.set(p.id, p);
+        }
+      });
+    } catch (_e) {
+      console.warn('[StoreService] Erreur query products by userId:', _e);
+    }
+  }
+
+  // C. Récupération large si aucun produit retourné
+  if (productMap.size === 0) {
+    try {
+      const allProdsSnap = await getDocs(collection(db, PRODUCTS_COLLECTION));
+      allProdsSnap.forEach(d => {
+        const p = d.data() as ProductItem;
+        const pUserSlug = slugify(p.sellerUsername || '');
+        if (
+          (pUserSlug && (pUserSlug === cleanKey || cleanKey.includes(pUserSlug) || pUserSlug.includes(cleanKey))) ||
+          (targetUserId && p.userId === targetUserId)
+        ) {
+          if (p.status !== 'archived') {
+            productMap.set(p.id, p);
+          }
+        }
+      });
+    } catch (_e) {}
+  }
+
+  // 4. Intégration du cache local (par username et par userId)
+  try {
+    const keysToCheck = [
+      `${LOCAL_PRODUCTS_PREFIX}${cleanKey}`,
+      `${LOCAL_PRODUCTS_PREFIX}${usernameOrUserId}`,
+      ...(targetUserId ? [`${LOCAL_PRODUCTS_PREFIX}${targetUserId}`] : [])
+    ];
+    for (const key of keysToCheck) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const list: ProductItem[] = JSON.parse(raw);
+        list.forEach(p => {
+          if (p.status !== 'archived') {
+            if (!productMap.has(p.id)) {
+              productMap.set(p.id, p);
+            }
+          }
+        });
+      }
+    }
+  } catch (_e) {}
+
+  let products = Array.from(productMap.values());
+
+  // 5. Synthèse automatique du profil boutique si manquant
+  if (!profile && products.length > 0) {
+    const p0 = products[0];
+    profile = {
+      id: `store_${p0.userId}`,
+      userId: p0.userId,
+      username: cleanKey,
+      storeName: p0.sellerName || `Boutique ${cleanKey}`,
+      whatsappNumber: p0.sellerWhatsapp || p0.sellerPhone || '',
+      phone: p0.sellerPhone || '',
+      city: 'Dakar',
+      country: 'Sénégal',
+      tagline: 'Vendeur officiel Dokya',
+      description: 'Découvrez tous mes produits, formations et services disponibles sur Dokya.',
+      createdAt: p0.createdAt,
+      updatedAt: p0.updatedAt
+    };
+  }
+
+  // 6. Mise en cache local pour affichage instantané aux prochaines visites
+  if (products.length > 0) {
+    try {
+      localStorage.setItem(`${LOCAL_PRODUCTS_PREFIX}${cleanKey}`, JSON.stringify(products));
+      if (targetUserId) {
+        localStorage.setItem(`${LOCAL_PRODUCTS_PREFIX}${targetUserId}`, JSON.stringify(products));
       }
     } catch (_e) {}
   }

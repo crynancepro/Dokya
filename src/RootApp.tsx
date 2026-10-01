@@ -166,7 +166,7 @@ export const RootApp: React.FC = () => {
     );
   }
 
-  // View: Main Dokya AI App (CV ATS, Letters, Factures, Devis, Ebooks, Dashboard, Store)
+  // View: Main Dokya AI App (CV ATS, Letters, Factures, Devis, Dashboard, Store)
   return (
     <div className="relative min-h-screen bg-slate-950">
       <ImpersonationBanner 

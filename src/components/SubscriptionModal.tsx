@@ -9,7 +9,7 @@ import { recordTransactionEverywhere } from '../lib/firebase';
 export interface SubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  planId: 'weekly' | 'monthly' | 'annual';
+  planId: 'weekly' | 'monthly' | 'semester' | 'annual';
   planTitle: string;
   price: number;
   userBalance: number;
@@ -54,7 +54,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     const effectiveEmail = userEmail || 'candidat@dokya.sn';
     const effectiveName = userName || 'Client Dokya';
     const nowIso = new Date().toISOString();
-    const durationDays = planId === 'annual' ? 365 : (planId === 'weekly' ? 7 : 30);
+    const durationDays = planId === 'annual' ? 365 : (planId === 'semester' ? 180 : (planId === 'weekly' ? 7 : 30));
     const expiresDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
     try {

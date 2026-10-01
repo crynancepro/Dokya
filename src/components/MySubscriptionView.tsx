@@ -432,7 +432,7 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
             </div>
 
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Vous êtes actuellement en mode <strong>Paiement à l'acte</strong>. Vous pouvez créer librement tous vos documents et payer uniquement lors du téléchargement final (1 000 F par CV ou Lettre, 1 500 F par Pack Duo, 3 000 F par Ebook).
+              Vous êtes actuellement en formule <strong>Paiement à l'acte</strong> (ou Formule Gratuite). Vous pouvez créer librement tous vos documents et payer uniquement lors du téléchargement final (1.99 $ par CV et 1.99 $ par Lettre de motivation) ou souscrire à un Abonnement Premium pour un accès complet et illimité sans filigrane.
             </p>
           </div>
 
@@ -442,14 +442,14 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
             {/* Standard Mode Card */}
             <div className="rounded-2xl sm:rounded-3xl bg-slate-900/60 border border-slate-800 p-4 sm:p-6 space-y-3 sm:space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm sm:text-base font-black text-white">Mode Actuel : Paiement à l'Acte</h3>
-                <span className="text-xs text-slate-400 font-mono">0 F / mois</span>
+                <h3 className="text-sm sm:text-base font-black text-white">Formule Gratuite & À l'Acte</h3>
+                <span className="text-xs text-slate-400 font-mono">0 $ / mois</span>
               </div>
 
               <ul className="space-y-2 sm:space-y-2.5 text-xs text-slate-300">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Accès gratuit aux formulaires et éditeurs</span>
+                  <span>Gratuit : 1 CV, 1 Lettre, 1 Facture, 1 Devis par mois (avec filigrane Dokya)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -457,11 +457,11 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Archivage et ré-téléchargement à vie des documents payés</span>
+                  <span>Archivage et ré-téléchargement à vie des documents acquis</span>
                 </li>
-                <li className="flex items-center gap-2 text-slate-500">
-                  <XCircle className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                  <span>Paiement de 1 000 à 3 000 FCFA à chaque nouvelle création</span>
+                <li className="flex items-center gap-2 text-slate-400">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span>Achat à l'acte sans filigrane : 1.99 $ par document</span>
                 </li>
               </ul>
             </div>
@@ -471,15 +471,15 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <Crown className="w-4 h-4 text-amber-400" />
-                  <h3 className="text-sm sm:text-base font-black text-white">Pass VIP Illimité</h3>
+                  <h3 className="text-sm sm:text-base font-black text-white">Abonnement Premium Illimité</h3>
                 </div>
-                <span className="text-xs font-black text-amber-300">Dès 2 500 FCFA</span>
+                <span className="text-xs font-black text-amber-300">9.99 $ / mois</span>
               </div>
 
               <ul className="space-y-2 sm:space-y-2.5 text-xs text-slate-200">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Téléchargements Word (.docx) & PDF <strong>100% ILLIMITÉS</strong></span>
+                  <span>Téléchargements Word (.docx) & PDF <strong>100% ILLIMITÉS sans filigrane</strong></span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -487,33 +487,22 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Accès complet au générateur d'Ebooks & Livres complets</span>
+                  <span>Boutique en ligne Dokya, Factures, Devis, Gestion Client & Stock</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Support prioritaire direct sur WhatsApp 7j/7</span>
+                  <span>Support prioritaire direct 7j/7</span>
                 </li>
               </ul>
 
               <div className="pt-1 sm:pt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    const balance = profile?.balance ?? 0;
-                    if (balance < 5000) {
-                      onOpenRecharge();
-                    } else {
-                      onSubscribePlan('monthly', 5000, 'Pass VIP Mensuel');
-                    }
-                  }}
+                  onClick={onGoToPricing}
                   className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>
-                    {(profile?.balance ?? 0) < 5000 
-                      ? 'Recharger mon portefeuille' 
-                      : "S'abonner avec mon solde (5 000 FCFA)"}
-                  </span>
+                  <span>Voir les formules d'Abonnement (dès 9.99 $)</span>
                 </button>
               </div>
             </div>

@@ -5,7 +5,8 @@ import {
   CreditCard, Smartphone, CheckCircle2, ArrowRight, Eye, Download,
   Percent, AlertCircle, AlertTriangle, FileText, Copy, Check, Save,
   Layers, Palette, Tag, Shield, ArrowLeftRight, MessageSquare, UserPlus, Users,
-  Upload, Image as ImageIcon, Star, Settings, X, Package, Boxes, Barcode, Search
+  Upload, Image as ImageIcon, Star, Settings, X, Package, Boxes, Barcode, Search,
+  Receipt
 } from 'lucide-react';
 import { BusinessDocData, BusinessDocItem, Customer, UserBusiness, Product } from '../types';
 import { SECTOR_PRESETS, INDIVIDUAL_SERVICES_CATALOG } from '../data/businessPresets';
@@ -110,8 +111,8 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
       if (!isMounted) return;
       setSavedBusinesses(list);
 
-      // Auto-apply default business if document has no business selected or only generic name
-      if (!data.businessId && (!data.issuer.companyName || data.issuer.companyName === 'Mon Entreprise / Agence' || data.issuer.companyName === 'Mon Entreprise')) {
+      // Auto-apply default business if document has no business selected or only generic name (and not an order-generated invoice)
+      if (!data.orderId && !data.businessId && (!data.issuer.companyName || data.issuer.companyName === 'Mon Entreprise / Agence' || data.issuer.companyName === 'Mon Entreprise')) {
         const defaultBiz = list.find(b => b.isDefault) || list[0];
         if (defaultBiz) {
           setSelectedBusinessId(defaultBiz.id);
@@ -631,6 +632,78 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
       </div>
 
       <div className="p-4 sm:p-5 space-y-4">
+        {/* Banner Commande Boutique liée en 1-Clic */}
+        {data.orderId && (
+          <div className="bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 border border-indigo-500/50 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 text-white animate-in fade-in">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shrink-0 shadow-inner">
+                <Receipt className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs font-black uppercase text-indigo-300 bg-indigo-500/10 px-2.5 py-1 rounded-lg border border-indigo-500/30">
+                    Commande #{data.orderId}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Facture 1-Clic Auto-complétée
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Vendeur : <strong className="text-white">{data.issuer.companyName || data.issuer.name || 'Boutique'}</strong> • Client : <strong className="text-white">{data.client.name}</strong> ({data.client.phone || 'Sans contact'}) • Livraison : <span className="text-slate-200">{data.client.address || 'Standard'}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Actions Rapides Export & Partage 1-Clic */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {handlePreviewClick && (
+                <button
+                  type="button"
+                  onClick={handlePreviewClick}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1.5 border border-slate-700 shadow-sm transition-all cursor-pointer active:scale-95"
+                  title="Visualiser l'aperçu PDF instantané"
+                >
+                  <Eye className="w-4 h-4 text-indigo-400" />
+                  <span>Aperçu PDF instantané</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onOpenWizard('facture')}
+                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                title="Télécharger la facture officielle en PDF"
+              >
+                <Download className="w-4 h-4" />
+                <span>Télécharger le PDF</span>
+              </button>
+
+              <a
+                href={generateInvoiceWhatsAppLink({
+                  clientName: data.client.companyName || data.client.name || 'Client',
+                  phone: data.client.phone || '',
+                  docNumber: data.docNumber,
+                  type: 'facture',
+                  totalTTC: totalTTC,
+                  currency: currency,
+                  dueDate: data.dueDate,
+                  issuerName: data.issuer.companyName || data.issuer.name,
+                  isPaid: data.paymentStatus === 'PAID',
+                  orderId: data.orderId,
+                  downloadUrl: typeof window !== 'undefined' ? `${window.location.origin}/documents/${data.id || data.docNumber}?orderId=${encodeURIComponent(data.orderId || '')}` : undefined
+                })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all cursor-pointer active:scale-95"
+                title="Partager la facture au client via WhatsApp avec lien de téléchargement direct"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Partager WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Real-Time Form Validation Banner */}
         <AIFormValidationBanner
           report={validateBusinessDoc(data)}
@@ -1694,6 +1767,19 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
             </button>
           )}
 
+          {/* Bouton Aperçu PDF Instantané */}
+          {handlePreviewClick && (
+            <button
+              type="button"
+              onClick={handlePreviewClick}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+              title="Visualiser le rendu PDF instantané"
+            >
+              <Eye className="w-3.5 h-3.5 text-indigo-300" />
+              <span>Aperçu PDF</span>
+            </button>
+          )}
+
           {/* 1-Click WhatsApp Direct Share */}
           <a
             href={generateInvoiceWhatsAppLink({
@@ -1704,12 +1790,15 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
               totalTTC: totalTTC,
               currency: currency,
               dueDate: data.dueDate,
-              isPaid: data.paymentStatus === 'PAID'
+              issuerName: data.issuer.companyName || data.issuer.name,
+              isPaid: data.paymentStatus === 'PAID',
+              orderId: data.orderId,
+              downloadUrl: typeof window !== 'undefined' ? `${window.location.origin}/documents/${data.id || data.docNumber}?orderId=${encodeURIComponent(data.orderId || '')}` : undefined
             })}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
-            title="Envoyer un message pré-rempli au client sur WhatsApp"
+            title="Envoyer la facture directement au client sur WhatsApp avec lien direct"
           >
             <MessageSquare className="w-3.5 h-3.5" />
             <span>WhatsApp</span>

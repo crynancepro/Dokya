@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { PlatformPricingConfig, PromoCode } from '../types';
 import { 
   DEFAULT_PLATFORM_PRICING, 
@@ -31,18 +31,30 @@ export interface PromoValidationResult {
 interface PricingContextType {
   pricing: PlatformPricingConfig;
   promoCodes: PromoCode[];
+  publishedPromo: PromoCode | null;
   isLoading: boolean;
   updatePricing: (newPricing: Partial<PlatformPricingConfig>, adminEmail?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   validatePromoCode: (code: string, amount: number, documentTitle?: string) => Promise<PromoValidationResult>;
   savePromoCode: (promoData: Partial<PromoCode>, adminEmail?: string) => Promise<{ success: boolean; promoCode?: PromoCode; message?: string; error?: string }>;
   deletePromoCode: (id: string, code: string, adminEmail?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   togglePromoCode: (id: string, code: string, currentActive: boolean, adminEmail?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  togglePublishPromoCode: (id: string, code: string, currentPublished: boolean, adminEmail?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   formatPrice: (amount: number, currency?: string) => string;
   appliedGlobalPromo: PromoValidationResult | null;
   setAppliedGlobalPromo: (promo: PromoValidationResult | null) => void;
   applyGlobalPromo: (code: string, amount?: number, documentTitle?: string) => Promise<PromoValidationResult>;
   clearGlobalPromo: () => void;
   calculateDiscount: (basePrice: number) => { finalPrice: number; discountAmount: number; isFree: boolean; discountLabel: string };
+  calculateDiscountedPrice: (basePrice: number) => {
+    originalPrice: number;
+    finalPrice: number;
+    discountAmount: number;
+    discountPercent: number;
+    discountLabel: string;
+    hasDiscount: boolean;
+    isFree: boolean;
+    promoCode: PromoCode | null;
+  };
 }
 
 const PricingContext = createContext<PricingContextType | undefined>(undefined);
@@ -94,6 +106,11 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     } catch (_e) {}
   };
+
+  // Published promo code (automatically applied across public pricing and checkout)
+  const publishedPromo = useMemo(() => {
+    return promoCodes.find((p) => p.active && p.isPublished) || null;
+  }, [promoCodes]);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -431,7 +448,8 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         maxUsageLimit: Number(promoData.maxUsageLimit) || 100,
         currentUsageCount: promoData.currentUsageCount || 0,
         active: promoData.active !== undefined ? Boolean(promoData.active) : true,
-        description: promoData.description || `Réduction de ${val}${promoData.discountType === 'percentage' ? '%' : ' FCFA'}`,
+        isPublished: promoData.isPublished !== undefined ? Boolean(promoData.isPublished) : false,
+        description: promoData.description || `Réduction de ${val}${promoData.discountType === 'percentage' ? '%' : ' $'}`,
         createdAt: promoData.createdAt || new Date().toISOString(),
         createdBy: adminEmail
       };
@@ -576,14 +594,120 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  // 8. Helper to format price with thousands separator and currency
-  const formatPrice = (amount: number, currency: string = 'FCFA'): string => {
+  // 7b. Toggle Publish Promo Code (Publie le code pour application automatique sur la Landing Page et au Checkout)
+  const togglePublishPromoCode = async (
+    id: string,
+    code: string,
+    currentPublished: boolean,
+    adminEmail: string = 'peter25ngouala@gmail.com'
+  ): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+      const newPublished = !currentPublished;
+
+      // Update local state (si on publie ce code, on active et on passe les autres en false pour garder 1 promo active officielle)
+      const updated = promoCodes.map((p) => {
+        if (p.id === id || p.code === code) {
+          return { ...p, isPublished: newPublished, active: true };
+        }
+        if (newPublished) {
+          return { ...p, isPublished: false };
+        }
+        return p;
+      });
+
+      setPromoCodes(updated);
+      try {
+        localStorage.setItem(PROMOS_STORAGE_KEY, JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('promos-updated', { detail: updated }));
+      } catch (_e) {}
+
+      // Update Firestore
+      const target = updated.find((p) => p.id === id || p.code === code);
+      if (target) {
+        await savePromoCodeToFirestore(target);
+      }
+
+      // Sync other promo codes in Firestore if we unpublished them
+      if (newPublished) {
+        const others = updated.filter(p => (p.id !== id && p.code !== code) && p.isPublished === false);
+        for (const other of others) {
+          savePromoCodeToFirestore(other).catch(() => {});
+        }
+      }
+
+      return {
+        success: true,
+        message: newPublished
+          ? `Code promo "${code}" publié ! Il s'applique automatiquement sur les tarifs de la Landing Page et au checkout.`
+          : `Code promo "${code}" retiré de la publication publique.`
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Erreur lors de la publication du code promo.'
+      };
+    }
+  };
+
+  // 8. Helper to format price with currency
+  const formatPrice = (amount: number, currency: string = 'USD'): string => {
     const num = Number(amount) || 0;
+    if (currency === 'USD' || currency === '$') {
+      return `${num.toFixed(2)} $`;
+    }
     return `${num.toLocaleString('fr-FR')} ${currency}`;
   };
 
-  // 9. Global Promo Application & Calculation
-  const applyGlobalPromo = async (code: string, amount: number = 1000, documentTitle?: string): Promise<PromoValidationResult> => {
+  // 9. Calcul dynamique de réduction pour les tarifs publics et checkout
+  const calculateDiscountedPrice = (basePrice: number) => {
+    const pub = publishedPromo || (appliedGlobalPromo?.valid ? {
+      discountType: appliedGlobalPromo.discountType,
+      discountValue: appliedGlobalPromo.discountValue,
+      code: appliedGlobalPromo.code
+    } as PromoCode : null);
+
+    if (!pub) {
+      return {
+        originalPrice: basePrice,
+        finalPrice: basePrice,
+        discountAmount: 0,
+        discountPercent: 0,
+        discountLabel: '',
+        hasDiscount: false,
+        isFree: false,
+        promoCode: null
+      };
+    }
+
+    let discountAmount = 0;
+    let discountPercent = 0;
+    if (pub.discountType === 'percentage') {
+      discountPercent = pub.discountValue;
+      discountAmount = pub.discountValue >= 100 
+        ? basePrice 
+        : Number(((basePrice * pub.discountValue) / 100).toFixed(2));
+    } else {
+      discountAmount = Math.min(basePrice, pub.discountValue);
+      discountPercent = basePrice > 0 ? Math.round((discountAmount / basePrice) * 100) : 0;
+    }
+
+    const rawFinal = Math.max(0, basePrice - discountAmount);
+    const finalPrice = Number(rawFinal.toFixed(2));
+
+    return {
+      originalPrice: basePrice,
+      finalPrice,
+      discountAmount: Number(discountAmount.toFixed(2)),
+      discountPercent,
+      discountLabel: pub.discountType === 'percentage' ? `-${pub.discountValue}%` : `-${pub.discountValue}$`,
+      hasDiscount: discountAmount > 0,
+      isFree: finalPrice <= 0,
+      promoCode: pub
+    };
+  };
+
+  // 10. Global Promo Application & Calculation
+  const applyGlobalPromo = async (code: string, amount: number = 1.99, documentTitle?: string): Promise<PromoValidationResult> => {
     const result = await validatePromoCode(code, amount, documentTitle);
     if (result.valid) {
       setAppliedGlobalPromo(result);
@@ -596,23 +720,12 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const calculateDiscount = (basePrice: number): { finalPrice: number; discountAmount: number; isFree: boolean; discountLabel: string } => {
-    if (!appliedGlobalPromo || !appliedGlobalPromo.valid) {
-      return { finalPrice: basePrice, discountAmount: 0, isFree: false, discountLabel: '' };
-    }
-    let discountAmount = 0;
-    if (appliedGlobalPromo.discountType === 'percentage') {
-      discountAmount = appliedGlobalPromo.discountValue >= 100
-        ? basePrice
-        : Math.round((basePrice * appliedGlobalPromo.discountValue) / 100);
-    } else {
-      discountAmount = Math.min(basePrice, appliedGlobalPromo.discountValue);
-    }
-    const finalPrice = Math.max(0, basePrice - discountAmount);
+    const res = calculateDiscountedPrice(basePrice);
     return {
-      finalPrice,
-      discountAmount,
-      isFree: finalPrice === 0,
-      discountLabel: appliedGlobalPromo.discountLabel
+      finalPrice: res.finalPrice,
+      discountAmount: res.discountAmount,
+      isFree: res.isFree,
+      discountLabel: res.discountLabel
     };
   };
 
@@ -621,18 +734,21 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
       value={{
         pricing,
         promoCodes,
+        publishedPromo,
         isLoading,
         updatePricing,
         validatePromoCode,
         savePromoCode,
         deletePromoCode,
         togglePromoCode,
+        togglePublishPromoCode,
         formatPrice,
         appliedGlobalPromo,
         setAppliedGlobalPromo,
         applyGlobalPromo,
         clearGlobalPromo,
-        calculateDiscount
+        calculateDiscount,
+        calculateDiscountedPrice
       }}
     >
       {children}

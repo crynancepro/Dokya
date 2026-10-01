@@ -37,7 +37,7 @@ interface OrdersTrackingViewProps {
   onOpenDocumentPreview?: (doc: SavedUserDocument) => void;
   onOpenInterviewPrep?: (prepData: InterviewPrepData) => void;
   onOpenRechargeModal?: () => void;
-  onSelectService?: (service: 'cv' | 'letter' | 'devis' | 'facture' | 'ebook') => void;
+  onSelectService?: (service: 'cv' | 'letter' | 'devis' | 'facture') => void;
   onDirectExportPDF?: (doc: SavedUserDocument) => void;
   onDirectExportDocx?: (doc: SavedUserDocument) => void;
 }

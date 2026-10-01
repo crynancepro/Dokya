@@ -262,42 +262,71 @@ export const PublicStorePage: React.FC<PublicStorePageProps> = ({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map(prod => (
               <div 
                 key={prod.id}
                 onClick={() => onOpenProduct(prod.slug)}
-                className="group relative bg-slate-900/90 hover:bg-slate-900/95 border border-slate-800 hover:border-indigo-500/50 rounded-3xl p-4 shadow-xl hover:shadow-2xl hover:shadow-indigo-500/20 flex flex-col justify-between cursor-pointer transform transition-all duration-300 ease-out hover:scale-[1.03] hover:-translate-y-1.5 will-change-transform"
+                className="group relative bg-slate-900/90 hover:bg-slate-900/95 border border-slate-800/80 hover:border-indigo-500/60 rounded-3xl overflow-hidden shadow-xl hover:shadow-2xl hover:shadow-indigo-500/20 flex flex-col justify-between cursor-pointer transform transition-all duration-300 ease-out hover:scale-[1.025] hover:-translate-y-1.5 will-change-transform"
               >
-                <div className="space-y-3">
-                  <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-800">
-                    <img 
-                      src={prod.images?.[0] || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80'} 
-                      alt={prod.title}
-                      className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500 ease-out"
-                    />
-                    <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-black/75 backdrop-blur-md text-slate-300 border border-white/10 text-[10px] font-semibold">
-                      {prod.category || 'Service'}
-                    </div>
+                {/* Photo du produit : Pleine largeur, aucun encadrement ni marge */}
+                <div className="relative aspect-[16/11] w-full overflow-hidden bg-slate-950">
+                  <img 
+                    src={prod.images?.[0] || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80'} 
+                    alt={prod.title}
+                    className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
+                  />
+                  {/* Dégradé doux à la base de la photo */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-black/20 pointer-events-none" />
+
+                  {/* Badge de catégorie vitré en haut à gauche */}
+                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                    <span className="px-3 py-1 rounded-full bg-slate-950/80 backdrop-blur-md text-white border border-white/15 text-[11px] font-bold shadow-lg">
+                      {prod.category || 'Service & Produit'}
+                    </span>
                   </div>
 
-                  <div>
-                    <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-indigo-400 transition-colors duration-200">
+                  {/* Badge de type de vente en haut à droite */}
+                  <div className="absolute top-3 right-3">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-black shadow-lg">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-pulse" />
+                      <span>{prod.saleType === 'direct_order' ? 'Commande Dokya' : 'Redirection'}</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Contenu textuel et déclencheurs d'achat */}
+                <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                  <div className="space-y-2">
+                    <h3 className="text-base sm:text-lg font-black text-white line-clamp-1 group-hover:text-indigo-400 transition-colors duration-200">
                       {prod.title}
                     </h3>
-                    <p className="text-lg font-black text-emerald-400 mt-0.5">
-                      {(Number(prod.price) || 0).toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
+
+                    {/* Prix principal avec ancrage prix barré */}
+                    <div className="flex items-baseline gap-2.5">
+                      <span className="text-2xl font-black text-emerald-400 tracking-tight">
+                        {(Number(prod.price) || 0).toLocaleString('fr-FR')} <span className="text-xs font-bold text-emerald-400/80">FCFA</span>
+                      </span>
+                      <span className="text-xs font-semibold text-slate-500 line-through">
+                        {(Math.round((Number(prod.price) || 0) * 1.25 / 500) * 500).toLocaleString('fr-FR')} FCFA
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                        -20%
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+                      {prod.description || 'Cliquez pour découvrir tous les détails et commander ce produit.'}
                     </p>
                   </div>
 
-                  <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                    {prod.description || 'Cliquez pour voir les détails de ce produit.'}
-                  </p>
-                </div>
-
-                <div className="pt-4 border-t border-slate-800/80 mt-4 flex items-center justify-between text-xs font-bold text-indigo-400 group-hover:text-indigo-300 transition-colors">
-                  <span>{prod.saleType === 'direct_order' ? 'Commander sur Dokya' : 'Voir le lien direct'}</span>
-                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1.5 transition-transform duration-300 ease-out" />
+                  {/* Bouton d'action accrocheur */}
+                  <div className="pt-2 border-t border-slate-800/80">
+                    <div className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-500 group-hover:from-indigo-500 group-hover:to-indigo-400 text-white font-bold text-xs flex items-center justify-between shadow-lg shadow-indigo-600/25 transition-all">
+                      <span>{prod.saleType === 'direct_order' ? 'Commander maintenant' : 'Voir le lien direct'}</span>
+                      <ChevronRight className="w-4 h-4 group-hover:translate-x-1.5 transition-transform duration-300 ease-out" />
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}

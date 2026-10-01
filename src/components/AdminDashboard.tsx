@@ -145,7 +145,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     updatePricing,
     savePromoCode,
     deletePromoCode,
-    togglePromoCode
+    togglePromoCode,
+    togglePublishPromoCode
   } = usePricing();
   
   // Impersonation state
@@ -240,6 +241,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [promoLimitInput, setPromoLimitInput] = useState<number>(100);
   const [promoDescInput, setPromoDescInput] = useState<string>('');
   const [promoActiveInput, setPromoActiveInput] = useState<boolean>(true);
+  const [promoPublishedInput, setPromoPublishedInput] = useState<boolean>(false);
   const [isSavingPromo, setIsSavingPromo] = useState<boolean>(false);
 
   // Pricing Form State (local edit buffer for the form)
@@ -1299,7 +1301,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         devisPrice: Number(editingPricing.devisPrice) || 0,
         facturePrice: Number(editingPricing.facturePrice) || 0,
         businessPackPrice: Number(editingPricing.businessPackPrice) || 0,
-        ebookPrice: Number(editingPricing.ebookPrice ?? 1500) || 0,
         unlimitedPassPrice: Number(editingPricing.unlimitedPassPrice) || 0,
         unlimitedPassMonthlyPrice: Number(editingPricing.unlimitedPassPrice) || 0,
         unlimitedPassAnnualPrice: Number(editingPricing.unlimitedPassAnnualPrice || 39999) || 0,
@@ -1337,6 +1338,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setPromoLimitInput(promo.maxUsageLimit || 100);
       setPromoDescInput(promo.description || '');
       setPromoActiveInput(promo.active);
+      setPromoPublishedInput(Boolean(promo.isPublished));
     } else {
       setEditingPromo(null);
       setPromoCodeInput('');
@@ -1346,6 +1348,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setPromoLimitInput(100);
       setPromoDescInput('');
       setPromoActiveInput(true);
+      setPromoPublishedInput(false);
     }
     setIsPromoModalOpen(true);
   };
@@ -1371,7 +1374,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         maxUsageLimit: Number(promoLimitInput) || 100,
         currentUsageCount: editingPromo?.currentUsageCount || 0,
         active: promoActiveInput,
-        description: promoDescInput || `Réduction de ${val}${promoTypeInput === 'percentage' ? '%' : ' FCFA'}`,
+        isPublished: promoPublishedInput,
+        description: promoDescInput || `Réduction de ${val}${promoTypeInput === 'percentage' ? '%' : ' $'}`,
         createdAt: editingPromo?.createdAt || new Date().toISOString(),
         createdBy: adminEmail
       };
@@ -1402,6 +1406,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (e) {
       setErrorMsg('Erreur lors du changement de statut.');
+    }
+  };
+
+  const handleTogglePublishPromoCode = async (id: string, code: string, currentPublished: boolean) => {
+    try {
+      const res = await togglePublishPromoCode(id, code, currentPublished, adminEmail);
+      if (res.success) {
+        setSuccessMsg(res.message || `Code promo ${code} ${!currentPublished ? 'publié sur le site' : 'retiré de la publication'}.`);
+      } else {
+        setErrorMsg(res.error || 'Erreur lors de la publication du code promo.');
+      }
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (e) {
+      setErrorMsg('Erreur lors de la modification de la publication.');
     }
   };
 
@@ -1920,7 +1938,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                         {(effectiveKPIs?.totalCVsGenerated || 0).toLocaleString('fr-FR')}
                       </div>
-                      <p className="text-xs text-slate-400 mt-1">CV ATS, Lettres, Devis & Ebooks</p>
+                      <p className="text-xs text-slate-400 mt-1">CV ATS, Lettres, Devis & Factures</p>
                     </>
                   )}
                 </div>
@@ -3268,32 +3286,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Product 7: Ebook / Livre Numérique */}
-              <div className="bg-slate-900/80 border border-indigo-500/40 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-indigo-500/60 transition-all">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black text-indigo-400 uppercase tracking-wider bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">Création Ebook</span>
-                  <span className="text-xs text-slate-500 font-mono">ID: ebook</span>
-                </div>
-                <h3 className="text-base font-bold text-white">Ebook &amp; Livre Numérique</h3>
-                <p className="text-xs text-slate-400">Génération par IA d'ebooks avec mise en page HD et chapitrage.</p>
-                <div className="pt-2">
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Prix de vente :</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="any"
-                      value={editingPricing.ebookPrice ?? 1500}
-                      onChange={(e) => setEditingPricing({ ...editingPricing, ebookPrice: Number(e.target.value) })}
-                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:border-emerald-500 focus:outline-none min-h-[48px] pr-16"
-                      placeholder="1500"
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 pointer-events-none">
-                      FCFA
-                    </span>
-                  </div>
-                </div>
-              </div>
-
               {/* Product 8: Pass Illimité Mensuel */}
               <div className="bg-slate-900/80 border border-purple-500/30 rounded-3xl p-5 sm:p-6 shadow-lg space-y-3.5 hover:border-purple-500/50 transition-all">
                 <div className="flex items-center justify-between">
@@ -3416,13 +3408,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="py-4 px-3">Minimum Requis</th>
                       <th className="py-4 px-3">Utilisations</th>
                       <th className="py-4 px-3">Statut</th>
+                      <th className="py-4 px-3 text-center">Publication (Site & Checkout)</th>
                       <th className="py-4 px-4 sm:px-6 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {promoCodesList.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-slate-500">
+                        <td colSpan={7} className="py-12 text-center text-slate-500">
                           Aucun code promo créé pour le moment.
                         </td>
                       </tr>
@@ -3436,6 +3429,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono font-bold text-xs border border-emerald-500/30">
                                 {promo.code}
                               </span>
+                              {promo.isPublished && (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 text-[10px] font-black border border-emerald-400/40 flex items-center gap-1 shadow-xs">
+                                  <Sparkles className="w-3 h-3 text-emerald-300 fill-emerald-300" />
+                                  <span>En Ligne</span>
+                                </span>
+                              )}
                             </div>
                             {promo.description && (
                               <p className="text-[11px] text-slate-400 mt-1">{promo.description}</p>
@@ -3445,14 +3444,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {/* Valeur */}
                           <td className="py-3.5 px-3">
                             <span className="font-bold text-white">
-                              {promo.discountType === 'percentage' ? `-${promo.discountValue}%` : `-${(Number(promo.discountValue) || 0).toLocaleString('fr-FR')} FCFA`}
+                              {promo.discountType === 'percentage' ? `-${promo.discountValue}%` : `-${Number(promo.discountValue) || 0} $`}
                             </span>
                           </td>
 
                           {/* Minimum */}
                           <td className="py-3.5 px-3">
                             <span className="text-xs text-slate-300">
-                              {promo.minOrderAmount ? `${(Number(promo.minOrderAmount) || 0).toLocaleString('fr-FR')} FCFA` : 'Sans minimum'}
+                              {promo.minOrderAmount ? `${Number(promo.minOrderAmount) || 0} $` : 'Sans minimum'}
                             </span>
                           </td>
 
@@ -3485,6 +3484,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <>
                                   <span className="w-2 h-2 rounded-full bg-slate-500"></span>
                                   <span>Désactivé</span>
+                                </>
+                              )}
+                            </button>
+                          </td>
+
+                          {/* Bouton / Switch "Publier" */}
+                          <td className="py-3.5 px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePublishPromoCode(promo.id, promo.code, Boolean(promo.isPublished))}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95 ${
+                                promo.isPublished
+                                  ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-400 text-slate-950 font-black shadow-emerald-500/30 ring-2 ring-emerald-400/50'
+                                  : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500 hover:bg-slate-700'
+                              }`}
+                              title={
+                                promo.isPublished
+                                  ? 'Code actuellement PUBLIÉ : appliqué automatiquement sur les tarifs publics de la Landing Page et au checkout. Cliquez pour retirer la publication.'
+                                  : 'Cliquer pour publier ce code promo et l\'appliquer automatiquement sur la Landing Page et au checkout'
+                              }
+                            >
+                              {promo.isPublished ? (
+                                <>
+                                  <Sparkles className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                                  <span>Publié ✨</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Globe className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>Publier</span>
                                 </>
                               )}
                             </button>
@@ -4814,17 +4843,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="promoActiveCheck"
-                  checked={promoActiveInput}
-                  onChange={(e) => setPromoActiveInput(e.target.checked)}
-                  className="w-4 h-4 text-emerald-500 rounded bg-slate-950 border-slate-700 focus:ring-emerald-500 cursor-pointer"
-                />
-                <label htmlFor="promoActiveCheck" className="text-xs font-semibold text-slate-300 cursor-pointer">
-                  Activer immédiatement ce code promo
-                </label>
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="promoActiveCheck"
+                    checked={promoActiveInput}
+                    onChange={(e) => setPromoActiveInput(e.target.checked)}
+                    className="w-4 h-4 text-emerald-500 rounded bg-slate-950 border-slate-700 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <label htmlFor="promoActiveCheck" className="text-xs font-semibold text-slate-300 cursor-pointer">
+                    Activer ce code promo
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                  <input
+                    type="checkbox"
+                    id="promoPublishedCheck"
+                    checked={promoPublishedInput}
+                    onChange={(e) => setPromoPublishedInput(e.target.checked)}
+                    className="w-4 h-4 text-emerald-500 rounded bg-slate-950 border-slate-700 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <label htmlFor="promoPublishedCheck" className="text-xs font-bold text-emerald-300 cursor-pointer flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 fill-emerald-300" />
+                    <span>Publier ce code promo (Application automatique sur la Landing Page et au Checkout)</span>
+                  </label>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">

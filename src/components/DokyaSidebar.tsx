@@ -49,7 +49,6 @@ export type SidebarTab =
   | 'gen_cv'
   | 'gen_letter'
   | 'gen_business'
-  | 'gen_ebook'
   | 'tarifs'
   | 'subscription'
   | 'profile'
@@ -132,7 +131,7 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
 
   const isSubscriptionActive = isUserVipActive(profile?.subscription) || profile?.subscriptionStatus === 'unlimited';
 
-  const isGenTabActive = ['gen_cv', 'gen_letter', 'gen_business', 'gen_ebook'].includes(activeTab);
+  const isGenTabActive = ['gen_cv', 'gen_letter', 'gen_business'].includes(activeTab);
 
   const handleNavClick = (tab: SidebarTab | string) => {
     onSelectTab(tab);
@@ -459,21 +458,6 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
                   >
                     <Receipt className="w-3.5 h-3.5 shrink-0 opacity-70" />
                     <span>Facture & Devis UEMOA</span>
-                  </button>
-
-                  {/* Ebook & Rapport AI */}
-                  <button
-                    id="nav-gen-ebook"
-                    type="button"
-                    onClick={() => handleNavClick('gen_ebook')}
-                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                      activeTab === 'gen_ebook' || activeTab === 'ebook' || activeTab === 'ebook_preview'
-                        ? 'bg-white/10 text-white font-medium'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                    }`}
-                  >
-                    <BookOpen className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                    <span>Ebook & Rapport AI</span>
                   </button>
                 </div>
               )}

@@ -87,7 +87,6 @@ function parseAmount(tx: any): number {
   if (typeStr.includes('sub') || descStr.includes('pass') || descStr.includes('vip') || descStr.includes('abonnement')) {
     return descStr.includes('semaine') ? 2500 : 5000;
   }
-  if (typeStr.includes('ebook') || descStr.includes('livre')) return 3000;
   if (typeStr.includes('duo')) return 1500;
   if (typeStr.includes('doc') || descStr.includes('cv') || descStr.includes('lettre')) return 1000;
 

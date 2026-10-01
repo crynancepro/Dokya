@@ -5,14 +5,17 @@ import {
   CandidateProfile, 
   SavedUserDocument, 
   BusinessDocData, 
-  EbookData,
   TemplateStyle,
   CoverLetterType,
   InterviewPrepData,
   UserSubscription,
   isUserVipActive,
-  Customer
+  Customer,
+  StoreOrder,
+  SellerStoreProfile,
+  BusinessDocItem
 } from './types';
+import { fetchStoreOrderById, fetchSellerStore } from './lib/storeService';
 import { SAMPLE_CV_DATA } from './data/sampleData';
 import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
@@ -24,7 +27,6 @@ import { PaymentModal } from './components/PaymentModal';
 import { PaywallModal } from './components/PaywallModal';
 import { RechargeWalletModal } from './components/RechargeWalletModal';
 import { DevisFactureForm } from './components/DevisFactureForm';
-import { EbookWizardForm } from './components/EbookWizardForm';
 import { DocumentDedicatedPreview } from './components/DocumentDedicatedPreview';
 import { CVTemplateGallery } from './components/CVTemplateGallery';
 import { BusinessDocTemplateGallery } from './components/BusinessDocTemplateGallery';
@@ -34,7 +36,7 @@ import { InterviewPrepView } from './components/InterviewPrepView';
 import { AuthModal } from './components/AuthModal';
 import { VictoryModal } from './components/VictoryModal';
 import { downloadElementAsPDF } from './lib/pdfUtils';
-import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from './lib/exportUtils';
+import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx } from './lib/exportUtils';
 import { auth, db, saveUserDocument, saveTransactionRecord, subscribeToUserProfile, fetchUserData, refetchProfile, initializeUserAccountDoc, saveBusinessInvoice, getLocalProfileKey, getLocalTransactionsKey, getLocalDocumentsKey, createNotification } from './lib/firebase';
 import { doc, getDoc, setDoc, increment, arrayUnion } from 'firebase/firestore';
 import { initAffiliateTracking } from './lib/referralTracking';
@@ -109,42 +111,6 @@ export const createEmptyBusinessDocData = (type: 'devis' | 'facture' = 'devis'):
   currency: 'FCFA'
 });
 
-export const createEmptyEbookData = (): EbookData => ({
-  id: `EBOOK-${Date.now()}`,
-  title: '',
-  subtitle: '',
-  author: '',
-  language: 'Français',
-  genre: 'Développement Personnel & Professionnel',
-  targetAudience: 'Tous publics',
-  tone: 'Inspirant & Pratique',
-  summaryOrPrompt: '',
-  chapterCount: 5,
-  targetPageCount: 10,
-  pageFormat: '6x9',
-  fontFamily: 'sans',
-  fontSize: 'normal',
-  frontCover: {
-    selectedIndex: 0,
-    proposals: [],
-    customPrompt: '',
-    customImageUrl: '',
-    mode: 'proposal'
-  },
-  backCover: {
-    selectedIndex: 0,
-    proposals: [],
-    customPrompt: '',
-    customImageUrl: '',
-    mode: 'proposal'
-  },
-  tableOfContents: [],
-  chapters: [],
-  currentStep: 1,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString()
-});
-
 export type MainAppView = 
   | 'landing'
   | 'auth'
@@ -165,8 +131,6 @@ export type MainAppView =
   | 'pack_business_gallery'
   | 'pack_business'
   | 'pack_business_preview'
-  | 'ebook'
-  | 'ebook_preview'
   | 'interview_prep'
   | 'tarifs'
   | 'subscription'
@@ -186,7 +150,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   // Form State
   const [formData, setFormData] = useState<CVFormData>(createEmptyCVFormData);
   const [businessDocData, setBusinessDocData] = useState<BusinessDocData>(() => createEmptyBusinessDocData('devis'));
-  const [ebookData, setEbookData] = useState<EbookData>(createEmptyEbookData);
   const [aiData, setAiData] = useState<AIOptimizedData | null>(null);
   const [interviewPrepData, setInterviewPrepData] = useState<InterviewPrepData | null>(null);
 
@@ -205,7 +168,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Service for templates view
-  const [templatesService, setTemplatesService] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook'>('cv');
+  const [templatesService, setTemplatesService] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business'>('cv');
 
   // Pack specific sub-switchers
   const [packBusinessSubTab, setPackBusinessSubTab] = useState<'devis' | 'facture'>('devis');
@@ -232,10 +195,10 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
 
   // Modal states
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
-  const [paymentDocType, setPaymentDocType] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook'>('cv');
+  const [paymentDocType, setPaymentDocType] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business'>('cv');
   const [paymentDocTitle, setPaymentDocTitle] = useState<string>('');
   const [paymentDocTypeLabel, setPaymentDocTypeLabel] = useState<string>('CV Pro ATS');
-  const [paymentPrice, setPaymentPrice] = useState<number>(1000);
+  const [paymentPrice, setPaymentPrice] = useState<number>(1.99);
   const [isRechargeModalOpen, setIsRechargeModalOpen] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'signup'>('login');
@@ -249,7 +212,13 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     if (typeof window !== 'undefined') {
       const hash = window.location.hash.toLowerCase();
       const pathname = window.location.pathname.toLowerCase();
+      const searchParams = new URLSearchParams(window.location.search);
       const user = auth.currentUser;
+
+      // 1-Click Invoice Generation Route (?orderId=... or /dashboard/factures/create)
+      if (searchParams.get('orderId') || pathname.includes('/factures/create') || pathname.includes('/facture') || hash.includes('orderid=')) {
+        return 'facture';
+      }
 
       if (hash === '#landing' || pathname === '/') {
         return user ? 'dashboard' : 'landing';
@@ -297,7 +266,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
             if (data.formData) setFormData(data.formData);
             if (data.aiData) setAiData(data.aiData);
             if (data.businessDocData) setBusinessDocData(data.businessDocData);
-            if (data.ebookData) setEbookData(data.ebookData);
 
             const effectiveType = data.type || data.documentType || data.generationMode;
             if (effectiveType === 'letter' || effectiveType === 'letter_only') {
@@ -308,8 +276,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
               setActiveTab('facture_preview');
             } else if (effectiveType === 'pack_business') {
               setActiveTab('pack_business_preview');
-            } else if (effectiveType === 'ebook') {
-              setActiveTab('ebook_preview');
             } else {
               setActiveTab('cv_preview');
             }
@@ -329,12 +295,164 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     }
   }, []);
 
+  // 1-Click Action: Génération de facture à partir d'une commande boutique
+  const handleGenerateInvoiceFromOrder = (order: StoreOrder, storeProfile?: SellerStoreProfile | null) => {
+    const shortNum = order.id.replace(/^CMD-/, '') || String(Math.floor(1000 + Math.random() * 9000));
+    const currentYear = new Date().getFullYear();
+    const uniqueDocNumber = `FACT-${currentYear}-${shortNum}`;
+    const today = new Date().toISOString().split('T')[0];
+    const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    // Read stored profile
+    let currentProfile: any = {};
+    if (auth.currentUser) {
+      try {
+        const raw = localStorage.getItem(getLocalProfileKey(auth.currentUser.uid));
+        if (raw) currentProfile = JSON.parse(raw);
+      } catch (_e) {}
+    }
+
+    // ÉMETTEUR (Vendeur) : Nom de l'entreprise/boutique, Téléphone, Email, Adresse, Logo
+    const issuerName = storeProfile?.storeName || currentProfile?.displayName || 'Ma Boutique Dokya';
+    const issuerPhone = storeProfile?.phone || storeProfile?.whatsappNumber || currentProfile?.personalInfo?.phone || '';
+    const issuerEmail = storeProfile?.email || currentProfile?.email || auth.currentUser?.email || '';
+    const issuerCity = storeProfile?.city || currentProfile?.personalInfo?.city || 'Dakar';
+    const issuerCountry = storeProfile?.country || currentProfile?.personalInfo?.country || 'Sénégal';
+    const issuerAddress = storeProfile?.city 
+      ? `${storeProfile.city}${storeProfile.country ? ', ' + storeProfile.country : ''}` 
+      : (currentProfile?.personalInfo?.address || 'Dakar, Sénégal');
+    const issuerLogo = storeProfile?.logoUrl || '';
+
+    // DESTINATAIRE (Client) : Nom du client, Téléphone WhatsApp, Adresse de livraison
+    const clientName = order.buyerName || 'Client Dokya';
+    const clientPhone = order.buyerPhone || '';
+    const clientAddress = order.buyerAddress || 'Dakar';
+
+    // ARTICLES : Nom du produit/service commandé, Quantité, Prix unitaire en FCFA, Total
+    const qty = Math.max(1, order.quantity || 1);
+    const unitPrice = order.productPrice || Math.round((order.totalAmount || 0) / qty);
+    const totalItem = order.totalAmount || (unitPrice * qty);
+    const items: BusinessDocItem[] = [
+      {
+        id: `item-${Date.now()}`,
+        description: order.productTitle || 'Produit commandé',
+        quantity: qty,
+        unitPrice: unitPrice,
+        total: totalItem,
+        productId: order.productId
+      }
+    ];
+
+    const invoiceData: BusinessDocData = {
+      id: `DOC-FACT-${order.id}`,
+      type: 'facture',
+      docNumber: uniqueDocNumber,
+      issueDate: today,
+      dueDate: dueDate,
+      validityDays: 15,
+      currency: order.currency || 'FCFA',
+      applyVat: false,
+      vatRate: 0,
+      discountPercent: 0,
+      orderId: order.id,
+      paymentStatus: (order.status === 'delivered' || order.status === 'validated') ? 'PAID' : 'UNPAID',
+      issuer: {
+        name: issuerName,
+        companyName: issuerName,
+        phone: issuerPhone,
+        email: issuerEmail,
+        address: issuerAddress,
+        city: issuerCity,
+        country: issuerCountry,
+        logoUrl: issuerLogo
+      },
+      client: {
+        name: clientName,
+        companyName: clientName,
+        phone: clientPhone,
+        email: '',
+        address: clientAddress,
+        city: clientAddress.split(',')[0]?.trim() || 'Dakar',
+        country: 'Sénégal'
+      },
+      items: items,
+      paymentInfo: {
+        waveNumber: storeProfile?.whatsappNumber || storeProfile?.phone || '',
+        orangeMoneyNumber: storeProfile?.phone || '',
+        bankName: '',
+        ibanOrRib: ''
+      },
+      notes: order.buyerNotes 
+        ? `Notes de commande : ${order.buyerNotes}` 
+        : `Facture établie suite à la commande boutique n° ${order.id} livrée à ${order.buyerAddress}`
+    };
+
+    setBusinessDocData(invoiceData);
+    setIsCurrentDocPaid(true); // Always unlocked for seller managing own store
+    setActiveTab('facture');
+    setSuccessMessage(`Facture pour la commande #${order.id} générée et pré-remplie avec succès !`);
+    setTimeout(() => setSuccessMessage(null), 4500);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Intercepte le paramètre orderId dans l'URL pour pré-remplir la facture en 1-clic
+  useEffect(() => {
+    const handleCheckOrderIdInUrl = async () => {
+      if (typeof window === 'undefined') return;
+      const searchParams = new URLSearchParams(window.location.search);
+      let orderId = searchParams.get('orderId');
+
+      if (!orderId && window.location.hash.includes('orderId=')) {
+        const hashQuery = window.location.hash.split('?')[1] || '';
+        orderId = new URLSearchParams(hashQuery).get('orderId');
+      }
+
+      if (!orderId && window.location.pathname.includes('/factures/create')) {
+        const pathParams = new URLSearchParams(window.location.search);
+        orderId = pathParams.get('orderId');
+      }
+
+      if (orderId) {
+        try {
+          const order = await fetchStoreOrderById(orderId);
+          if (order) {
+            let storeProfile: SellerStoreProfile | null = null;
+            if (order.sellerUsername || order.sellerId) {
+              const res = await fetchSellerStore(order.sellerUsername || order.sellerId);
+              storeProfile = res.profile;
+            }
+            handleGenerateInvoiceFromOrder(order, storeProfile);
+          }
+        } catch (err) {
+          console.warn('[App] Erreur lors de la récupération de la commande orderId:', err);
+        }
+      }
+    };
+
+    handleCheckOrderIdInUrl();
+
+    const handleCustomOrderInvoiceEvent = (e: any) => {
+      if (e.detail?.order) {
+        handleGenerateInvoiceFromOrder(e.detail.order, e.detail.storeProfile);
+      }
+    };
+
+    window.addEventListener('popstate', handleCheckOrderIdInUrl);
+    window.addEventListener('hashchange', handleCheckOrderIdInUrl);
+    window.addEventListener('dokya:generate-invoice-from-order', handleCustomOrderInvoiceEvent);
+
+    return () => {
+      window.removeEventListener('popstate', handleCheckOrderIdInUrl);
+      window.removeEventListener('hashchange', handleCheckOrderIdInUrl);
+      window.removeEventListener('dokya:generate-invoice-from-order', handleCustomOrderInvoiceEvent);
+    };
+  }, []);
+
   // Clean stale storage
   useEffect(() => {
     try {
       localStorage.removeItem('cv_form_data');
       localStorage.removeItem('business_doc_data');
-      localStorage.removeItem('ebook_data');
       localStorage.removeItem('cv_ai_data');
       localStorage.removeItem('senegal_cv_paid_docs');
     } catch (_e) {}
@@ -400,12 +518,12 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   }, [activeTab]);
 
   // Handle URL Hash synchronization
-  const navigateToView = (view: MainAppView, serviceContext?: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook') => {
+  const navigateToView = (view: MainAppView, serviceContext?: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business') => {
     // Auth Guard for protected views
     const protectedViews: MainAppView[] = [
       'dashboard', 'templates', 'cv', 'cv_preview', 'letter', 'letter_preview',
       'devis', 'devis_preview', 'facture', 'facture_preview', 'pack_business',
-      'pack_business_preview', 'ebook', 'ebook_preview'
+      'pack_business_preview'
     ];
 
     // Check either auth.currentUser or React state currentUser
@@ -431,7 +549,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       if (view === 'landing') window.location.hash = 'landing';
       else if (view === 'dashboard') window.location.hash = 'dashboard';
       else if (view === 'templates') window.location.hash = `templates${serviceContext ? `?service=${serviceContext}` : ''}`;
-      else if (view === 'cv' || view === 'letter' || view === 'devis' || view === 'facture' || view === 'pack_business' || view === 'ebook') window.location.hash = 'editor';
+      else if (view === 'cv' || view === 'letter' || view === 'devis' || view === 'facture' || view === 'pack_business') window.location.hash = 'editor';
       else if (view === 'tarifs') window.location.hash = 'tarifs';
       else if (view === 'subscription') window.location.hash = 'subscription';
     }
@@ -559,7 +677,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
             if (docData.formData) setFormData(docData.formData);
             if (docData.aiData) setAiData(docData.aiData);
             if (docData.businessDocData) setBusinessDocData(docData.businessDocData);
-            if (docData.ebookData) setEbookData(docData.ebookData);
             const effectiveType = docData.type || docData.documentType || returnType;
             if (effectiveType === 'letter' || docData.formData?.generationMode === 'letter_only') {
               setActiveTab('letter_preview');
@@ -569,8 +686,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
               setActiveTab('facture_preview');
             } else if (effectiveType === 'pack_business') {
               setActiveTab('pack_business_preview');
-            } else if (effectiveType === 'ebook') {
-              setActiveTab('ebook_preview');
             } else {
               setActiveTab('cv_preview');
             }
@@ -584,7 +699,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   // -------------------------------------------------------------
   // Open Payment Modal Handlers for each service
   // -------------------------------------------------------------
-  const handleOpenPaymentModal = (docType: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook') => {
+  const handleOpenPaymentModal = (docType: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business') => {
     if (isVip) {
       setIsCurrentDocPaid(true);
       setSuccessMessage('👑 Document débloqué instantanément grâce à votre Pass VIP Actif !');
@@ -593,45 +708,39 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     }
     setPaymentDocType(docType);
     let resolvedTitle = 'Document Professionnel';
-    let resolvedPrice = 1000;
+    let resolvedPrice = 1.99;
     if (docType === 'cv') {
       const title = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - CV Pro ATS`.trim();
       resolvedTitle = title || 'Mon CV Pro ATS';
       setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('CV Pro ATS');
-      resolvedPrice = 1000;
-      setPaymentPrice(1000);
+      resolvedPrice = 1.99;
+      setPaymentPrice(1.99);
     } else if (docType === 'letter') {
       const title = `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - Lettre de Motivation`.trim();
       resolvedTitle = title || 'Ma Lettre de Motivation';
       setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Lettre de Motivation');
-      resolvedPrice = 1000;
-      setPaymentPrice(1000);
+      resolvedPrice = 1.99;
+      setPaymentPrice(1.99);
     } else if (docType === 'devis') {
       resolvedTitle = `Devis Professionnel - ${businessDocData.docNumber}`;
       setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Devis Professionnel');
-      resolvedPrice = 1000;
-      setPaymentPrice(1000);
+      resolvedPrice = 1.99;
+      setPaymentPrice(1.99);
     } else if (docType === 'facture') {
       resolvedTitle = `Facture Client - ${businessDocData.docNumber}`;
       setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Facture Client');
-      resolvedPrice = 1000;
-      setPaymentPrice(1000);
-    } else if (docType === 'ebook') {
-      resolvedTitle = ebookData.title || 'Mon Livre Numérique';
-      setPaymentDocTitle(resolvedTitle);
-      setPaymentDocTypeLabel('Livre Numérique (Ebook Pro)');
-      resolvedPrice = 3000;
-      setPaymentPrice(3000);
+      resolvedPrice = 1.99;
+      setPaymentPrice(1.99);
     } else {
       resolvedTitle = `Pack Business (Devis + Facture) - ${businessDocData.docNumber}`;
       setPaymentDocTitle(resolvedTitle);
       setPaymentDocTypeLabel('Pack Business (Devis + Facture)');
-      resolvedPrice = 1499;
-      setPaymentPrice(1499);
+      resolvedPrice = 2.99;
+      setPaymentPrice(2.99);
     }
 
     const resolvedDocId = currentDocId || `DOC-${Date.now()}`;
@@ -643,13 +752,11 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       formData: { ...formData },
       aiData: aiData ? { ...aiData } : null,
       businessDocData: { ...businessDocData },
-      ebookData: { ...ebookData },
       generationMode: (
         docType === 'letter' ? 'letter_only'
         : docType === 'devis' ? 'devis'
         : docType === 'facture' ? 'facture'
         : docType === 'pack_business' ? 'pack_business'
-        : docType === 'ebook' ? 'ebook'
         : 'cv_only'
       )
     };
@@ -664,7 +771,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       formData: contentPayload.formData,
       aiData: contentPayload.aiData,
       businessDocData: contentPayload.businessDocData,
-      ebookData: contentPayload.ebookData,
       generationMode: contentPayload.generationMode,
       isUnlocked: false,
       status: "PENDING",
@@ -734,7 +840,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   const handleCreateNewDocument = () => {
     setFormData(createEmptyCVFormData());
     setBusinessDocData(createEmptyBusinessDocData('devis'));
-    setEbookData(createEmptyEbookData());
     setAiData(null);
     setIsCurrentDocPaid(false);
     setCurrentDocId(`DOC-${Date.now()}`);
@@ -750,7 +855,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       : activeTab.startsWith('devis') ? `Devis Professionnel - ${businessDocData.docNumber}`
       : activeTab.startsWith('facture') ? `Facture Client - ${businessDocData.docNumber}`
       : activeTab.startsWith('pack_business') ? `Pack Business - ${businessDocData.docNumber}`
-      : activeTab.startsWith('ebook') ? (ebookData.title || 'Livre Numérique (Ebook)')
       : `${formData?.personalInfo?.firstName || ''} ${formData?.personalInfo?.lastName || ''} - CV Pro ATS`.trim() || 'CV Pro ATS'
     );
 
@@ -762,13 +866,11 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       formData: { ...formData },
       aiData: aiData ? { ...aiData } : null,
       businessDocData: { ...businessDocData },
-      ebookData: { ...ebookData },
       generationMode: (
         activeTab.startsWith('letter') ? 'letter_only'
         : activeTab.startsWith('devis') ? 'devis'
         : activeTab.startsWith('facture') ? 'facture'
         : activeTab.startsWith('pack_business') ? 'pack_business'
-        : activeTab.startsWith('ebook') ? 'ebook'
         : 'cv_only'
       ),
       isPaid: true,
@@ -827,12 +929,10 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     const effectiveFormData = docItem.formData || contentObj.formData || (contentObj.personalInfo ? contentObj : null);
     const effectiveAiData = docItem.aiData || contentObj.aiData || null;
     const effectiveBusinessDocData = docItem.businessDocData || contentObj.businessDocData || null;
-    const effectiveEbookData = docItem.ebookData || contentObj.ebookData || null;
 
     const mode = docItem.generationMode || (
       docItem.businessDocData?.type === 'facture' || effectiveBusinessDocData?.type === 'facture' ? 'facture' :
       docItem.businessDocData?.type === 'devis' || effectiveBusinessDocData?.type === 'devis' ? 'devis' :
-      docItem.ebookData || effectiveEbookData ? 'ebook' :
       docItem.formData?.letterType || effectiveFormData?.letterType ? 'letter_only' : 'cv_only'
     );
 
@@ -855,9 +955,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
         setBusinessDocData(effectiveBusinessDocData);
       }
       setActiveTab('pack_business_preview');
-    } else if (mode === 'ebook') {
-      if (effectiveEbookData) setEbookData(effectiveEbookData);
-      setActiveTab('ebook_preview');
     } else {
       // CV Pro ATS par défaut
       if (effectiveFormData) setFormData(effectiveFormData);
@@ -871,7 +968,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   // -------------------------------------------------------------
   // Step A -> Step B: Selection of Service from Dashboard -> Templates Gallery
   // -------------------------------------------------------------
-  const handleSelectService = (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'dashboard' | 'tarifs' | 'subscription' | 'gallery') => {
+  const handleSelectService = (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'dashboard' | 'tarifs' | 'subscription' | 'gallery') => {
     handleCreateNewDocument();
 
     if (service === 'dashboard') {
@@ -887,7 +984,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       return;
     }
 
-    const serviceKey = (service === 'full_pack' ? 'cv' : service === 'gallery' ? 'cv' : service) as 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business' | 'ebook';
+    const serviceKey = (service === 'full_pack' ? 'cv' : service === 'gallery' ? 'cv' : service) as 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business';
     setTemplatesService(serviceKey);
     navigateToView('templates', serviceKey);
   };
@@ -933,11 +1030,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     } else {
       setActiveTab('devis');
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleSelectEbookTemplate = () => {
-    setActiveTab('ebook');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1194,20 +1286,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     }
   };
 
-  const downloadEbookPDF = async () => {
-    setIsGeneratingPDF(true);
-    try {
-      const fileName = `Ebook_${(ebookData.title || 'Livre_Numerique').replace(/[\s\/\\]+/g, '_')}.pdf`;
-      await downloadElementAsPDF('ebook-printable-area', fileName);
-      handlePostDownloadArchival('PDF');
-    } catch (err) {
-      console.error('Error generating Ebook PDF:', err);
-      window.print();
-    } finally {
-      setIsGeneratingPDF(false);
-    }
-  };
-
   // Export as Word (.docx)
   const handleExportDOCX = async () => {
     setIsGeneratingDocx(true);
@@ -1221,8 +1299,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
         activeTab === 'pack_business' || activeTab === 'pack_business_preview'
       ) {
         await exportBusinessDocToDocx(businessDocData);
-      } else if (activeTab === 'ebook' || activeTab === 'ebook_preview') {
-        await exportEbookToDocx(ebookData);
       } else {
         await exportCVToDocx(formData, aiData);
       }
@@ -1235,7 +1311,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     }
   };
 
-  const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name || !!ebookData?.title;
+  const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name;
   const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || (activeTab as string) === 'business' || (activeTab as string) === 'clients' || (activeTab as string) === 'store' || (activeTab as string) === 'boutique' || activeTab === 'help' || activeTab === 'support';
   const isLandingView = activeTab === 'landing';
   const isTemplatesView = activeTab === 'templates';
@@ -1341,7 +1417,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
           }}
           onSignOut={handleSignOut}
           onBackToTemplates={() => {
-            const service = (activeTab.startsWith('letter') ? 'letter' : activeTab.startsWith('devis') ? 'devis' : activeTab.startsWith('facture') ? 'facture' : activeTab.startsWith('pack_business') ? 'pack_business' : activeTab.startsWith('ebook') ? 'ebook' : 'cv') as any;
+            const service = (activeTab.startsWith('letter') ? 'letter' : activeTab.startsWith('devis') ? 'devis' : activeTab.startsWith('facture') ? 'facture' : activeTab.startsWith('pack_business') ? 'pack_business' : 'cv') as any;
             navigateToView('templates', service);
           }}
           onGoServices={() => navigateToView('templates', 'cv')}
@@ -1409,6 +1485,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           onOpenDedicatedPreview={handleOpenDocumentDedicatedPreview}
+          onGenerateInvoiceForOrder={handleGenerateInvoiceFromOrder}
         />
       ) : isTemplatesView ? (
         <div className="flex-1 w-full bg-[#090D16] min-h-screen">
@@ -1417,7 +1494,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
             onSelectCVTemplate={handleSelectCVTemplate}
             onSelectLetterTemplate={handleSelectLetterTemplate}
             onSelectBusinessTemplate={handleSelectBusinessTemplate}
-            onSelectEbookTemplate={handleSelectEbookTemplate}
             onBackToDashboard={() => navigateToView('dashboard')}
           />
         </div>
@@ -1470,7 +1546,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
             <button
               type="button"
               onClick={() => {
-                const service = (activeTab.startsWith('letter') ? 'letter' : activeTab.startsWith('devis') ? 'devis' : activeTab.startsWith('facture') ? 'facture' : activeTab.startsWith('pack_business') ? 'pack_business' : activeTab.startsWith('ebook') ? 'ebook' : 'cv') as any;
+                const service = (activeTab.startsWith('letter') ? 'letter' : activeTab.startsWith('devis') ? 'devis' : activeTab.startsWith('facture') ? 'facture' : activeTab.startsWith('pack_business') ? 'pack_business' : 'cv') as any;
                 navigateToView('templates', service);
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-bold transition-all cursor-pointer border border-indigo-500/30"
@@ -1855,56 +1931,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 8A : CRÉATION D'EBOOK / LIVRE NUMÉRIQUE (3 000 FCFA)                 */}
-        {/* ========================================================================= */}
-        {activeTab === 'ebook' && (
-          <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
-            <EbookWizardForm
-              data={ebookData}
-              setData={setEbookData}
-              onGoPreview={() => {
-                setActiveTab('ebook_preview');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              onGoServices={() => navigateToView('dashboard')}
-            />
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* VIEW 8B : APERÇU PLEIN ÉCRAN DU LIVRE NUMÉRIQUE                           */}
-        {/* ========================================================================= */}
-        {activeTab === 'ebook_preview' && (
-          <div className="animate-in fade-in">
-            <DocumentDedicatedPreview
-              docType="ebook"
-              formData={formData}
-              setFormData={setFormData}
-              aiData={aiData}
-              businessDocData={businessDocData}
-              setBusinessDocData={setBusinessDocData}
-              ebookData={ebookData}
-              setEbookData={setEbookData}
-              isPaid={isCurrentDocPaid}
-              isVipActive={isVip}
-              isEditingDirectly={isEditingDirectly}
-              setIsEditingDirectly={setIsEditingDirectly}
-              onEditForm={() => {
-                setActiveTab('ebook');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              onPayToUnlock={() => handleOpenPaymentModal('ebook')}
-              onDownloadPDF={downloadEbookPDF}
-              onExportDocx={handleExportDOCX}
-              isGeneratingPDF={isGeneratingPDF}
-              isGeneratingDocx={isGeneratingDocx}
-              onPrint={downloadEbookPDF}
-              onGoServices={() => navigateToView('dashboard')}
-            />
-          </div>
-        )}
-
-        {/* ========================================================================= */}
         {/* VIEW 9 : FICHE DE PRÉPARATION D'ENTRETIEN RH PERSONNALISÉE                */}
         {/* ========================================================================= */}
         {activeTab === 'interview_prep' && interviewPrepData && (
@@ -1992,7 +2018,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
           if (format === 'pdf') {
             if (activeTab === 'cv_preview') downloadCVPDF();
             else if (activeTab === 'letter_preview') downloadLetterPDF();
-            else if (activeTab === 'ebook_preview') downloadEbookPDF();
             else downloadBusinessDocPDF();
           } else {
             handleExportDOCX();
@@ -2005,13 +2030,11 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
           formData,
           aiData,
           businessDocData,
-          ebookData,
           generationMode: (
             paymentDocType === 'letter' ? 'letter_only'
             : paymentDocType === 'devis' ? 'devis'
             : paymentDocType === 'facture' ? 'facture'
             : paymentDocType === 'pack_business' ? 'pack_business'
-            : paymentDocType === 'ebook' ? 'ebook'
             : 'cv_only'
           )
         }}
@@ -2019,8 +2042,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
           title: paymentDocTitle,
           formData,
           aiData,
-          businessDocData,
-          ebookData
+          businessDocData
         }}
       />
 
@@ -2072,7 +2094,6 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
           if (format === 'pdf') {
             if (activeTab === 'cv_preview') downloadCVPDF();
             else if (activeTab === 'letter_preview') downloadLetterPDF();
-            else if (activeTab === 'ebook_preview') downloadEbookPDF();
             else downloadBusinessDocPDF();
           } else {
             handleExportDOCX();

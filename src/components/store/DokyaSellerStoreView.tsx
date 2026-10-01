@@ -34,7 +34,9 @@ import {
   HelpCircle,
   Truck,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Receipt,
+  FileText
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -127,12 +129,14 @@ interface DokyaSellerStoreViewProps {
   profile: CandidateProfile;
   onOpenPublicProduct?: (slug: string) => void;
   onOpenPublicStore?: (username: string) => void;
+  onGenerateInvoiceForOrder?: (order: StoreOrder, storeProfile?: SellerStoreProfile | null) => void;
 }
 
 export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
   profile,
   onOpenPublicProduct,
-  onOpenPublicStore
+  onOpenPublicStore,
+  onGenerateInvoiceForOrder
 }) => {
   const currentUid = auth.currentUser?.uid || profile.uid || 'guest';
   const defaultUsername = slugify(profile.personalInfo?.firstName || profile.email?.split('@')[0] || 'vendeur');
@@ -311,7 +315,7 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
 
     setIsSubmittingProduct(true);
     try {
-      const sellerUsername = storeProfile?.username || storeUsernameInput || defaultUsername;
+      const cleanSellerUsername = slugify(storeProfile?.username || storeUsernameInput || defaultUsername);
       const sellerName = storeProfile?.storeName || storeNameInput || profile.personalInfo?.firstName || 'Vendeur';
       const sellerPhone = storeProfile?.whatsappNumber || profile.personalInfo?.phone || '';
 
@@ -329,7 +333,7 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
       const saved = await saveProduct({
         id: editingProduct?.id,
         userId: currentUid,
-        sellerUsername,
+        sellerUsername: cleanSellerUsername,
         sellerName,
         sellerPhone,
         sellerEmail: profile.email || '',
@@ -346,6 +350,19 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
         enableDirectOrder: productSaleType === 'direct_order',
         status: 'active'
       });
+
+      // Synchroniser explicitement le profil de la vitrine pour que la boutique publique le reconnaisse immédiatement
+      try {
+        await saveSellerStoreProfile(currentUid, {
+          storeName: sellerName,
+          username: cleanSellerUsername,
+          whatsappNumber: sellerPhone,
+          phone: sellerPhone,
+          city: storeCityInput || 'Dakar',
+          country: 'Sénégal',
+          email: profile.email || ''
+        });
+      } catch (_e) {}
 
       showToast(editingProduct ? 'Produit mis à jour avec succès !' : 'Produit publié avec succès !');
       setIsProductModalOpen(false);
@@ -414,6 +431,24 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
       `Bonjour ${order.buyerName}, je vous contacte suite à votre commande n° ${order.id} pour le produit "${order.productTitle}" sur ma boutique Dokya (Montant : ${(Number(order.totalAmount) || 0).toLocaleString('fr-FR')} FCFA). Votre adresse de livraison est : ${order.buyerAddress}. Pouvons-nous finaliser les détails ?`
     );
     return `https://wa.me/${cleanPhone}?text=${msg}`;
+  };
+
+  // 1-Click Action: Générer la facture pour cette commande
+  const handleGenerateInvoiceForOrder = (order: StoreOrder) => {
+    // 1. Redirige le vendeur vers le module de facturation avec l'ID de commande en paramètre d'URL
+    if (typeof window !== 'undefined') {
+      const targetUrl = `/dashboard/factures/create?orderId=${encodeURIComponent(order.id)}`;
+      window.history.pushState({ orderId: order.id }, '', targetUrl);
+    }
+
+    // 2. Déclenche le pré-remplissage via callback parent ou événement personnalisé
+    if (onGenerateInvoiceForOrder) {
+      onGenerateInvoiceForOrder(order, storeProfile);
+    } else if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dokya:generate-invoice-from-order', {
+        detail: { orderId: order.id, order, storeProfile }
+      }));
+    }
   };
 
   // Metrics Calculations
@@ -829,38 +864,47 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                 return (
                   <div 
                     key={prod.id} 
-                    className="group bg-slate-900/90 hover:bg-slate-900/95 border border-slate-800 hover:border-indigo-500/50 rounded-3xl p-5 shadow-lg hover:shadow-2xl hover:shadow-indigo-500/20 flex flex-col justify-between transform transition-all duration-300 ease-out hover:scale-[1.025] hover:-translate-y-1.5 will-change-transform"
+                    className="group bg-slate-900/90 hover:bg-slate-900/95 border border-slate-800/80 hover:border-indigo-500/50 rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-indigo-500/20 flex flex-col justify-between transform transition-all duration-300 ease-out hover:scale-[1.025] hover:-translate-y-1.5 will-change-transform"
                   >
-                    <div className="space-y-3">
-                      {/* Product Thumbnail & Category */}
-                      <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-800">
-                        <img 
-                          src={prod.images?.[0] || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80'} 
-                          alt={prod.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-slate-300 border border-white/10 text-[10px] font-semibold">
-                          {prod.category || 'Service'}
-                        </div>
-                        <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md bg-emerald-500 text-slate-950">
-                          {prod.saleType === 'direct_order' ? 'Commande Dokya' : 'Redirection'}
-                        </div>
-                      </div>
+                    {/* Image sans encadrement bord à bord */}
+                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-950">
+                      <img 
+                        src={prod.images?.[0] || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80'} 
+                        alt={prod.title}
+                        className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-black/20 pointer-events-none" />
 
-                      {/* Title & Price */}
+                      <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md text-slate-200 border border-white/10 text-[10px] font-bold shadow-md">
+                        {prod.category || 'Service'}
+                      </div>
+                      <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-full text-[10px] font-black shadow-md bg-emerald-500 text-slate-950">
+                        {prod.saleType === 'direct_order' ? 'Commande Dokya' : 'Redirection'}
+                      </div>
+                    </div>
+
+                    <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
                       <div>
-                        <h4 className="text-base font-bold text-white line-clamp-1 group-hover:text-indigo-400 transition-colors">
-                          {prod.title}
-                        </h4>
-                        <p className="text-lg font-black text-emerald-400 mt-0.5">
-                          {(Number(prod.price) || 0).toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
+                        {/* Title & Price */}
+                        <div>
+                          <h4 className="text-base font-bold text-white line-clamp-1 group-hover:text-indigo-400 transition-colors">
+                            {prod.title}
+                          </h4>
+                          <div className="flex items-baseline gap-2 mt-0.5">
+                            <span className="text-xl font-black text-emerald-400">
+                              {(Number(prod.price) || 0).toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
+                            </span>
+                            <span className="text-xs text-slate-500 line-through">
+                              {(Math.round((Number(prod.price) || 0) * 1.25 / 500) * 500).toLocaleString('fr-FR')} FCFA
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Description Preview */}
+                        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed mt-2">
+                          {prod.description || 'Aucune description spécifiée.'}
                         </p>
                       </div>
-
-                      {/* Description Preview */}
-                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                        {prod.description || 'Aucune description spécifiée.'}
-                      </p>
 
                       {/* Direct Slug URL badge */}
                       <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-300">
@@ -1065,6 +1109,17 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                       <MessageCircle className="w-4 h-4" />
                       <span>WhatsApp Acheteur</span>
                     </a>
+
+                    {/* Générer la Facture en 1-Clic */}
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateInvoiceForOrder(order)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-md shadow-indigo-600/25 transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                      title="Générer la facture officielle pré-remplie en 1-clic pour cette commande"
+                    >
+                      <Receipt className="w-4 h-4 text-indigo-200" />
+                      <span>Générer la Facture</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1210,7 +1265,7 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                       setProductCustomSlug(slugify(e.target.value));
                     }
                   }}
-                  placeholder="Ex: Ebook Réussir ses Entretiens RH, Pack 3 Modèles CV..."
+                  placeholder="Ex: Guide RH Réussir ses Entretiens, Pack 3 Modèles CV..."
                   className="w-full px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -1379,54 +1434,45 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                   </p>
                 )}
 
-                {/* Aperçu en direct de l'image sélectionnée */}
+                {/* Aperçu en direct de l'image sélectionnée sans encadrement inutile */}
                 {productImages && (
-                  <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-2 flex items-center gap-3">
-                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shrink-0">
+                  <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-md">
+                    <div className="relative aspect-[16/9] w-full overflow-hidden bg-slate-950">
                       <img 
                         src={productImages} 
                         alt="Aperçu produit" 
                         className="w-full h-full object-cover"
                         onError={() => setImageUploadError("L'image n'a pas pu être affichée. Vérifiez le lien ou importez un fichier.")}
                       />
-                    </div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-black/20 pointer-events-none" />
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>Image prête</span>
-                        </span>
-                        <span className="text-[10px] text-slate-500 truncate">
-                          {productImages.startsWith('data:') ? 'Fichier importé' : 'Lien URL'}
-                        </span>
+                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>{productImages.startsWith('data:') ? 'Image importée & optimisée' : 'Lien URL vérifié'}</span>
                       </div>
-                      <p className="text-xs text-slate-400 truncate mt-1">
-                        {productImages.startsWith('data:') ? 'Photo optimisée (haute qualité & chargement rapide)' : productImages}
-                      </p>
-                    </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0 pr-1">
-                      {imageInputMode === 'upload' && (
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                        {imageInputMode === 'upload' && (
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-3 py-1 rounded-xl bg-slate-950/85 hover:bg-slate-900 text-slate-200 text-xs font-semibold backdrop-blur-md border border-white/10 transition-colors cursor-pointer"
+                          >
+                            Changer
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setProductImages('');
+                            setImageUploadError(null);
+                          }}
+                          className="p-1.5 rounded-xl bg-rose-500/80 hover:bg-rose-500 text-white backdrop-blur-md transition-colors cursor-pointer shadow-md"
+                          title="Retirer l'image"
                         >
-                          Changer
+                          <Trash2 className="w-4 h-4" />
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProductImages('');
-                          setImageUploadError(null);
-                        }}
-                        className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors cursor-pointer"
-                        title="Retirer l'image"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      </div>
                     </div>
                   </div>
                 )}

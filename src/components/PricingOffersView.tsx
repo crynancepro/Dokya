@@ -23,7 +23,8 @@ import {
   Gift,
   Trash2,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Award
 } from 'lucide-react';
 import { CandidateProfile, isUserVipActive } from '../types';
 import { usePricing } from '../contexts/PricingContext';
@@ -31,8 +32,8 @@ import { usePricing } from '../contexts/PricingContext';
 interface PricingOffersViewProps {
   userBalance: number;
   profile: CandidateProfile;
-  onSelectService: (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook') => void;
-  onSubscribePlan: (plan: 'weekly' | 'monthly' | 'annual', price: number, planName: string) => void;
+  onSelectService: (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business') => void;
+  onSubscribePlan: (plan: 'weekly' | 'monthly' | 'semester' | 'annual', price: number, planName: string) => void;
   onOpenRecharge: () => void;
 }
 
@@ -46,12 +47,15 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
   const [selectedBillingTab, setSelectedBillingTab] = useState<'all' | 'single' | 'subscription'>('all');
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
-  // Global Promo integration
+  // Global Promo & Published Promo integration
   const { 
+    pricing,
+    publishedPromo,
     appliedGlobalPromo, 
     applyGlobalPromo, 
     clearGlobalPromo, 
-    calculateDiscount 
+    calculateDiscountedPrice,
+    formatPrice
   } = usePricing();
 
   const [promoInput, setPromoInput] = useState<string>('');
@@ -64,7 +68,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
     setIsCheckingPromo(true);
     setPromoError(null);
     try {
-      const res = await applyGlobalPromo(code, 1000);
+      const res = await applyGlobalPromo(code, 1.99);
       if (!res.valid) {
         setPromoError(res.message || `Code "${code}" non valide.`);
       } else {
@@ -87,27 +91,27 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
     {
       id: 'cv' as const,
       title: 'CV ATS Professionnel',
-      price: '1 000 FCFA',
-      priceNum: 1000,
+      price: '1.99 $',
+      priceNum: 1.99,
       badge: 'Indispensable',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
       icon: FileText,
       iconColor: 'text-indigo-400',
-      desc: 'Optimisé pour passer les filtres de recrutement ATS avec scoring de pertinence instantané.',
+      desc: 'Optimisé pour passer les filtres de recrutement ATS avec scoring de pertinence instantané supérieur à 98%.',
       features: [
-        '50+ Modèles certifiés (avec ou sans photo)',
-        'Optimisation IA par secteur d\'activité',
+        '50+ Modèles certifiés ATS internationaux',
         'Exportation PDF Haute Définition & Word (.docx)',
-        'Conseils d\'entretien personnalisés'
+        'Score ATS en temps réel & conseils IA',
+        'Sans filigrane & téléchargements illimités'
       ],
-      cta: 'Créer mon CV ATS (1 000 F)',
+      cta: 'Créer mon CV ATS (1.99 $)',
       serviceKey: 'cv' as const
     },
     {
       id: 'letter' as const,
       title: 'Lettre de Motivation IA',
-      price: '1 000 FCFA',
-      priceNum: 1000,
+      price: '1.99 $',
+      priceNum: 1.99,
       badge: 'Sur-mesure',
       badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
       icon: Mail,
@@ -115,131 +119,153 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
       desc: 'Rédigée intelligemment selon votre poste cible, l\'entreprise visée et votre ton préféré.',
       features: [
         '10+ Modèles graphiques assortis au CV',
-        'Rédaction persuasive (Stage, Emploi, Reconversion)',
+        'Rédaction persuasive personnalisée par IA',
         'Exportation immédiate PDF & Word (.docx)',
-        'Modifications directes dans l\'éditeur'
+        'Sans filigrane & modifications libres'
       ],
-      cta: 'Rédiger ma Lettre (1 000 F)',
+      cta: 'Rédiger ma Lettre (1.99 $)',
       serviceKey: 'letter' as const
     },
     {
       id: 'pack_duo' as const,
-      title: 'Pack Duo Emploi & Business',
-      price: '1 500 FCFA',
-      priceNum: 1500,
+      title: 'Pack Duo Carrière',
+      price: '2.99 $',
+      priceNum: 2.99,
       badge: 'Économie 25%',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
       icon: Package,
       iconColor: 'text-amber-400',
-      desc: 'La formule gagnante : CV + Lettre ou Pack Business Devis + Facture dans un même dossier.',
+      desc: 'La formule gagnante pour postuler : votre CV ATS complet + votre Lettre de motivation assortie.',
       features: [
         'CV ATS complet + Lettre de motivation assortie',
-        'OU Pack Business Devis + Facture UEMOA',
-        'Export groupé en formats Word & PDF',
-        'Modifications illimitées dans la session'
+        'Export groupé en formats Word & PDF HD',
+        'Zéro filigrane & ré-édition permanente',
+        'Idéal pour toute candidature stratégique'
       ],
-      cta: 'Choisir le Pack Duo (1 500 F)',
+      cta: 'Choisir le Pack Duo (2.99 $)',
       serviceKey: 'full_pack' as const
     },
     {
-      id: 'ebook' as const,
-      title: 'Ebook & Rapport Pro AI',
-      price: '3 000 FCFA',
-      priceNum: 3000,
-      badge: 'IA Générative',
-      badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-      icon: BookOpen,
-      iconColor: 'text-purple-400',
-      desc: 'Création complète de livres numériques, guides de formation et rapports d\'entreprise de 5 à 50+ pages.',
+      id: 'business_doc' as const,
+      title: 'Facture & Devis OHADA',
+      price: '1.99 $',
+      priceNum: 1.99,
+      badge: 'Entreprises & PME',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+      icon: FileText,
+      iconColor: 'text-emerald-400',
+      desc: 'Documents commerciaux et comptables stricts conformes aux exigences fiscales et légales.',
       features: [
-        'Génération chapitres complets par IA',
-        'Couvertures 3D & 4e de couverture personnalisées',
-        'Export formats A4 / A5 / 6x9 (Amazon KDP ready)',
-        'Exportation Word (.docx) & PDF imprimable'
+        'Calculs automatiques TVA 18% & totaux TTC',
+        'Mentions légales NINEA, RC & coordonnées',
+        'Export PDF vectoriel & conversion devis en facture',
+        'Sans filigrane avec signature & logo officiel'
       ],
-      cta: 'Générer mon Ebook (3 000 F)',
-      serviceKey: 'ebook' as const
+      cta: 'Créer Devis / Facture (1.99 $)',
+      serviceKey: 'facture' as const
     }
   ];
 
   const subscriptionPlans = [
     {
-      id: 'weekly' as const,
-      title: 'Pass VIP Hebdomadaire',
-      duration: '7 Jours d\'accès illimité',
-      price: '2 500 FCFA',
-      priceNum: 2500,
+      id: 'free' as const,
+      title: 'Formule Gratuite',
+      duration: 'Gratuit pour toujours',
+      price: '0 $',
+      priceNum: 0,
       popular: false,
-      badge: 'Idéal Postulation Express',
-      badgeColor: 'bg-slate-700 text-slate-200 border-slate-600',
+      badge: 'Découverte',
+      badgeColor: 'bg-slate-800 text-slate-300 border-slate-700',
       icon: Clock,
       features: [
-        'Téléchargements illimités PDF HD & Word',
-        'Accès illimité aux 50+ modèles de CV ATS',
-        'Générateur de Lettres de motivation illimité',
-        'Générateur de Devis & Factures UEMOA',
-        'Support standard WhatsApp'
+        '1 CV ATS par mois avec FILIGRANE Dokya',
+        '1 Lettre de motivation avec FILIGRANE Dokya',
+        '1 Facture & 1 Devis par mois avec FILIGRANE Dokya',
+        'Accès aux 50+ modèles et assistant IA de rédaction',
+        'Aperçu interactif complet avant export'
       ],
-      cta: "S'abonner avec mon solde (2 500 FCFA)"
+      cta: 'Formule Actuelle (0 $)'
     },
     {
       id: 'monthly' as const,
-      title: 'Pass VIP Mensuel',
+      title: 'Abonnement Mensuel',
       duration: '30 Jours d\'accès illimité',
-      price: '5 000 FCFA',
-      priceNum: 5000,
+      price: '9.99 $',
+      priceNum: 9.99,
       popular: true,
       badge: '🔥 Le Plus Populaire',
       badgeColor: 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black border-amber-400',
       icon: Crown,
       features: [
-        'Tout le catalogue Dokya en accès TOTALEMENT ILLIMITÉ',
-        'Générations IA illimitées (Gemini 2.5 Flash / 3.7)',
-        'Générateur complet d\'Ebooks & Rapports d\'entreprise',
-        'Exportations Word (.docx) & PDF HD illimitées',
-        'Conformité OHADA / UEMOA sans restriction',
-        'Suppression de tout filigrane',
-        'Support VIP prioritaire 7j/7 sur WhatsApp'
+        'CV & Lettres ILLIMITÉS SANS FILIGRANE',
+        'Boutique vendeur en ligne Dokya intégrée',
+        'Factures & Devis OHADA en illimité',
+        'Gestion de la Clientèle & Suivi des Stocks',
+        'Exports Word (.docx) & PDF HD illimités',
+        'Support prioritaire 7j/7 sur WhatsApp'
       ],
-      cta: "S'abonner avec mon solde (5 000 FCFA)"
+      cta: "S'abonner (9.99 $ / mois)"
+    },
+    {
+      id: 'semester' as const,
+      title: 'Abonnement 6 Mois',
+      duration: '6 Mois d\'accès illimité (~7.99 $/mois)',
+      price: '47.95 $',
+      priceNum: 47.95,
+      popular: false,
+      badge: '💎 Économisez 20%',
+      badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30 font-black',
+      icon: Star,
+      features: [
+        'Accès complet illimité pendant 6 mois complets',
+        'CV, Lettres, Boutique, Factures & Devis illimités',
+        'Gestion Clientèle & Gestion des Stocks complète',
+        'Zéro filigrane sur l\'intégralité des exports',
+        'Support prioritaire dédié sur WhatsApp'
+      ],
+      cta: "S'abonner (47.95 $ pour 6 mois)"
     },
     {
       id: 'annual' as const,
-      title: 'Pass VIP Annuel',
-      duration: '365 Jours d\'accès illimité',
-      price: '35 000 FCFA',
-      priceNum: 35000,
+      title: 'Abonnement Annuel',
+      duration: '365 Jours d\'accès illimité (~5.99 $/mois)',
+      price: '71.90 $',
+      priceNum: 71.90,
       popular: false,
-      badge: '👑 Économisez plus de 40%',
+      badge: '👑 Économisez 40%',
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 font-black',
-      icon: Star,
+      icon: Award,
       features: [
-        'Accès VIP Illimité pendant 1 an complet',
-        'Mises à jour prioritaires & nouveaux modèles en avant-première',
-        'Création illimitée de CV, Lettres, Factures, Devis et Livres',
-        'Assistance dédiée et relecture personnalisée par un expert',
-        'Idéal pour consultants, indépendants, RH et demandeurs d\'emploi'
+        'Accès VIP Illimité pendant 1 an complet (365 jours)',
+        'Tout Dokya en illimité sans filigrane',
+        'Boutique vendeur complète + Gestion de Stock & Clients',
+        'Mises à jour & nouveaux modèles en avant-première',
+        'Assistance VIP dédiée et relecture personnalisée'
       ],
-      cta: "S'abonner avec mon solde (35 000 FCFA)"
+      cta: "S'abonner (71.90 $ / an)"
     }
   ];
 
   const faqs = [
     {
       q: 'Comment fonctionne le paiement à l\'acte ?',
-      a: 'Avec le paiement à l\'acte, vous ne payez que le document précis que vous créez (1 000 FCFA pour un CV ou une Lettre, 1 500 FCFA pour un Pack Duo, 3 000 FCFA pour un Ebook). Aucun abonnement n\'est prélevé automatiquement.'
+      a: 'Avec le paiement à l\'acte, vous ne payez que le document précis que vous créez (1.99 $ pour un CV ou une Lettre, 2.99 $ pour un Pack Duo). Vous bénéficiez d\'exports haute définition sans aucun filigrane. Aucun abonnement n\'est prélevé automatiquement.'
     },
     {
-      q: 'Quels sont les moyens de paiement acceptés au Sénégal et dans la zone UEMOA ?',
-      a: 'Vous pouvez payer directement avec votre solde Dokya Wallet, par Wave Direct (+221 78 961 90 88), Orange Money (#144# / Max It vers le +221 78 961 90 88), ou par Carte Bancaire (Visa / Mastercard) dans 12 pays d\'Afrique de l\'Ouest et la diaspora.'
+      q: 'Qu\'inclut la formule Gratuite (Free) ?',
+      a: 'La formule Gratuite (0 $ / mois) vous permet de créer 1 CV, 1 Lettre de motivation, 1 Facture et 1 Devis par mois avec filigrane Dokya obligatoire sur les exports finaux. Pour supprimer le filigrane ou obtenir des exports illimités, vous pouvez passer à l\'achat à l\'acte (1.99 $) ou à un abonnement Premium.'
+    },
+    {
+      q: 'Quels sont les moyens de paiement acceptés ?',
+      a: 'Vous pouvez régler directement en ligne par Carte Bancaire (Visa / Mastercard), avec votre solde portefeuille Dokya, ou via Mobile Money (Wave, Orange Money) avec conversion automatique au taux officiel.'
     },
     {
       q: 'Puis-je modifier mes documents après achat ?',
       a: 'Oui ! Tous vos documents achetés ou générés sont sauvegardés dans votre espace sous « Mes Documents » et restent téléchargeables en PDF et Word (.docx) sans frais supplémentaires.'
     },
     {
-      q: 'Le Pass VIP Illimité se renouvelle-t-il automatiquement ?',
-      a: 'Non, chez Dokya AI nous privilégions la transparence : aucun prélèvement surprise. Vous renouvelez votre Pass manuellement quand vous le souhaitez en un clic.'
+      q: 'Les abonnements se renouvellent-ils automatiquement ?',
+      a: 'Non, chez Dokya AI nous privilégions la transparence : aucun prélèvement surprise. Vous renouvelez votre abonnement manuellement quand vous le souhaitez en un clic.'
     }
   ];
 
@@ -464,13 +490,16 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {subscriptionPlans.map((plan) => {
-              const discount = calculateDiscount(plan.priceNum);
-              const hasDiscount = discount.discountAmount > 0;
-              const displayPrice = hasDiscount
-                ? (discount.finalPrice === 0 ? '0 FCFA (GRATUIT)' : `${discount.finalPrice.toLocaleString('fr-FR')} FCFA`)
-                : plan.price;
+              const isFree = plan.priceNum === 0;
+              const discount = !isFree ? calculateDiscountedPrice(plan.priceNum) : null;
+              const hasDiscount = Boolean(discount?.hasDiscount);
+              const displayPrice = isFree 
+                ? '0 $' 
+                : hasDiscount 
+                  ? `${discount?.finalPrice.toFixed(2)} $` 
+                  : `${plan.priceNum.toFixed(2)} $`;
 
               return (
                 <div
@@ -478,7 +507,9 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                   className={`relative rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 shadow-xl ${
                     plan.popular
                       ? 'bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-950 border-2 border-amber-400 ring-4 ring-amber-500/20 transform md:-translate-y-2'
-                      : 'bg-slate-900/90 border border-slate-800 hover:border-indigo-500/50'
+                      : plan.id === 'annual'
+                        ? 'bg-gradient-to-b from-emerald-950/40 via-slate-900 to-slate-950 border-2 border-emerald-500/60'
+                        : 'bg-slate-900/90 border border-slate-800 hover:border-indigo-500/50'
                   }`}
                 >
                   {/* Popular Ribbon */}
@@ -499,7 +530,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                       )}
                       {hasDiscount && (
                         <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 ml-auto">
-                          {appliedGlobalPromo?.discountLabel}
+                          {discount?.discountLabel}
                         </span>
                       )}
                     </div>
@@ -514,12 +545,13 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                       <div className="mt-1 flex items-baseline gap-2">
                         {hasDiscount && (
                           <span className="text-sm font-semibold text-slate-500 line-through">
-                            {plan.price}
+                            {plan.priceNum.toFixed(2)} $
                           </span>
                         )}
                         <span className={`text-2xl sm:text-3xl font-black ${hasDiscount ? 'text-emerald-400' : 'text-white'}`}>
                           {displayPrice}
                         </span>
+                        {isFree && <span className="text-xs text-slate-400">/ mois</span>}
                       </div>
                     </div>
 
@@ -538,32 +570,30 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
+                        if (isFree) return;
                         if (isSubscriptionActive) return;
-                        if (userBalance < discount.finalPrice) {
-                          onOpenRecharge();
-                        } else {
-                          onSubscribePlan(plan.id, discount.finalPrice, plan.title);
-                        }
+                        const targetPrice = hasDiscount ? (discount?.finalPrice ?? plan.priceNum) : plan.priceNum;
+                        onSubscribePlan(plan.id as any, targetPrice, plan.title);
                       }}
-                      disabled={isSubscriptionActive}
+                      disabled={isSubscriptionActive && !isFree}
                       className={`w-full py-3.5 px-4 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${
-                        isSubscriptionActive
-                          ? 'bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed opacity-80'
-                          : userBalance < discount.finalPrice
-                            ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 shadow-amber-500/20 cursor-pointer active:scale-95'
+                        isFree
+                          ? 'bg-slate-800 text-slate-300 border border-slate-700 cursor-default'
+                          : isSubscriptionActive
+                            ? 'bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed opacity-80'
                             : plan.popular
                               ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/20 cursor-pointer active:scale-95'
                               : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 cursor-pointer active:scale-95'
                       }`}
                     >
                       <span>
-                        {isSubscriptionActive 
-                          ? '👑 Pass VIP Déjà Actif' 
-                          : userBalance < discount.finalPrice
-                            ? 'Solde insuffisant : Recharger mon solde'
-                            : `S'abonner avec mon solde (${displayPrice})`}
+                        {isFree
+                          ? 'Formule Gratuite Active (0 $)'
+                          : isSubscriptionActive 
+                            ? '👑 Pass VIP Déjà Actif' 
+                            : `S'abonner (${displayPrice})`}
                       </span>
-                      {!isSubscriptionActive && <ArrowRight className="w-4 h-4 shrink-0" />}
+                      {!isSubscriptionActive && !isFree && <ArrowRight className="w-4 h-4 shrink-0" />}
                     </button>
                   </div>
                 </div>
@@ -596,10 +626,10 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {singleProducts.map((product) => {
               const IconComponent = product.icon;
-              const discount = calculateDiscount(product.priceNum);
-              const hasDiscount = discount.discountAmount > 0;
+              const discount = calculateDiscountedPrice(product.priceNum);
+              const hasDiscount = Boolean(discount?.hasDiscount);
               const displayPrice = hasDiscount
-                ? (discount.finalPrice === 0 ? '0 FCFA' : `${discount.finalPrice.toLocaleString('fr-FR')} FCFA`)
+                ? `${discount.finalPrice.toFixed(2)} $`
                 : product.price;
 
               return (
@@ -615,7 +645,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                       <div className="flex items-center gap-1.5">
                         {hasDiscount && (
                           <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                            {appliedGlobalPromo?.discountLabel}
+                            {discount?.discountLabel}
                           </span>
                         )}
                         <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${product.badgeColor}`}>
@@ -638,7 +668,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                       <div className="mt-0.5 flex items-baseline gap-2">
                         {hasDiscount && (
                           <span className="text-xs text-slate-500 line-through">
-                            {product.price}
+                            {product.priceNum.toFixed(2)} $
                           </span>
                         )}
                         <span className={`text-lg font-black ${hasDiscount ? 'text-emerald-400' : 'text-white'}`}>

@@ -54,18 +54,17 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   documentData,
   contentData
 }) => {
-  const { validatePromoCode, appliedGlobalPromo, setAppliedGlobalPromo, pricing } = usePricing();
+  const { validatePromoCode, appliedGlobalPromo, setAppliedGlobalPromo, pricing, publishedPromo } = usePricing();
 
   // Resolve base price for the document
   const resolveBasePrice = () => {
     if (documentPrice && documentPrice > 0) return documentPrice;
     const labelLower = (documentTypeLabel || '').toLowerCase();
-    if (labelLower.includes('ebook') || labelLower.includes('livre')) return pricing?.ebookPrice ?? 3000;
-    if (labelLower.includes('business') || labelLower.includes('pack')) return pricing?.businessPackPrice ?? 1499;
-    if (labelLower.includes('lettre')) return pricing?.letterOnlyPrice ?? 1000;
-    if (labelLower.includes('devis')) return pricing?.devisPrice ?? 1000;
-    if (labelLower.includes('facture')) return pricing?.facturePrice ?? 1000;
-    return pricing?.cvOnlyPrice ?? 1000;
+    if (labelLower.includes('business') || labelLower.includes('pack')) return pricing?.businessPackPrice ?? 2.99;
+    if (labelLower.includes('lettre')) return pricing?.letterOnlyPrice ?? 1.99;
+    if (labelLower.includes('devis')) return pricing?.devisPrice ?? 1.99;
+    if (labelLower.includes('facture')) return pricing?.facturePrice ?? 1.99;
+    return pricing?.cvOnlyPrice ?? 1.99;
   };
 
   const basePrice = resolveBasePrice();
@@ -116,6 +115,8 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
       setIsPayingWithWallet(false);
       if (appliedGlobalPromo && !appliedPromo) {
         handleApplyPromo(appliedGlobalPromo.code);
+      } else if (publishedPromo && (publishedPromo.active || publishedPromo.isPublished) && !appliedPromo) {
+        handleApplyPromo(publishedPromo.code);
       }
     } else {
       if (userProfileUnsubRef.current) {
@@ -123,7 +124,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         userProfileUnsubRef.current = null;
       }
     }
-  }, [isOpen]);
+  }, [isOpen, publishedPromo]);
 
   const handleApplyPromo = async (codeToUse?: string) => {
     const cleanCode = (codeToUse || promoInput).trim().toUpperCase();
@@ -282,7 +283,6 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
           formData: fullContent?.formData || null,
           aiData: fullContent?.aiData || null,
           businessDocData: fullContent?.businessDocData || null,
-          ebookData: fullContent?.ebookData || null,
           generationMode: fullContent?.generationMode || 'cv_only',
           isUnlocked: false,
           status: "PENDING",

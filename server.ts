@@ -2411,6 +2411,10 @@ app.post('/api/wallet/pay', async (req, res) => {
     const rawPrice = price !== undefined ? price : (amount !== undefined ? amount : 0);
     const numericPrice = Math.max(0, Number(rawPrice) || 0);
 
+    // Support automatic USD to FCFA conversion for Wallet (1 USD ≈ 600 FCFA)
+    const isUSD = req.body.currency === 'USD' || (numericPrice > 0 && numericPrice <= 150);
+    const effectiveFCFAPrice = req.body.priceInFCFA ? Number(req.body.priceInFCFA) : (isUSD ? Math.round(numericPrice * 600) : numericPrice);
+
     if (!userId || userId === 'guest') {
       return res.status(400).json({
         success: false,
@@ -2440,28 +2444,29 @@ app.post('/api/wallet/pay', async (req, res) => {
       if (!effectiveName) effectiveName = `${uData.firstName || ''} ${uData.lastName || ''}`.trim() || uData.displayName || 'Utilisateur';
     }
 
-    // SI walletBalance < price : Retourne une réponse JSON 400 : { success: false, error: "Solde insuffisant" }
-    if (currentBalance < numericPrice) {
+    // SI walletBalance < effectiveFCFAPrice : Retourne une réponse JSON 400
+    if (currentBalance < effectiveFCFAPrice) {
       return res.status(400).json({
         success: false,
         error: "Solde insuffisant",
         reason: 'INSUFFICIENT_FUNDS',
         currentBalance,
-        requiredPrice: numericPrice,
-        message: `Solde insuffisant (${currentBalance.toLocaleString('fr-FR')} FCFA disponible, ${numericPrice.toLocaleString('fr-FR')} FCFA requis). Veuillez recharger votre solde.`
+        requiredPrice: effectiveFCFAPrice,
+        requiredUSD: isUSD ? numericPrice : (numericPrice / 600).toFixed(2),
+        message: `Solde insuffisant (${currentBalance.toLocaleString('fr-FR')} FCFA disponible, ${effectiveFCFAPrice.toLocaleString('fr-FR')} FCFA requis${isUSD ? ` / $${numericPrice}` : ''}). Veuillez recharger votre solde.`
       });
     }
 
     const now = new Date();
     const nowIso = now.toISOString();
     const transactionId = "WAL-" + Date.now();
-    const newComputedBalance = Math.max(0, currentBalance - numericPrice);
+    const newComputedBalance = Math.max(0, currentBalance - effectiveFCFAPrice);
 
-    // a) Déduis le montant du solde : walletBalance -= price
+    // a) Déduis le montant du solde : walletBalance -= effectiveFCFAPrice
     const userUpdate: any = {
-      walletBalance: FieldValue.increment(-numericPrice),
-      balance: FieldValue.increment(-numericPrice),
-      solde: FieldValue.increment(-numericPrice),
+      walletBalance: FieldValue.increment(-effectiveFCFAPrice),
+      balance: FieldValue.increment(-effectiveFCFAPrice),
+      solde: FieldValue.increment(-effectiveFCFAPrice),
       lastPaymentAt: nowIso,
       lastPaymentProvider: 'Wallet',
       updatedAt: nowIso

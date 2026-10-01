@@ -10,7 +10,8 @@ import {
 import { 
   CandidateProfile, SavedUserDocument, CVFormData, Experience, Education, 
   SkillCategory, Language, PersonalInfo, TransactionRecord, UserSubscription,
-  InterviewPrepData, isUserVipActive, getTimestampMillis, BusinessDocData, Customer, UserBusiness
+  InterviewPrepData, isUserVipActive, getTimestampMillis, BusinessDocData, Customer, UserBusiness,
+  StoreOrder, SellerStoreProfile
 } from '../types';
 import { 
   fetchUserProfile, saveCandidateProfile, fetchUserDocuments, 
@@ -34,11 +35,10 @@ import { PaywallModal } from './PaywallModal';
 import { VictoryModal } from './VictoryModal';
 import { openDocumentWhatsAppShare } from '../utils/whatsappUtils';
 import { downloadElementAsPDF } from '../lib/pdfUtils';
-import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx, exportEbookToDocx } from '../lib/exportUtils';
+import { exportCVToDocx, exportLetterToDocx, exportBusinessDocToDocx } from '../lib/exportUtils';
 import { CVTemplate } from './CVTemplate';
 import { CoverLetterTemplate } from './CoverLetterTemplate';
 import { DevisFactureTemplate } from './DevisFactureTemplate';
-import { EbookTemplate } from './EbookTemplate';
 import { A4PreviewContainer } from './A4PreviewContainer';
 import { isAdminEmail } from '../lib/adminAuth';
 import { DokyaBusinessView } from './DokyaBusinessView';
@@ -50,7 +50,7 @@ import { DokyaSellerStoreView } from './store/DokyaSellerStoreView';
 interface CandidateDashboardProps {
   onLoadDocumentToEditor: (formData: CVFormData, aiData: any) => void;
   onApplyProfileToEditor: (profile: CandidateProfile) => void;
-  onSelectService?: (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'gallery') => void;
+  onSelectService?: (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'gallery') => void;
   onClose?: () => void;
   onOpenAdmin?: () => void;
   onSignOut?: () => void;
@@ -61,6 +61,7 @@ interface CandidateDashboardProps {
   onOpenDedicatedPreview?: (docItem: SavedUserDocument) => void;
   onOpenPublicProduct?: (slug: string) => void;
   onOpenPublicStore?: (username: string) => void;
+  onGenerateInvoiceForOrder?: (order: StoreOrder, storeProfile?: SellerStoreProfile | null) => void;
 }
 
 export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
@@ -76,7 +77,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   onOpenInvoiceGenerator,
   onOpenDedicatedPreview,
   onOpenPublicProduct,
-  onOpenPublicStore
+  onOpenPublicStore,
+  onGenerateInvoiceForOrder
 }) => {
   const [user, setUser] = useState<FirebaseUser | null>(auth.currentUser);
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab | string>(initialTab);
@@ -87,7 +89,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const [downloadPaymentDoc, setDownloadPaymentDoc] = useState<SavedUserDocument | null>(null);
   const [subscriptionModalConfig, setSubscriptionModalConfig] = useState<{
     isOpen: boolean;
-    planId: 'weekly' | 'monthly' | 'annual';
+    planId: 'weekly' | 'monthly' | 'semester' | 'annual';
     planTitle: string;
     price: number;
   }>({
@@ -352,10 +354,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       if (onSelectService) onSelectService('devis');
       return;
     }
-    if (tab === 'gen_ebook') {
-      if (onSelectService) onSelectService('ebook');
-      return;
-    }
 
     setActiveSidebarTab(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -593,8 +591,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     try {
       const elementId = previewDoc.generationMode === 'devis' || previewDoc.generationMode === 'facture' || previewDoc.generationMode === 'pack_business'
         ? 'modal-business-preview'
-        : previewDoc.generationMode === 'ebook'
-        ? 'modal-ebook-preview'
         : previewTab === 'cv' ? 'modal-cv-preview' : 'modal-letter-preview';
       
       const fileName = `${previewDoc.title || 'document-dokya'}.pdf`.replace(/\s+/g, '_');
@@ -616,8 +612,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         await exportLetterToDocx(previewDoc.formData, previewDoc.aiData);
       } else if (previewDoc.generationMode === 'devis' || previewDoc.generationMode === 'facture' || previewDoc.generationMode === 'pack_business') {
         await exportBusinessDocToDocx(previewDoc.businessDocData || (previewDoc.formData as any));
-      } else if (previewDoc.generationMode === 'ebook' && previewDoc.ebookData) {
-        await exportEbookToDocx(previewDoc.ebookData);
       } else {
         await exportCVToDocx(previewDoc.formData, previewDoc.aiData);
       }
@@ -642,8 +636,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         await exportLetterToDocx(docItem.formData, docItem.aiData);
       } else if (docItem.generationMode === 'devis' || docItem.generationMode === 'facture' || docItem.generationMode === 'pack_business') {
         await exportBusinessDocToDocx(docItem.businessDocData || (docItem.formData as any));
-      } else if (docItem.generationMode === 'ebook' && docItem.ebookData) {
-        await exportEbookToDocx(docItem.ebookData);
       } else {
         await exportCVToDocx(docItem.formData, docItem.aiData);
       }
@@ -764,9 +756,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       targetJobOrCompany = docItem.businessDocData?.issuer?.companyName || '';
       docNumber = docItem.businessDocData?.docNumber || '';
       totalAmount = (docItem.businessDocData?.items || []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
-    } else if (docItem.generationMode === 'ebook') {
-      docType = 'ebook';
-      recipientName = docItem.ebookData?.author || '';
     } else {
       docType = 'cv';
       recipientName = `${docItem.formData?.personalInfo?.firstName || ''} ${docItem.formData?.personalInfo?.lastName || ''}`.trim();
@@ -876,8 +865,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       (docFilterType === 'cv' && (docItem.generationMode === 'cv_only' || docItem.generationMode === 'full_pack')) ||
       (docFilterType === 'letter' && docItem.generationMode === 'letter_only') ||
       (docFilterType === 'entretiens' && ((docItem.generationMode as any) === 'interview_prep' || !!docItem.interviewPrepData)) ||
-      (docFilterType === 'business' && (docItem.generationMode === 'devis' || docItem.generationMode === 'facture' || docItem.generationMode === 'pack_business')) ||
-      (docFilterType === 'ebook' && docItem.generationMode === 'ebook');
+      (docFilterType === 'business' && (docItem.generationMode === 'devis' || docItem.generationMode === 'facture' || docItem.generationMode === 'pack_business'));
 
     const matchesQuery = !docSearchQuery || 
       (docItem.title?.toLowerCase().includes(docSearchQuery.toLowerCase())) ||
@@ -1283,7 +1271,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">
-                          1 000 FCFA
+                          1.99 $
                         </span>
                       </div>
                       <div>
@@ -1312,7 +1300,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           <Mail className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">
-                          1 000 FCFA
+                          1.99 $
                         </span>
                       </div>
                       <div>
@@ -1344,7 +1332,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           <Receipt className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
-                          1 000 FCFA
+                          1.99 $
                         </span>
                       </div>
                       <div>
@@ -1376,7 +1364,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           <FileCheck className="w-4 h-4 sm:w-5 sm:h-5" />
                         </div>
                         <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300">
-                          1 000 FCFA
+                          1.99 $
                         </span>
                       </div>
                       <div>
@@ -1390,38 +1378,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     </div>
                     <div className="pt-2 border-t border-slate-800/80 flex items-center text-[11px] sm:text-xs font-bold text-teal-400 gap-1">
                       <span>Éditer devis</span>
-                      <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-
-                  {/* Card 5: Ebook */}
-                  <div 
-                    onClick={() => {
-                      if (onSelectService) onSelectService('ebook');
-                      else handleSelectTab('gen_ebook');
-                    }}
-                    className="p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-purple-500/60 space-y-2.5 sm:space-y-3 transition-all cursor-pointer hover:-translate-y-0.5 shadow-md group flex flex-col justify-between"
-                  >
-                    <div className="space-y-2 sm:space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
-                          <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </div>
-                        <span className="text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
-                          3 000 FCFA
-                        </span>
-                      </div>
-                      <div>
-                        <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-purple-400 transition-colors">
-                          Livre & Rapport AI
-                        </h4>
-                        <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 line-clamp-2">
-                          Génération structurée de contenus longs avec sommaire et chapitres.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center text-[11px] sm:text-xs font-bold text-purple-400 gap-1">
-                      <span>Générer un livre</span>
                       <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </div>
@@ -1469,7 +1425,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                               {docItem.generationMode === 'letter_only' ? 'Lettre'
                                 : docItem.generationMode === 'devis' ? 'Devis'
                                 : docItem.generationMode === 'facture' ? 'Facture'
-                                : docItem.generationMode === 'ebook' ? 'Ebook'
                                 : 'CV Pro ATS'}
                             </span>
                             <span>{new Date(docItem.createdAt).toLocaleDateString('fr-FR')}</span>
@@ -1547,7 +1502,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     <span>Répertoire de Mes Documents ({documents.length})</span>
                   </h3>
                   <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                    Tous vos CVs, Lettres, Factures, Devis et Ebooks générés et archivés en haute définition.
+                    Tous vos CVs, Lettres, Factures et Devis générés et archivés en haute définition.
                   </p>
                 </div>
 
@@ -1571,8 +1526,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   { id: 'cv', label: 'CVs ATS' },
                   { id: 'letter', label: 'Lettres de Motivation' },
                   { id: 'entretiens', label: 'Entretiens RH' },
-                  { id: 'business', label: 'Factures & Devis' },
-                  { id: 'ebook', label: 'Ebooks & Livres' }
+                  { id: 'business', label: 'Factures & Devis' }
                 ].map(pill => (
                   <button
                     key={pill.id}
@@ -1636,14 +1590,12 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                 : isFacture
                                 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
                                 : docItem.generationMode === 'letter_only' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                : docItem.generationMode === 'ebook' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                                 : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
                             }`}>
                               {isInterviewDoc ? 'Coaching Entretien RH'
                                 : docItem.generationMode === 'letter_only' ? 'Lettre de Motivation'
                                 : isDevis ? 'Devis Pro'
                                 : isFacture ? 'Facture Client'
-                                : docItem.generationMode === 'ebook' ? 'Ebook Pro AI'
                                 : 'CV Pro ATS'}
                             </span>
 
@@ -1723,7 +1675,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
                         <h4 className="text-xs sm:text-sm font-black text-white line-clamp-1 group-hover:text-indigo-300 transition-colors">{docItem.title}</h4>
                         <p className="text-[11px] sm:text-xs text-slate-400 line-clamp-1">
-                          {docItem.formData?.personalInfo?.targetJob || docItem.businessDocData?.issuer?.companyName || docItem.ebookData?.author || 'Document Dokya'}
+                          {docItem.formData?.personalInfo?.targetJob || docItem.businessDocData?.issuer?.companyName || 'Document Dokya'}
                         </p>
 
                         {/* Montant TTC pour les documents commerciaux */}
@@ -1896,6 +1848,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 profile={profile}
                 onOpenPublicProduct={onOpenPublicProduct}
                 onOpenPublicStore={onOpenPublicStore}
+                onGenerateInvoiceForOrder={onGenerateInvoiceForOrder}
               />
             </div>
           )}
@@ -2543,10 +2496,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     <div id="modal-business-preview" className="w-[210mm] min-w-[210mm] max-w-[210mm]">
                       <DevisFactureTemplate data={previewDoc.businessDocData || (previewDoc.formData as any)} />
                     </div>
-                  ) : previewDoc.generationMode === 'ebook' && previewDoc.ebookData ? (
-                    <div id="modal-ebook-preview" className="w-[210mm] min-w-[210mm] max-w-[210mm]">
-                      <EbookTemplate data={previewDoc.ebookData} unlocked={isAuthorizedForExport(previewDoc)} />
-                    </div>
                   ) : previewTab === 'cv' ? (
                     <div id="modal-cv-preview">
                       <CVTemplate formData={previewDoc.formData} aiData={previewDoc.aiData} unlocked={isAuthorizedForExport(previewDoc)} />
@@ -2602,8 +2551,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         documentTypeLabel={
           paywallTargetDoc?.generationMode === 'letter_only' ? 'Lettre de Motivation' :
           paywallTargetDoc?.generationMode === 'facture' ? 'Facture' :
-          paywallTargetDoc?.generationMode === 'devis' ? 'Devis' :
-          paywallTargetDoc?.generationMode === 'ebook' ? 'Livre Numérique' : 'CV Pro ATS'
+          paywallTargetDoc?.generationMode === 'devis' ? 'Devis' : 'CV Pro ATS'
         }
         targetDocId={paywallTargetDoc?.id}
         targetFormat={paywallTargetFormat}

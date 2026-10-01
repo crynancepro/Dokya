@@ -22,7 +22,7 @@ interface HeaderProps {
   onSignOut?: () => void;
   onBackToTemplates?: () => void;
   onGoServices?: () => void;
-  onSelectService?: (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'ebook' | 'dashboard' | 'tarifs' | 'subscription' | 'gallery') => void;
+  onSelectService?: (service: 'cv' | 'letter' | 'full_pack' | 'devis' | 'facture' | 'pack_business' | 'dashboard' | 'tarifs' | 'subscription' | 'gallery') => void;
   onOpenAdmin?: () => void;
   onOpenRecharge?: () => void;
 }
@@ -51,9 +51,8 @@ export const Header: React.FC<HeaderProps> = ({
   const isUserAdmin = isAdminEmail(user?.email);
 
   const getServiceBadge = () => {
-    const cvPrice = userCurrency === 'XOF' ? '1 000 FCFA' : formatPrice(1000);
-    const packPrice = userCurrency === 'XOF' ? '1 499 FCFA' : formatPrice(1499);
-    const ebookPrice = userCurrency === 'XOF' ? '3 000 FCFA' : formatPrice(3000);
+    const cvPrice = userCurrency === 'XOF' ? '1.99 $' : formatPrice(1.99, 'USD');
+    const packPrice = userCurrency === 'XOF' ? '2.99 $' : formatPrice(2.99, 'USD');
 
     switch (currentView) {
       case 'cv':
@@ -100,14 +99,6 @@ export const Header: React.FC<HeaderProps> = ({
           price: packPrice,
           icon: Package,
           color: "text-purple-400 border-purple-500/30 bg-purple-500/10"
-        };
-      case 'ebook':
-      case 'ebook_preview':
-        return {
-          title: "Assistant : Ebook & Rapport KDP",
-          price: ebookPrice,
-          icon: BookOpen,
-          color: "text-fuchsia-400 border-fuchsia-500/30 bg-fuchsia-500/10"
         };
       default:
         return {

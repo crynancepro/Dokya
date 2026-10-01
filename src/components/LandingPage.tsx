@@ -41,83 +41,124 @@ import { LandingComparison } from './landing/LandingComparison';
 import { LandingTestimonials } from './landing/LandingTestimonials';
 import { LandingFloatingCta } from './landing/LandingFloatingCta';
 import { useLocale } from '../contexts/LocaleContext';
+import { usePricing } from '../contexts/PricingContext';
 
 interface LandingPageProps {
   onGoToAuth: (mode?: 'login' | 'signup') => void;
   onGoToDashboard: () => void;
-  onSelectService: (service: 'cv' | 'letter' | 'devis' | 'facture' | 'ebook') => void;
+  onSelectService: (service: 'cv' | 'letter' | 'devis' | 'facture') => void;
   onOpenTarifs: () => void;
   onOpenTemplates: (service?: string) => void;
 }
 
 // -------------------------------------------------------------
-// PRICING OFFERS (LES 3 FORMULES OFFICIELLES DOKYA)
+// PRICING OFFERS (GRILLE TARIFAIRE OFFICIELLE EN USD $)
 // -------------------------------------------------------------
-interface PricingPlan {
-  id: 'single' | 'vip_career' | 'business';
+export interface PricingPlan {
+  id: 'free' | 'single' | 'monthly' | 'semester' | 'annual';
   title: string;
   priceFormatted: string;
-  amount: number;
+  amountUSD: number;
+  periodLabel: string;
   subtitle: string;
   popular?: boolean;
   tag: string;
   features: string[];
   ctaLabel: string;
-  colorScheme: 'slate' | 'indigo' | 'emerald';
+  colorScheme: 'slate' | 'indigo' | 'emerald' | 'amber';
 }
 
 const PRICING_PLANS: PricingPlan[] = [
   {
-    id: 'single',
-    title: 'Paiement à l\'acte',
-    priceFormatted: '1 000 FCFA',
-    amount: 1000,
-    subtitle: '~1.50€ • Idéal pour un besoin ponctuel et immédiat',
-    tag: 'Accès Instantané',
+    id: 'free',
+    title: 'Formule Gratuite',
+    priceFormatted: '0 $',
+    amountUSD: 0,
+    periodLabel: '/ mois',
+    subtitle: 'Idéal pour tester la plateforme Dokya sans engagement',
+    tag: 'Découverte Gratuite',
     colorScheme: 'slate',
     features: [
-      '1 Document complet au choix (CV ATS ou Facture Pro)',
-      'Exports illimités en PDF Haute Définition & Word (.docx)',
-      'Remplissage guidé & reformulation assistée par l\'IA',
-      'Archivage permanent dans votre espace client sécurisé',
-      'Sans abonnement ni prélèvement récurrent'
+      '1 CV ATS par mois avec filigrane Dokya obligatoire',
+      '1 Lettre de motivation par mois avec filigrane Dokya',
+      '1 Facture & 1 Devis par mois avec filigrane Dokya',
+      'Accès aux 50+ modèles et assistant IA de rédaction',
+      'Aperçu interactif et stockage de vos documents'
     ],
-    ctaLabel: 'Payer à l\'acte (1 000 FCFA)'
+    ctaLabel: 'Commencer Gratuitement (0 $)'
   },
   {
-    id: 'vip_career',
-    title: 'Pass VIP Carrière',
-    priceFormatted: '2 500 FCFA',
-    amount: 2500,
-    subtitle: '~3.80€ pour 30 jours • Boost emploi & candidatures',
-    popular: true,
-    tag: '⭐ Le Plus Choisi (Candidats)',
+    id: 'single',
+    title: "Achat à l'Acte",
+    priceFormatted: '1.99 $',
+    amountUSD: 1.99,
+    periodLabel: '/ document',
+    subtitle: 'Paiement unique sans abonnement • 1.99 $ par CV et 1.99 $ par Lettre',
+    tag: 'Paiement Unique',
     colorScheme: 'indigo',
     features: [
-      'Accès illimité aux 50+ modèles de CV ATS internationaux',
-      'Générateur de Lettres de motivation IA illimitées',
-      'Simulateur d\'entretien d\'embauche avec questions de recruteurs',
-      'Téléchargements illimités PDF HD & Word pendant 30 jours',
-      'Badge Candidat VIP & Support prioritaire WhatsApp'
+      '1.99 $ par CV ATS haute définition sans filigrane',
+      '1.99 $ par Lettre de motivation ciblée sans filigrane',
+      'Exports illimités en PDF vectoriel HD & Word (.docx)',
+      'Score de conformité ATS supérieur à 98%',
+      'Archivage sécurisé et ré-édition sans frais supplémentaires'
     ],
-    ctaLabel: 'Activer le Pass VIP (2 500 FCFA)'
+    ctaLabel: "Payer à l'acte (1.99 $)"
   },
   {
-    id: 'business',
-    title: 'Pass Business',
-    priceFormatted: '5 000 FCFA',
-    amount: 5000,
-    subtitle: '~7.60€ pour 30 jours • Entreprises, PME & Indépendants',
-    tag: 'Solution Entreprises & PME',
+    id: 'monthly',
+    title: 'Abonnement Mensuel',
+    priceFormatted: '9.99 $',
+    amountUSD: 9.99,
+    periodLabel: '/ mois',
+    subtitle: 'Accès complet illimité • Idéal pour booster votre carrière et vos ventes',
+    popular: true,
+    tag: '🔥 Le Plus Choisi',
+    colorScheme: 'amber',
+    features: [
+      'CV & Lettres de motivation ILLIMITÉS SANS FILIGRANE',
+      'Boutique vendeur Dokya Store intégrée en 1-clic',
+      'Factures & Devis professionnels OHADA illimités',
+      'Gestion complète de vos Clients & Suivi des Stocks',
+      'Simulateur d\'entretien RH & Support prioritaire WhatsApp'
+    ],
+    ctaLabel: "S'abonner (9.99 $ / mois)"
+  },
+  {
+    id: 'semester',
+    title: 'Abonnement 6 Mois',
+    priceFormatted: '47.95 $',
+    amountUSD: 47.95,
+    periodLabel: '/ 6 mois',
+    subtitle: 'Soit ~7.99 $ / mois • Économisez 20% sur votre abonnement',
+    tag: '💎 Forfait 6 Mois (-20%)',
+    colorScheme: 'indigo',
+    features: [
+      'Accès complet illimité pendant 6 mois complets',
+      'CV & Lettres illimités sans filigrane',
+      'Boutique vendeur, Factures & Devis illimités',
+      'Gestion Clientèle & Gestion des Stocks avancée',
+      'Mises à jour prioritaires & support prioritaire'
+    ],
+    ctaLabel: 'Activer les 6 Mois (47.95 $)'
+  },
+  {
+    id: 'annual',
+    title: 'Abonnement Annuel',
+    priceFormatted: '71.90 $',
+    amountUSD: 71.90,
+    periodLabel: '/ an',
+    subtitle: 'Soit ~5.99 $ / mois • Économisez 40% sur toute l\'année',
+    tag: '👑 Meilleure Offre (-40%)',
     colorScheme: 'emerald',
     features: [
-      'Factures & Devis conformes OHADA en illimité',
-      'Gestion du carnet clients & suivi des règlements',
-      'Calculs automatiques TVA (18%) & conversion 1-clic devis en facture',
-      'Multi-entreprises & mentions légales obligatoires (NINEA, RC)',
-      'Inclus l\'intégralité du Pass VIP Carrière (CVs + Lettres illimités)'
+      'Accès VIP Illimité pendant 1 an complet (365 jours)',
+      'Tout Dokya en illimité : CV, Lettres, Factures, Devis',
+      'Boutique vendeur complète + Gestion de Stock & Clients',
+      'Relecture experte & support dédié 7j/7 sur WhatsApp',
+      'Nouveaux modèles et fonctionnalités en avant-première'
     ],
-    ctaLabel: 'Activer le Pass Business (5 000 FCFA)'
+    ctaLabel: 'Activer le Pass 1 An (71.90 $)'
   }
 ];
 
@@ -129,10 +170,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenTemplates,
 }) => {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
-  const [selectedCurrency, setSelectedCurrency] = useState<'XOF' | 'EUR' | 'USD'>('XOF');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   const currentUser = auth.currentUser;
+  const { publishedPromo, calculateDiscountedPrice } = usePricing();
 
   const handlePlanClick = (_plan: PricingPlan) => {
     if (currentUser) {
@@ -142,23 +183,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
-  // Calcul du prix et du sous-titre selon la devise choisie
-  const getPlanPriceDisplay = (plan: PricingPlan) => {
-    if (selectedCurrency === 'EUR') {
-      if (plan.id === 'single') return { price: '1,50 €', sub: '1 000 FCFA • Paiement unique sans abonnement' };
-      if (plan.id === 'vip_career') return { price: '3,80 €', sub: '2 500 FCFA pour 30 jours d\'accès illimité' };
-      return { price: '7,60 €', sub: '5 000 FCFA pour 30 jours • Factures & CVs illimités' };
-    }
-    if (selectedCurrency === 'USD') {
-      if (plan.id === 'single') return { price: '$1.65', sub: '1 000 FCFA • Instant one-time download' };
-      if (plan.id === 'vip_career') return { price: '$4.15', sub: '2 500 FCFA • 30 days full career access' };
-      return { price: '$8.30', sub: '5 000 FCFA • 30 days full business suite' };
-    }
-    // Par défaut XOF / FCFA
-    return { price: plan.priceFormatted, sub: plan.subtitle };
-  };
-
-  const handleActionClick = (service?: 'cv' | 'letter' | 'devis' | 'facture' | 'ebook') => {
+  const handleActionClick = (service?: 'cv' | 'letter' | 'devis' | 'facture') => {
     if (currentUser) {
       if (service) {
         onSelectService(service);
@@ -188,8 +213,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       a: "Oui, à 100%. Nos factures intègrent automatiquement le Numéro d'Identification Nationale des Entreprises et Associations (NINEA), le Registre de Commerce (RC), la TVA (18%), l'arrêté de la somme en toutes lettres ainsi que les coordonnées de règlement Mobile Money et bancaires."
     },
     {
-      q: "Quelles sont les 3 offres tarifaires proposées ?",
-      a: "Nous proposons 3 formules limpides : 1. Paiement à l'acte à 1 000 FCFA (~1.50€) pour un document unique avec téléchargements illimités. 2. Pass VIP Carrière à 2 500 FCFA (~3.80€) pour 30 jours d'accès illimité aux 50+ CVs ATS, lettres IA et simulateur d'entretien. 3. Pass Business à 5 000 FCFA (~7.60€) pour 30 jours de facturation et devis OHADA illimités avec gestion client et Pass VIP inclus."
+      q: "Quelles sont les formules tarifaires proposées ?",
+      a: "Dokya propose une formule Gratuite (0 $ / mois avec 1 CV, 1 lettre, 1 facture et 1 devis par mois avec filigrane Dokya), l'achat à l'acte à 1.99 $ par CV et 1.99 $ par lettre sans filigrane, et des abonnements Premium complets (Mensuel à 9.99 $, 6 Mois à 47.95 $ et Annuel à 71.90 $) donnant un accès illimité à tous les documents sans filigrane, à la boutique vendeur, à la facturation OHADA et à la gestion de stock et clients."
     },
     {
       q: "Puis-je exporter mes documents au format Word (.docx) et PDF ?",
@@ -805,96 +830,158 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <LandingTestimonials />
 
       {/* ========================================================================= */}
-      {/* 6. SECTION TARIFICATION 3D DIRECTE (3 OFFRES + MONEY FUSION 1-CLIC)        */}
+      {/* 6. SECTION TARIFICATION CLAIRE EN USD (OFFRES SYNCHRONISÉES & CODES PROMO) */}
       {/* ========================================================================= */}
       <section id="tarifs" className="py-16 sm:py-24 bg-slate-900/30 border-b border-slate-800/70">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           
           <div className="text-center space-y-3 max-w-2xl mx-auto">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-xs font-bold uppercase tracking-wider">
               <Zap className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Tarification Claire &amp; Sans Surprise</span>
+              <span>Tarification Officielle Dokya (USD $)</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
-              Choisissez votre Formule &amp; Débloquez avec votre Solde
+              Des tarifs simples, transparents &amp; sans surprise
             </h2>
             <p className="text-sm text-slate-400">
-              Paiement 100% solde interne Dokya. Rechargez facilement votre solde via Money Fusion (Wave, Orange Money, MTN).
+              Formule gratuite avec filigrane, achat à l'acte direct ou abonnements illimités sans engagement.
             </p>
           </div>
 
-          {/* LES 3 OFFRES CLAIRES EN CARTES 3D TILT */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          {/* BANDEAU CODE PROMO PUBLIÉ ACTIF (SYNCHRONISATION ADMIN AUTOMATIQUE) */}
+          {publishedPromo && (
+            <div className="max-w-4xl mx-auto p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-teal-950/70 border-2 border-emerald-500/50 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl shadow-emerald-500/10 animate-in fade-in">
+              <div className="flex items-center gap-3.5 text-center sm:text-left">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center justify-center shrink-0 shadow-inner">
+                  <Sparkles className="w-6 h-6 text-emerald-300 fill-emerald-300 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+                    <span className="text-xs sm:text-sm font-black text-white">
+                      Code promo public actif : <span className="font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 font-bold">{publishedPromo.code}</span>
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 text-xs font-black shadow-xs">
+                      {publishedPromo.discountType === 'percentage' ? `-${publishedPromo.discountValue}%` : `-${publishedPromo.discountValue}$`} de Réduction
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-200/90 mt-0.5">
+                    {publishedPromo.description || `Cette remise exceptionnelle est automatiquement appliquée sur nos tarifs ci-dessous et au moment du paiement.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="shrink-0">
+                <span className="text-[11px] font-bold text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/25 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Réduction appliquée automatiquement</span>
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* GRILLE DES OFFRES TARIFFAIRE */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
             
             {PRICING_PLANS.map((plan) => {
-              const priceInfo = getPlanPriceDisplay(plan);
+              const isFree = plan.amountUSD === 0;
+              const discount = !isFree ? calculateDiscountedPrice(plan.amountUSD) : null;
+              const hasDiscount = Boolean(discount?.hasDiscount);
+              const finalPriceDisplay = isFree 
+                ? '0 $' 
+                : hasDiscount 
+                  ? `${discount?.finalPrice.toFixed(2)} $` 
+                  : `${plan.amountUSD.toFixed(2)} $`;
 
               return (
-                <Landing3DCard key={plan.id} depth={10} className="h-full">
+                <Landing3DCard key={plan.id} depth={8} className="h-full">
                   <div 
-                    className={`p-6 sm:p-8 rounded-3xl flex flex-col justify-between space-y-6 transition-all relative h-full ${
+                    className={`p-6 sm:p-7 rounded-3xl flex flex-col justify-between space-y-6 transition-all relative h-full ${
                       plan.popular
-                        ? 'bg-gradient-to-b from-indigo-950/90 via-slate-900 to-slate-900 border-2 border-indigo-500 shadow-2xl shadow-indigo-600/25 md:-translate-y-2'
-                        : 'bg-slate-900 border border-slate-800 hover:border-slate-700'
+                        ? 'bg-gradient-to-b from-indigo-950/90 via-slate-900 to-slate-950 border-2 border-amber-400 ring-4 ring-amber-500/20 shadow-2xl shadow-amber-500/10 transform lg:-translate-y-2'
+                        : plan.id === 'annual'
+                          ? 'bg-gradient-to-b from-emerald-950/40 via-slate-900 to-slate-900 border-2 border-emerald-500/60 shadow-xl'
+                          : 'bg-slate-900/90 border border-slate-800 hover:border-slate-700'
                     }`}
                   >
-                    {/* Badge Populaire */}
-                    {plan.popular && (
-                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow-md flex items-center gap-1">
+                    {/* Badge Populaire / En vedette */}
+                    {plan.popular ? (
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow-md flex items-center gap-1">
                         <Star className="w-3 h-3 fill-slate-950" />
                         <span>{plan.tag}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                          {plan.tag}
+                        </span>
+                        {hasDiscount && (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            {discount?.discountLabel}
+                          </span>
+                        )}
                       </div>
                     )}
 
                     <div className="space-y-4">
-                      {!plan.popular && (
-                        <span className="text-xs font-black uppercase px-2.5 py-1 rounded bg-slate-800 text-slate-300">
-                          {plan.tag}
-                        </span>
-                      )}
-
                       <div>
                         <h3 className="text-lg font-black text-white">
                           {plan.title}
                         </h3>
-                        <div className="flex items-baseline gap-1.5 mt-2">
-                          <span className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono">
-                            {priceInfo.price}
+                        <p className="text-xs text-slate-400 mt-1 min-h-[32px]">
+                          {plan.subtitle}
+                        </p>
+
+                        <div className="flex items-baseline gap-2 mt-3 p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                          {hasDiscount && (
+                            <span className="text-lg sm:text-xl font-bold text-slate-500 line-through">
+                              {plan.amountUSD.toFixed(2)} $
+                            </span>
+                          )}
+                          <span className={`text-3xl sm:text-4xl font-black font-mono ${hasDiscount ? 'text-emerald-400' : 'text-white'}`}>
+                            {finalPriceDisplay}
+                          </span>
+                          <span className="text-xs text-slate-400 font-medium">
+                            {plan.periodLabel}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-400 mt-1">
-                          {priceInfo.sub}
-                        </p>
                       </div>
 
-                      <ul className="space-y-3 text-xs text-slate-300 pt-4 border-t border-slate-800/80">
+                      <ul className="space-y-2.5 text-xs text-slate-300 pt-3 border-t border-slate-800/80">
                         {plan.features.map((feature, idx) => (
                           <li key={idx} className="flex items-start gap-2.5">
-                            <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <Check className={`w-4 h-4 shrink-0 mt-0.5 ${plan.popular ? 'text-amber-400' : 'text-emerald-400'}`} />
                             <span className="leading-tight">{feature}</span>
                           </li>
                         ))}
                       </ul>
                     </div>
 
-                    {/* Bouton de sélection et d'abonnement via solde */}
-                    <div className="space-y-2.5 pt-2">
+                    {/* Bouton de sélection et d'abonnement */}
+                    <div className="space-y-2 pt-2">
                       <button
                         type="button"
                         onClick={() => handlePlanClick(plan)}
-                        className={`w-full py-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 ${
+                        className={`w-full py-3.5 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 ${
                           plan.popular
-                            ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-95 text-white shadow-blue-600/30'
-                            : 'bg-slate-800 hover:bg-slate-700 text-white'
+                            ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-amber-500/25'
+                            : plan.id === 'annual'
+                              ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-emerald-500/20'
+                              : 'bg-slate-800 hover:bg-slate-700 text-white'
                         }`}
                       >
-                        <CreditCard className="w-4 h-4 text-amber-300" />
-                        <span>{currentUser ? `S'abonner avec mon solde (${plan.priceFormatted})` : `Commencer avec ${plan.title}`}</span>
+                        <CreditCard className="w-4 h-4" />
+                        <span>
+                          {isFree
+                            ? 'Commencer Gratuitement (0 $)'
+                            : currentUser
+                              ? `Souscrire (${finalPriceDisplay})`
+                              : `Choisir cette offre (${finalPriceDisplay})`}
+                        </span>
                       </button>
 
                       <p className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1">
                         <Lock className="w-3 h-3 text-emerald-400" />
-                        <span>Règlement via solde interne • Recharge facile via Money Fusion</span>
+                        <span>Paiement sécurisé • Sans engagement</span>
                       </p>
                     </div>
 

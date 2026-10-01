@@ -95,7 +95,7 @@ export interface DokyaPaymentModalProps {
   initialRechargeAmount?: number;
   onRechargeSuccess?: (addedAmount: number, transaction?: TransactionRecord) => void;
   // Subscription context
-  planId?: 'weekly' | 'monthly' | 'annual';
+  planId?: 'weekly' | 'monthly' | 'semester' | 'annual';
   planTitle?: string;
   planPrice?: number;
   onSubscriptionSuccess?: (sub: UserSubscription, method: 'wallet' | 'mobile_money') => void;
@@ -140,7 +140,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   documentData,
   contentData
 }) => {
-  const { pricing, validatePromoCode } = usePricing();
+  const { pricing, validatePromoCode, publishedPromo } = usePricing();
 
   // VIP State tracking
   const [currentUserIsVip, setCurrentUserIsVip] = useState<boolean>(Boolean(isUserVip));
@@ -181,29 +181,26 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     }
   }, [isOpen, mode, initialRechargeAmount]);
 
-  // Compute base price for document
+  // Compute base price for document (in USD $)
   const getDocumentBasePrice = () => {
     if (price && price > 0) return price;
     const labelLower = (documentTypeLabel || '').toLowerCase();
     if (labelLower.includes('full') || labelLower.includes('pack duo') || labelLower.includes('pack emploi') || labelLower.includes('cv + lettre')) {
-      return pricing.fullPackPrice;
+      return pricing.fullPackPrice ?? 2.99;
     }
     if (labelLower.includes('business') || labelLower.includes('devis + facture')) {
-      return pricing.businessPackPrice;
+      return pricing.businessPackPrice ?? 2.99;
     }
     if (labelLower.includes('lettre')) {
-      return pricing.letterOnlyPrice;
+      return pricing.letterOnlyPrice ?? 1.99;
     }
     if (labelLower.includes('devis')) {
-      return pricing.devisPrice;
+      return pricing.devisPrice ?? 1.99;
     }
     if (labelLower.includes('facture')) {
-      return pricing.facturePrice;
+      return pricing.facturePrice ?? 1.99;
     }
-    if (labelLower.includes('ebook') || labelLower.includes('livre')) {
-      return pricing.ebookPrice ?? 1500;
-    }
-    return pricing.cvOnlyPrice;
+    return pricing.cvOnlyPrice ?? 1.99;
   };
 
   // Stepper state: 1 = Choix du mode & Récapitulatif, 2 = Transfert & Saisie, 3 = Scanner IA & Validation
@@ -286,7 +283,64 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     };
   }, [previewUrl]);
 
-  // Reset modal state when opened
+  // Conversion rate: 1 USD ≈ 600 FCFA
+  const USD_TO_FCFA_RATE = 600;
+  const isUSDItem = activeMode !== 'recharge';
+
+  // Base raw price calculation (in USD for documents and subscriptions, FCFA for recharge)
+  const getRawPrice = () => {
+    if (activeMode === 'recharge') {
+      if (isCustomRecharge) {
+        const val = parseInt(customRechargeInput, 10);
+        return isNaN(val) ? 0 : val;
+      }
+      return rechargeAmount;
+    }
+    if (activeMode === 'subscription') {
+      if (planPrice && planPrice > 0) return planPrice;
+      if (planId === 'annual') return pricing.unlimitedPassAnnualPrice ?? 71.90;
+      if (planId === 'semester') return pricing.unlimitedPassSemesterPrice ?? 47.95;
+      return pricing.unlimitedPassMonthlyPrice ?? pricing.unlimitedPassPrice ?? 9.99;
+    }
+    return getDocumentBasePrice();
+  };
+
+  // Auto-apply published promo
+  const applyPublishedPromo = (promo: any) => {
+    if (!promo || (!promo.active && !promo.isPublished)) return;
+    const base = getRawPrice();
+    let discAmount = 0;
+    if (promo.discountType === 'percentage') {
+      discAmount = promo.discountValue >= 100 ? base : (base * promo.discountValue) / 100;
+    } else {
+      discAmount = Math.min(base, promo.discountValue);
+    }
+    discAmount = Math.round(discAmount * 100) / 100;
+    const finalAmount = Math.max(0, Math.round((base - discAmount) * 100) / 100);
+    const isFree = finalAmount === 0;
+    const discountLabel = promo.discountType === 'percentage' 
+      ? `-${promo.discountValue}%` 
+      : (isUSDItem ? `-${promo.discountValue} $` : `-${promo.discountValue} FCFA`);
+
+    const promoInfo: AppliedPromoInfo = {
+      code: promo.code,
+      discountType: promo.discountType,
+      discountValue: promo.discountValue,
+      discountAmount: discAmount,
+      originalAmount: base,
+      finalAmount,
+      isFree,
+      message: isFree 
+        ? `Code "${promo.code}" appliqué automatiquement : Déblocage 100% Gratuit !` 
+        : `Code "${promo.code}" appliqué automatiquement : ${discountLabel}`,
+      discountLabel
+    };
+
+    setAppliedPromo(promoInfo);
+    setPromoSuccess(promoInfo.message);
+  };
+
+  // Reset modal state when opened & auto-apply published promo
   useEffect(() => {
     if (isOpen) {
       stopScanningProcesses();
@@ -298,40 +352,32 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       setTimerSecondsLeft(120);
       setActivePendingTxId(null);
       isHandledSuccessRef.current = false;
-      setAppliedPromo(null);
       setPromoInput('');
       setPromoError(null);
-      setPromoSuccess(null);
       setSelectedFile(null);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
+
+      // Auto-apply published promo
+      if (publishedPromo && (publishedPromo.active || publishedPromo.isPublished)) {
+        applyPublishedPromo(publishedPromo);
+      } else {
+        setAppliedPromo(null);
+        setPromoSuccess(null);
+      }
     } else {
       stopScanningProcesses();
     }
-  }, [isOpen]);
+  }, [isOpen, publishedPromo]);
 
   if (!isOpen) return null;
-
-  // Base raw price calculation
-  const getRawPrice = () => {
-    if (activeMode === 'recharge') {
-      if (isCustomRecharge) {
-        const val = parseInt(customRechargeInput, 10);
-        return isNaN(val) ? 0 : val;
-      }
-      return rechargeAmount;
-    }
-    if (activeMode === 'subscription') {
-      return planPrice || (planId === 'annual' ? 25000 : (planId === 'weekly' ? 2000 : 5000));
-    }
-    return getDocumentBasePrice();
-  };
 
   const rawPrice = getRawPrice();
   const safeBalance = Number(userBalance) || 0;
   const payablePrice = appliedPromo ? appliedPromo.finalAmount : rawPrice;
+  const priceInFCFA = isUSDItem ? Math.round(payablePrice * USD_TO_FCFA_RATE) : payablePrice;
   const isFreeWithPromo = appliedPromo !== null && appliedPromo.isFree;
-  const hasEnoughBalance = safeBalance >= payablePrice;
+  const hasEnoughBalance = safeBalance >= priceInFCFA;
 
   // Purpose string for API calls
   const currentPurpose = activeMode === 'recharge' 
@@ -472,7 +518,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     setTimeout(() => setScanPhase(3), 600);
 
     try {
-      const newComputedBalance = Math.max(0, safeBalance - payablePrice);
+      const newComputedBalance = Math.max(0, safeBalance - priceInFCFA);
 
       if (activeMode === 'subscription') {
         // Subscription via wallet with /api/wallet/pay
@@ -489,6 +535,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
             itemType: 'subscription',
             itemId: effectivePlanId,
             price: payablePrice,
+            currency: 'USD',
+            priceInFCFA: priceInFCFA,
             userEmail: userEmail || 'candidat@dokya.sn',
             userName: userName || 'Candidat Dokya'
           })
@@ -530,7 +578,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           setValidationDetails({
             txId: payData.transactionId || rawTxId,
             amount: payablePrice,
-            message: `Abonnement "${planTitle}" activé avec succès ! Débit de ${payablePrice.toLocaleString('fr-FR')} FCFA sur votre solde Dokya Wallet.`,
+            message: `Abonnement "${planTitle}" activé avec succès ! Débit de ${priceInFCFA.toLocaleString('fr-FR')} FCFA (${payablePrice.toFixed(2)} $) sur votre solde Dokya Wallet.`,
             unlockedTitle: planTitle,
             senderPhone: fullPhone
           });
@@ -557,6 +605,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
             docId: targetDocIdToPay,
             price: payablePrice,
             amount: payablePrice,
+            currency: 'USD',
+            priceInFCFA: priceInFCFA,
             userEmail: userEmail || 'candidat@dokya.sn',
             userName: userName || 'Candidat Dokya'
           })
@@ -577,7 +627,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           userEmail: userEmail || 'candidat@dokya.sn',
           userName: userName || 'Candidat Dokya',
           type: 'document_purchase',
-          amount: -payablePrice,
+          amount: -priceInFCFA,
           currency: 'XOF',
           description: `Achat ${documentTypeLabel} : ${documentTitle}`,
           status: 'SUCCESS',
@@ -606,7 +656,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           setValidationDetails({
             txId: payData.transactionId || rawTxId,
             amount: payablePrice,
-            message: `Débit de ${payablePrice.toLocaleString('fr-FR')} FCFA effectué sur votre solde Dokya Wallet. Document débloqué avec succès !`,
+            message: `Débit de ${priceInFCFA.toLocaleString('fr-FR')} FCFA (${payablePrice.toFixed(2)} $) effectué sur votre solde Dokya Wallet. Document débloqué avec succès !`,
             unlockedTitle: documentTitle,
             senderPhone: fullPhone
           });
@@ -1262,20 +1312,29 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         </span>
                       </div>
                       <p className="text-xs text-slate-400">
-                        Téléchargements illimités de tous vos CV, Lettres, Devis et Factures sans payer à l'acte.
+                        Téléchargements illimités de tous vos CV, Lettres, Devis et Factures sans filigrane.
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="text-base font-black text-amber-400 font-mono">
-                        {rawPrice.toLocaleString('fr-FR')} FCFA
-                      </div>
-                      {userCurrency !== 'XOF' && (
-                        <div className="text-xs font-bold text-amber-300/90 font-sans">
-                          ≈ {formatPrice(rawPrice)}
+                      {appliedPromo ? (
+                        <div>
+                          <span className="text-xs text-slate-400 line-through font-mono mr-1.5">
+                            {rawPrice.toFixed(2)} $
+                          </span>
+                          <span className="text-base font-black text-emerald-400 font-mono">
+                            {payablePrice === 0 ? 'GRATUIT' : `${payablePrice.toFixed(2)} $`}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-base font-black text-amber-400 font-mono">
+                          {payablePrice.toFixed(2)} $
                         </div>
                       )}
+                      <div className="text-xs font-bold text-amber-300/90 font-sans">
+                        ≈ {priceInFCFA.toLocaleString('fr-FR')} FCFA
+                      </div>
                       <div className="text-[10px] text-slate-400">
-                        {planId === 'annual' ? '/ an' : planId === 'weekly' ? '/ semaine' : '/ mois'}
+                        {planId === 'annual' ? '/ an' : planId === 'semester' ? '/ 6 mois' : '/ mois'}
                       </div>
                     </div>
                   </div>
@@ -1289,19 +1348,28 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         <h4 className="text-sm font-black text-white">{documentTitle}</h4>
                       </div>
                       <p className="text-xs text-slate-400">
-                        Déblocage officiel haute définition (PDF vectoriel & Word .docx)
+                        Déblocage officiel haute définition (PDF vectoriel & Word .docx sans filigrane)
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="text-base font-black text-emerald-400 font-mono">
-                        {rawPrice.toLocaleString('fr-FR')} FCFA
-                      </div>
-                      {userCurrency !== 'XOF' && (
-                        <div className="text-xs font-bold text-emerald-300/90 font-sans">
-                          ≈ {formatPrice(rawPrice)}
+                      {appliedPromo ? (
+                        <div>
+                          <span className="text-xs text-slate-400 line-through font-mono mr-1.5">
+                            {rawPrice.toFixed(2)} $
+                          </span>
+                          <span className="text-base font-black text-emerald-400 font-mono">
+                            {payablePrice === 0 ? 'GRATUIT' : `${payablePrice.toFixed(2)} $`}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-base font-black text-emerald-400 font-mono">
+                          {payablePrice.toFixed(2)} $
                         </div>
                       )}
-                      <div className="text-[10px] text-slate-400">Paiement unique</div>
+                      <div className="text-xs font-bold text-emerald-300/90 font-sans">
+                        ≈ {priceInFCFA.toLocaleString('fr-FR')} FCFA
+                      </div>
+                      <div className="text-[10px] text-slate-400">Paiement à l'acte</div>
                     </div>
                   </div>
                 </div>
@@ -1464,7 +1532,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                           <>
                             <Unlock className="w-4 h-4 text-amber-300" />
                             <span>
-                              Débloquer avec mon solde ({payablePrice.toLocaleString('fr-FR')} FCFA)
+                              Débloquer avec mon solde ({isUSDItem ? `${priceInFCFA.toLocaleString('fr-FR')} FCFA (${payablePrice.toFixed(2)} $)` : `${payablePrice.toLocaleString('fr-FR')} FCFA`})
                             </span>
                           </>
                         )}
@@ -1474,12 +1542,12 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         type="button"
                         onClick={() => {
                           setActiveMode('recharge');
-                          setRechargeAmount(Math.max(300, Math.ceil((payablePrice - safeBalance) / 100) * 100));
+                          setRechargeAmount(Math.max(300, Math.ceil((priceInFCFA - safeBalance) / 100) * 100));
                         }}
                         className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-sm transition-all shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                       >
                         <Wallet className="w-4 h-4" />
-                        <span>Recharger mon solde (+{Math.max(300, payablePrice - safeBalance).toLocaleString('fr-FR')} FCFA nécessaires)</span>
+                        <span>Recharger mon solde (+{Math.max(300, priceInFCFA - safeBalance).toLocaleString('fr-FR')} FCFA nécessaires)</span>
                         <ArrowRight className="w-4 h-4" />
                       </button>
                     )}

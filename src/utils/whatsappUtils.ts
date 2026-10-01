@@ -36,6 +36,8 @@ export interface InvoiceWhatsAppParams {
   dueDate?: string;
   issuerName?: string;
   isPaid?: boolean;
+  orderId?: string;
+  downloadUrl?: string;
 }
 
 export function generateInvoiceWhatsAppLink({
@@ -47,7 +49,9 @@ export function generateInvoiceWhatsAppLink({
   currency = 'FCFA',
   dueDate,
   issuerName,
-  isPaid
+  isPaid,
+  orderId,
+  downloadUrl
 }: InvoiceWhatsAppParams): string {
   const cleanPhone = cleanPhoneNumberForWhatsApp(phone);
   const docTypeLabel = type === 'devis' ? 'Devis' : 'Facture';
@@ -57,6 +61,9 @@ export function generateInvoiceWhatsAppLink({
 
   let message = `${greeting},\n\n`;
   message += `Voici les détails de votre ${docTypeLabel} N° *${docNumber}*${fromText} :\n`;
+  if (orderId) {
+    message += `🛍️ *Commande boutique :* #${orderId}\n`;
+  }
   message += `💰 *Montant total :* ${formattedAmount} ${currency}\n`;
 
   if (type === 'facture') {
@@ -64,6 +71,10 @@ export function generateInvoiceWhatsAppLink({
     if (dueDate && !isPaid) {
       message += `📅 *Date d'échéance :* ${dueDate}\n`;
     }
+  }
+
+  if (downloadUrl) {
+    message += `\n📥 *Télécharger votre facture en PDF direct :*\n${downloadUrl}\n`;
   }
 
   message += `\nNous restons à votre entière disposition pour toute question.\n`;
