@@ -1,5 +1,6 @@
 import React from 'react';
 import { Plus, Radio, Crown, Sparkles, ShieldCheck } from 'lucide-react';
+import { useLocale } from '../contexts/LocaleContext';
 
 interface DokyaVirtualCardProps {
   userName?: string;
@@ -22,6 +23,8 @@ export const DokyaVirtualCard: React.FC<DokyaVirtualCardProps> = ({
   isVip = false,
   cardNumber
 }) => {
+  const { formatPrice, userCurrency } = useLocale();
+  const displayFormattedPrice = formatPrice(balance ?? 0);
   // Format cardholder name in uppercase
   const rawName = (userName && userName !== 'Utilisateur Dokya' && userName !== 'Candidat Pro')
     ? userName
@@ -80,9 +83,8 @@ export const DokyaVirtualCard: React.FC<DokyaVirtualCardProps> = ({
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
               Solde disponible
             </span>
-            <div className="text-lg font-black text-white tracking-tight flex items-baseline gap-1">
-              <span className="text-emerald-400">{(balance ?? 0).toLocaleString('fr-FR')}</span>
-              <span className="text-[11px] font-bold text-emerald-300">{currency}</span>
+            <div className="text-lg font-black text-emerald-400 tracking-tight flex items-baseline gap-1">
+              <span>{displayFormattedPrice}</span>
             </div>
           </div>
 
@@ -172,9 +174,8 @@ export const DokyaVirtualCard: React.FC<DokyaVirtualCardProps> = ({
           <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
             Solde Disponible
           </span>
-          <div className="text-xl sm:text-3xl font-black text-white tracking-tight flex items-baseline gap-1 sm:gap-1.5">
-            <span className="text-emerald-400">{(balance ?? 0).toLocaleString('fr-FR')}</span>
-            <span className="text-xs sm:text-sm font-bold text-emerald-300">{currency}</span>
+          <div className="text-xl sm:text-3xl font-black text-emerald-400 tracking-tight flex items-baseline gap-1 sm:gap-1.5">
+            <span>{displayFormattedPrice}</span>
           </div>
         </div>
 

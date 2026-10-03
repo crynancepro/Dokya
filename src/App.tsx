@@ -23,6 +23,7 @@ import { TemplatesView } from './components/TemplatesView';
 import { StepForm } from './components/StepForm';
 import { LetterEditorForm } from './components/LetterEditorForm';
 import { CandidateDashboard } from './components/CandidateDashboard';
+import { DokyaTelemarketerPortal } from './components/DokyaTelemarketerPortal';
 import { PaymentModal } from './components/PaymentModal';
 import { PaywallModal } from './components/PaywallModal';
 import { RechargeWalletModal } from './components/RechargeWalletModal';
@@ -115,6 +116,7 @@ export type MainAppView =
   | 'landing'
   | 'auth'
   | 'dashboard'
+  | 'telemarketer'
   | 'templates'
   | 'cv_gallery'
   | 'cv'
@@ -170,6 +172,55 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   // Service for templates view
   const [templatesService, setTemplatesService] = useState<'cv' | 'letter' | 'devis' | 'facture' | 'pack_business'>('cv');
 
+  // Candidate/Telemarketer profile state for dedicated portals
+  const [userProfile, setUserProfile] = useState<CandidateProfile>(() => {
+    const currentUid = auth.currentUser?.uid;
+    if (currentUid && currentUid !== 'guest') {
+      try {
+        const saved = localStorage.getItem(`dokya_candidate_profile_${currentUid}`);
+        if (saved) return JSON.parse(saved);
+      } catch (_e) {}
+    }
+    return {
+      uid: currentUid || 'guest',
+      email: auth.currentUser?.email || '',
+      displayName: auth.currentUser?.displayName || 'Télévendeur Pro',
+      personalInfo: {
+        firstName: '',
+        lastName: '',
+        email: auth.currentUser?.email || '',
+        phone: '',
+        address: '',
+        city: 'Dakar',
+        country: 'Sénégal',
+        targetJob: '',
+        linkedin: '',
+        portfolio: ''
+      },
+      experiences: [],
+      education: [],
+      skills: [],
+      languages: [],
+      credits: 0,
+      balance: 0,
+      subscriptionStatus: 'free',
+      updatedAt: new Date().toISOString()
+    };
+  });
+
+  useEffect(() => {
+    if (currentUser?.uid) {
+      const unsub = subscribeToUserProfile(currentUser.uid, (p) => {
+        setUserProfile(prev => ({
+          ...prev,
+          ...p,
+          balance: p.walletBalance ?? p.balance ?? prev.balance ?? 0
+        }));
+      });
+      return () => unsub();
+    }
+  }, [currentUser?.uid]);
+
   // Pack specific sub-switchers
   const [packBusinessSubTab, setPackBusinessSubTab] = useState<'devis' | 'facture'>('devis');
 
@@ -218,6 +269,10 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       // 1-Click Invoice Generation Route (?orderId=... or /dashboard/factures/create)
       if (searchParams.get('orderId') || pathname.includes('/factures/create') || pathname.includes('/facture') || hash.includes('orderid=')) {
         return 'facture';
+      }
+
+      if (hash === '#televendeur' || hash === '#telemarketer' || pathname === '/televendeur' || pathname === '/telemarketer' || searchParams.get('mode') === 'televendeur') {
+        return 'telemarketer';
       }
 
       if (hash === '#landing' || pathname === '/') {
@@ -521,7 +576,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   const navigateToView = (view: MainAppView, serviceContext?: 'cv' | 'letter' | 'devis' | 'facture' | 'pack_business') => {
     // Auth Guard for protected views
     const protectedViews: MainAppView[] = [
-      'dashboard', 'templates', 'cv', 'cv_preview', 'letter', 'letter_preview',
+      'dashboard', 'telemarketer', 'templates', 'cv', 'cv_preview', 'letter', 'letter_preview',
       'devis', 'devis_preview', 'facture', 'facture_preview', 'pack_business',
       'pack_business_preview'
     ];
@@ -552,6 +607,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       else if (view === 'cv' || view === 'letter' || view === 'devis' || view === 'facture' || view === 'pack_business') window.location.hash = 'editor';
       else if (view === 'tarifs') window.location.hash = 'tarifs';
       else if (view === 'subscription') window.location.hash = 'subscription';
+      else if (view === 'telemarketer') window.location.hash = 'televendeur';
     }
   };
 
@@ -1312,6 +1368,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   };
 
   const hasActiveData = (formData?.experiences?.length || 0) > 0 || !!formData?.personalInfo?.firstName || !!businessDocData?.issuer?.name;
+  const isTelemarketerView = activeTab === 'telemarketer';
   const isDashboardView = activeTab === 'dashboard' || activeTab === 'tarifs' || activeTab === 'subscription' || (activeTab as string) === 'business' || (activeTab as string) === 'clients' || (activeTab as string) === 'store' || (activeTab as string) === 'boutique' || activeTab === 'help' || activeTab === 'support';
   const isLandingView = activeTab === 'landing';
   const isTemplatesView = activeTab === 'templates';
@@ -1328,6 +1385,14 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
             setIsAuthModalOpen(true);
           }}
           onGoToDashboard={() => navigateToView('dashboard')}
+          onGoToTelemarketer={() => {
+            if (currentUser) {
+              navigateToView('telemarketer');
+            } else {
+              setAuthModalInitialMode('login');
+              setIsAuthModalOpen(true);
+            }
+          }}
           onSelectService={(service) => {
             if (currentUser) {
               handleSelectService(service);
@@ -1354,7 +1419,12 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
           onClose={() => setIsAuthModalOpen(false)}
           onSuccess={() => {
             setIsAuthModalOpen(false);
-            navigateToView('dashboard');
+            const savedRole = typeof window !== 'undefined' ? localStorage.getItem('dokya_user_role') : null;
+            if (savedRole === 'telemarketer') {
+              navigateToView('telemarketer');
+            } else {
+              navigateToView('dashboard');
+            }
           }}
         />
       </div>
@@ -1403,10 +1473,19 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       )}
 
       {/* 1. TOP HEADER (When in Editor or Studio) */}
-      {!isDashboardView && !isTemplatesView && (
+      {!isDashboardView && !isTemplatesView && !isTelemarketerView && (
         <Header
           currentView={activeTab}
           userBalance={userBalance}
+          userRole="seller"
+          onSwitchRole={(role) => {
+            if (role === 'telemarketer') {
+              navigateToView('telemarketer');
+            } else {
+              navigateToView('dashboard');
+            }
+          }}
+          onOpenTelemarketer={() => navigateToView('telemarketer')}
           onLoadSample={handleLoadSample}
           onReset={handleReset}
           hasData={hasActiveData}
@@ -1427,9 +1506,40 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       )}
 
       {/* 2. MAIN WORKSPACE */}
-      {isDashboardView ? (
+      {isTelemarketerView ? (
+        <DokyaTelemarketerPortal
+          profile={userProfile}
+          onUpdateProfile={(updated) => {
+            setUserProfile(prev => ({ ...prev, ...updated }));
+          }}
+          onSwitchToSeller={() => {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('dokya_user_role', 'seller');
+            }
+            navigateToView('dashboard');
+          }}
+          onSignOut={handleSignOut}
+        />
+      ) : isDashboardView ? (
         <CandidateDashboard
-          initialTab={activeTab === 'tarifs' ? 'tarifs' : activeTab === 'subscription' ? 'subscription' : (activeTab as string) === 'entretiens' ? 'entretiens' : (activeTab as string) === 'business' || (activeTab as string) === 'clients' ? 'business' : activeTab === 'help' || activeTab === 'support' ? 'help' : 'dashboard_home'}
+          initialTab={
+            activeTab === 'tarifs' ? 'tarifs' : 
+            activeTab === 'subscription' ? 'subscription' : 
+            (activeTab as string) === 'entretiens' ? 'entretiens' : 
+            (activeTab as string) === 'business' || (activeTab as string) === 'clients' ? 'business' : 
+            (activeTab as string) === 'store' || (activeTab as string) === 'boutique' ? 'store' :
+            (activeTab as string) === 'settings' || (activeTab as string) === 'parametres' ? 'settings' :
+            activeTab === 'help' || activeTab === 'support' ? 'help' : 'dashboard_home'
+          }
+          userRole="seller"
+          onSwitchToTelemarketer={() => navigateToView('telemarketer')}
+          onSwitchRole={(role) => {
+            if (role === 'telemarketer') {
+              navigateToView('telemarketer');
+            } else {
+              navigateToView('dashboard');
+            }
+          }}
           onApplyProfileToEditor={handleApplyProfileToEditor}
           onLoadDocumentToEditor={handleLoadDocumentToEditor}
           onSelectService={handleSelectService}
@@ -2080,7 +2190,12 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={() => {
           setIsAuthModalOpen(false);
-          navigateToView('dashboard');
+          const savedRole = typeof window !== 'undefined' ? localStorage.getItem('dokya_user_role') : null;
+          if (savedRole === 'telemarketer') {
+            navigateToView('telemarketer');
+          } else {
+            navigateToView('dashboard');
+          }
         }}
       />
 

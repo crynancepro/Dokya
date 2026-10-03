@@ -1,0 +1,1992 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Briefcase, 
+  ShoppingBag, 
+  Sparkles, 
+  ShieldCheck, 
+  Crown, 
+  Wallet, 
+  TrendingUp, 
+  Package, 
+  Plus, 
+  Phone, 
+  User, 
+  MapPin, 
+  Clock, 
+  Star, 
+  MessageSquare, 
+  Upload, 
+  FileText, 
+  CheckCircle2, 
+  AlertCircle, 
+  ExternalLink, 
+  Copy, 
+  Check, 
+  Search, 
+  Filter, 
+  LogOut, 
+  Menu, 
+  X, 
+  ChevronRight, 
+  ChevronDown, 
+  Globe, 
+  ArrowLeft, 
+  ArrowRight,
+  DollarSign, 
+  Layers, 
+  Send,
+  Building2,
+  Lock,
+  Unlock,
+  CreditCard,
+  Tag,
+  ArrowUpRight
+} from 'lucide-react';
+import { CandidateProfile, ProductItem, StoreOrder, SellerReview } from '../types';
+import { 
+  fetchAllMarketplaceOffers, 
+  createTelemarketerOrder, 
+  fetchTelemarketerOrders, 
+  saveSellerReview, 
+  fetchSellerReviews,
+  calculateTelemarketerCommission 
+} from '../lib/storeService';
+import { useLocale, SupportedCurrency } from '../contexts/LocaleContext';
+import { auth, updateDoc, doc, db, createNotification } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
+import { NotificationBell } from './NotificationBell';
+
+interface DokyaTelemarketerPortalProps {
+  profile: CandidateProfile;
+  onUpdateProfile?: (updated: Partial<CandidateProfile>) => void;
+  onSwitchToSeller: () => void;
+  onSignOut?: () => void;
+}
+
+export type TelemarketerTab = 
+  | 'overview'
+  | 'marketplace'
+  | 'new_order'
+  | 'orders'
+  | 'wallet'
+  | 'reviews'
+  | 'badge'
+  | 'settings';
+
+export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = ({
+  profile,
+  onUpdateProfile,
+  onSwitchToSeller,
+  onSignOut
+}) => {
+  const currentUid = auth.currentUser?.uid || profile.uid || 'guest';
+  const { formatPrice, userCurrency, setUserCurrency } = useLocale();
+
+  // Active navigation tab
+  const [activeTab, setActiveTab] = useState<TelemarketerTab>('overview');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
+
+  // Offers & Orders states
+  const [offers, setOffers] = useState<ProductItem[]>([]);
+  const [myOrders, setMyOrders] = useState<StoreOrder[]>([]);
+  const [reviews, setReviews] = useState<SellerReview[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Search & Filters for marketplace
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCountryFilter, setSelectedCountryFilter] = useState('ALL');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
+  const [commissionSort, setCommissionSort] = useState<'default' | 'highest' | 'percent' | 'fixed'>('default');
+
+  // Order registration modal
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [selectedProductForOrder, setSelectedProductForOrder] = useState<ProductItem | null>(null);
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
+  const [orderQuantity, setOrderQuantity] = useState(1);
+  const [orderNotes, setOrderNotes] = useState('');
+  const [orderProofUrl, setOrderProofUrl] = useState('');
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [orderSuccessMessage, setOrderSuccessMessage] = useState<string | null>(null);
+  const [orderErrorMessage, setOrderErrorMessage] = useState<string | null>(null);
+
+  // Seller review modal
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewSellerId, setReviewSellerId] = useState('');
+  const [reviewSellerName, setReviewSellerName] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewSuccessMessage, setReviewSuccessMessage] = useState<string | null>(null);
+
+  // Certified badge modal
+  const [isBadgeModalOpen, setIsBadgeModalOpen] = useState(false);
+  const [isPurchasingBadge, setIsPurchasingBadge] = useState(false);
+  const [badgeSuccessMessage, setBadgeSuccessMessage] = useState<string | null>(null);
+
+  // VIP Subscription modal
+  const [isVipModalOpen, setIsVipModalOpen] = useState(false);
+  const [isActivatingVip, setIsActivatingVip] = useState(false);
+
+  // Withdrawal modal
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState<number>(10000);
+  const [withdrawOperator, setWithdrawOperator] = useState<'wave' | 'orange_money' | 'mtn' | 'bank'>('wave');
+  const [withdrawPhone, setWithdrawPhone] = useState(profile.personalInfo?.phone || profile.phone || '');
+  const [withdrawAccountName, setWithdrawAccountName] = useState(profile.displayName || '');
+  const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState<string | null>(null);
+
+  // Certified badge & VIP status
+  const hasCertifiedBadge = Boolean(profile.isTelemarketerCertified || profile.certifiedBadgePurchased);
+  const isVipMode = profile.telemarketerPlan === 'vip' || profile.subscriptionStatus === 'unlimited';
+
+  // Copied link toast feedback
+  const [copiedLinkProductId, setCopiedLinkProductId] = useState<string | null>(null);
+
+  // Load Data
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [allOffers, teleOrders, allReviews] = await Promise.all([
+        fetchAllMarketplaceOffers(),
+        fetchTelemarketerOrders(currentUid),
+        fetchSellerReviews()
+      ]);
+      setOffers(allOffers);
+      setMyOrders(teleOrders);
+      setReviews(allReviews);
+    } catch (e) {
+      console.error('Error loading telemarketer data:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [currentUid]);
+
+  // Derived metrics
+  const totalSalesCount = myOrders.length;
+  const validatedOrders = myOrders.filter(o => o.status === 'validated' || o.status === 'delivered');
+  const totalCommissionsEarned = validatedOrders.reduce((sum, o) => sum + (o.commissionNet || 0), 0);
+  const pendingCommissions = myOrders.filter(o => o.status === 'pending').reduce((sum, o) => sum + (o.commissionNet || 0), 0);
+  const availableWithdrawBalance = Math.max(0, (profile.affiliateBalance ?? 0) || totalCommissionsEarned);
+
+  // Filtered offers
+  const filteredOffers = useMemo(() => {
+    return offers.filter(prod => {
+      // Country
+      if (selectedCountryFilter !== 'ALL') {
+        const countries = prod.targetCountries || ['ALL'];
+        if (!countries.includes('ALL') && !countries.includes(selectedCountryFilter)) {
+          return false;
+        }
+      }
+      // Category
+      if (selectedCategoryFilter !== 'ALL' && prod.category !== selectedCategoryFilter) {
+        return false;
+      }
+      // Search
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = prod.title?.toLowerCase().includes(q);
+        const matchDesc = prod.description?.toLowerCase().includes(q);
+        const matchSeller = prod.sellerName?.toLowerCase().includes(q);
+        if (!matchTitle && !matchDesc && !matchSeller) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      if (commissionSort === 'highest') {
+        const valA = a.commissionType === 'percent' ? (a.price * (a.commissionValue || 20) / 100) : (a.commissionValue || 0);
+        const valB = b.commissionType === 'percent' ? (b.price * (b.commissionValue || 20) / 100) : (b.commissionValue || 0);
+        return valB - valA;
+      }
+      if (commissionSort === 'percent') {
+        return (b.commissionValue || 0) - (a.commissionValue || 0);
+      }
+      return 0;
+    });
+  }, [offers, selectedCountryFilter, selectedCategoryFilter, searchQuery, commissionSort]);
+
+  // Handle Order Submit
+  const handleSubmitOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProductForOrder) return;
+    if (!clientName.trim() || !clientPhone.trim() || !clientAddress.trim()) {
+      setOrderErrorMessage('Veuillez remplir tous les champs obligatoires (Nom, Téléphone, Adresse).');
+      return;
+    }
+
+    setIsSubmittingOrder(true);
+    setOrderErrorMessage(null);
+    setOrderSuccessMessage(null);
+
+    try {
+      const order = await createTelemarketerOrder({
+        product: selectedProductForOrder,
+        telemarketerId: currentUid,
+        telemarketerName: profile.displayName || profile.personalInfo?.firstName || 'Télévendeur Pro',
+        telemarketerPhone: profile.phone || profile.personalInfo?.phone || '',
+        telemarketerEmail: profile.email || '',
+        telemarketerMode: isVipMode ? 'vip' : 'standard',
+        buyerName: clientName.trim(),
+        buyerPhone: clientPhone.trim(),
+        buyerAddress: clientAddress.trim(),
+        buyerNotes: orderNotes || undefined,
+        quantity: Number(orderQuantity) || 1,
+        proofUrl: orderProofUrl || undefined,
+        proofNote: orderNotes || undefined
+      });
+
+      setOrderSuccessMessage(`Commande client enregistrée avec succès ! Le vendeur a reçu la notification instantanée.`);
+      setClientName('');
+      setClientPhone('');
+      setClientAddress('');
+      setOrderQuantity(1);
+      setOrderNotes('');
+      setOrderProofUrl('');
+      
+      // Refresh orders
+      await loadData();
+      setTimeout(() => {
+        setIsOrderModalOpen(false);
+        setOrderSuccessMessage(null);
+        setActiveTab('orders');
+      }, 1500);
+    } catch (err: any) {
+      setOrderErrorMessage(err?.message || 'Erreur lors de l\'enregistrement de la commande.');
+    } finally {
+      setIsSubmittingOrder(false);
+    }
+  };
+
+  // Handle Buy Badge
+  const handlePurchaseCertifiedBadge = async () => {
+    setIsPurchasingBadge(true);
+    try {
+      const updatedProfileData = {
+        isTelemarketerCertified: true,
+        certifiedBadgePurchased: true,
+        certifiedBadgeDate: new Date().toISOString()
+      };
+
+      if (onUpdateProfile) {
+        onUpdateProfile(updatedProfileData);
+      }
+
+      if (currentUid && currentUid !== 'guest') {
+        const userRef = doc(db, 'candidates', currentUid);
+        await updateDoc(userRef, updatedProfileData);
+      }
+
+      setBadgeSuccessMessage('Félicitations ! Votre Badge Télévendeur Certifié est activé. Vous avez un accès illimité à toutes les offres de vente.');
+      setTimeout(() => {
+        setIsBadgeModalOpen(false);
+        setBadgeSuccessMessage(null);
+      }, 2000);
+    } catch (e: any) {
+      console.error('Error purchasing badge:', e);
+    } finally {
+      setIsPurchasingBadge(false);
+    }
+  };
+
+  // Handle VIP Activation
+  const handleToggleVipMode = async () => {
+    setIsActivatingVip(true);
+    try {
+      const newPlan = isVipMode ? 'standard' : 'vip';
+      const updated = {
+        telemarketerPlan: newPlan as 'standard' | 'vip'
+      };
+
+      if (onUpdateProfile) {
+        onUpdateProfile(updated);
+      }
+
+      if (currentUid && currentUid !== 'guest') {
+        const userRef = doc(db, 'candidates', currentUid);
+        await updateDoc(userRef, updated);
+      }
+
+      setIsVipModalOpen(false);
+    } catch (e) {
+      console.error('Error toggling VIP mode:', e);
+    } finally {
+      setIsActivatingVip(false);
+    }
+  };
+
+  // Handle Submit Seller Review
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewSellerId) return;
+    if (!reviewComment.trim()) return;
+
+    setIsSubmittingReview(true);
+    try {
+      await saveSellerReview({
+        sellerId: reviewSellerId,
+        sellerName: reviewSellerName,
+        telemarketerId: currentUid,
+        telemarketerName: profile.displayName || profile.personalInfo?.firstName || 'Télévendeur Dokya',
+        rating: reviewRating,
+        comment: reviewComment.trim()
+      });
+
+      setReviewSuccessMessage('Votre avis public a été publié avec succès.');
+      setReviewComment('');
+      await loadData();
+      setTimeout(() => {
+        setIsReviewModalOpen(false);
+        setReviewSuccessMessage(null);
+      }, 1500);
+    } catch (e) {
+      console.error('Error saving review:', e);
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  // Handle Withdrawal Request
+  const handleRequestWithdrawal = () => {
+    if (withdrawAmount <= 0) return;
+    setWithdrawSuccessMsg(`Votre demande de retrait de ${formatPrice(withdrawAmount)} via ${withdrawOperator.toUpperCase()} (${withdrawPhone}) a été transmise au service financier. Traitement sous 24h.`);
+    setTimeout(() => {
+      setIsWithdrawModalOpen(false);
+      setWithdrawSuccessMsg(null);
+    }, 2500);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-emerald-500 selection:text-white">
+      
+      {/* ========================================================================= */}
+      {/* 1. TOP HEADER : DÉDIÉ ESPACE TÉLÉVENDEUR                                  */}
+      {/* ========================================================================= */}
+      <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-xl border-b border-emerald-900/40 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-3 shadow-xl">
+        
+        {/* Left: Telemarketer Portal Brand & Switch to Seller */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 md:hidden hover:text-white cursor-pointer"
+            title="Ouvrir le menu"
+          >
+            <Menu className="w-5 h-5 text-emerald-400" />
+          </button>
+
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-emerald-900/40 shrink-0">
+              <Briefcase className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm sm:text-base font-black text-white tracking-tight">
+                  Dokya Télévendeurs
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Affiliation Pro 💼
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 hidden sm:block">
+                Espace indépendant de vente & commissions directes
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Actions, Currency, Balance, Switcher to Seller & Profile */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          
+          {/* BOUTON CLÉ : BASCULER VERS ESPACE VENDEUR / COMMERÇANT */}
+          <button
+            type="button"
+            onClick={onSwitchToSeller}
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-700/60 hover:border-indigo-500 text-indigo-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
+            title="Revenir au compte Vendeur Dokya"
+          >
+            <ShoppingBag className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">Espace Vendeur</span>
+            <span className="sm:hidden">Vendeur</span>
+            <ArrowRight className="w-3 h-3 text-indigo-400" />
+          </button>
+
+          {/* Quick Commissions Balance indicator */}
+          <div 
+            onClick={() => setActiveTab('wallet')}
+            className="bg-slate-900 hover:bg-slate-850 border border-emerald-900/60 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-xl flex items-center gap-1.5 shadow-inner cursor-pointer transition-colors shrink-0"
+            title="Voir mon solde commissions et demander un retrait"
+          >
+            <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] text-slate-400 hidden xs:inline">Commissions :</span>
+              <span className="text-xs font-black text-emerald-400 whitespace-nowrap">
+                {formatPrice(availableWithdrawBalance)}
+              </span>
+            </div>
+          </div>
+
+          {/* SÉLECTEUR GLOBAL DE DEVISE */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl bg-slate-900 text-slate-300 hover:text-white border border-slate-700/80 transition-all cursor-pointer"
+              title="Changer la devise globale"
+            >
+              <Globe className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-mono">{userCurrency}</span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+
+            {isCurrencyDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                {[
+                  { code: 'XOF' as SupportedCurrency, label: 'FCFA XOF', flag: '🇸🇳' },
+                  { code: 'XAF' as SupportedCurrency, label: 'FCFA XAF', flag: '🇨🇲' },
+                  { code: 'EUR' as SupportedCurrency, label: 'Euro (€)', flag: '🇪🇺' },
+                  { code: 'USD' as SupportedCurrency, label: 'Dollar ($)', flag: '🇺🇸' }
+                ].map((curr) => (
+                  <button
+                    key={curr.code}
+                    type="button"
+                    onClick={() => {
+                      setUserCurrency(curr.code);
+                      setIsCurrencyDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                      userCurrency === curr.code
+                        ? 'bg-emerald-600 text-white font-bold'
+                        : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>{curr.flag}</span>
+                      <span>{curr.label}</span>
+                    </span>
+                    {userCurrency === curr.code && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Notifications */}
+          <NotificationBell userId={currentUid} />
+
+          {/* Logout */}
+          {onSignOut && (
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-800/60 text-slate-400 hover:text-rose-300 text-xs font-medium transition-all flex items-center gap-1 cursor-pointer"
+              title="Se déconnecter"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden lg:inline">Déconnexion</span>
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* ========================================================================= */}
+      {/* 2. BODY LAYOUT : SIDEBAR + MAIN CONTENT                                   */}
+      {/* ========================================================================= */}
+      <div className="flex-1 flex overflow-hidden">
+        
+        {/* SIDEBAR NAVIGATION TÉLÉVENDEUR */}
+        <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 border-r border-slate-800/90 flex flex-col transition-transform duration-300 md:static md:translate-x-0 ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}>
+          {/* User profile brief card */}
+          <div className="p-4 border-b border-slate-800/80 bg-slate-900/40">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white font-black text-base shadow-md">
+                {(profile.displayName || profile.personalInfo?.firstName || 'T').charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-bold text-white truncate">
+                  {profile.displayName || `${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim() || 'Télévendeur Pro'}
+                </h4>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                    {hasCertifiedBadge ? 'Certifié ★' : 'Standard'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Badge Status */}
+            <div className="mt-3 p-2 rounded-xl bg-emerald-950/40 border border-emerald-800/40 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[11px] font-bold text-emerald-200">
+                  {isVipMode ? 'Mode VIP (100% net)' : 'Mode Standard (80% net)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVipModalOpen(true)}
+                className="text-[10px] font-black text-amber-300 hover:underline cursor-pointer"
+              >
+                {isVipMode ? 'Gérer' : 'Pass VIP'}
+              </button>
+            </div>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
+            
+            {/* 1. Overview */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('overview'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'overview'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <span>Vue d'ensemble</span>
+            </button>
+
+            {/* 2. Marketplace Catalogue */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('marketplace'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'marketplace'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Package className="w-4 h-4 text-emerald-400" />
+                <span>Catalogue d'Offres</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold">
+                {offers.length}
+              </span>
+            </button>
+
+            {/* 3. Enregistrer une Commande Client */}
+            <button
+              type="button"
+              onClick={() => { setIsOrderModalOpen(true); setIsMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md hover:from-emerald-500 hover:to-teal-500 transition-all cursor-pointer active:scale-95"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>+ Enregistrer une Vente</span>
+            </button>
+
+            {/* 4. Mes Commandes & Commissions */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'orders'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-emerald-400" />
+                <span>Mes Ventes & Preuves</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 font-bold">
+                {myOrders.length}
+              </span>
+            </button>
+
+            {/* 5. Mon Portefeuille & Retraits */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('wallet'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'wallet'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Wallet className="w-4 h-4 text-emerald-400" />
+                <span>Retraits & Portefeuille</span>
+              </div>
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            </button>
+
+            {/* 6. Avis sur les Vendeurs */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('reviews'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Star className="w-4 h-4 text-amber-400" />
+              <span>Avis & Anti-Fraude</span>
+            </button>
+
+            {/* 7. Mon Badge Certifié */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('badge'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'badge'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Badge & Monétisation</span>
+              </div>
+              {hasCertifiedBadge ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+              )}
+            </button>
+
+            {/* 8. Paramètres */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'settings'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Globe className="w-4 h-4 text-emerald-400" />
+              <span>Paramètres & Coordonnées</span>
+            </button>
+
+          </nav>
+
+          {/* Bottom Sidebar Switcher */}
+          <div className="p-3 border-t border-slate-800/80 bg-slate-900/60">
+            <button
+              type="button"
+              onClick={onSwitchToSeller}
+              className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-indigo-950/60 border border-slate-800 hover:border-indigo-600/50 text-indigo-300 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <ShoppingBag className="w-4 h-4 text-indigo-400" />
+              <span>Aller vers Compte Vendeur</span>
+            </button>
+          </div>
+        </aside>
+
+        {/* Mobile menu backdrop */}
+        {isMobileMenuOpen && (
+          <div 
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          />
+        )}
+
+        {/* MAIN VIEW CONTENT AREA */}
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
+          
+          {/* ========================================================================= */}
+          {/* TAB 1: OVERVIEW / TABLEAU DE BORD TÉLÉVENDEUR                              */}
+          {/* ========================================================================= */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6 animate-in fade-in">
+              
+              {/* Banner with role greeting */}
+              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 border border-emerald-800/50 p-6 sm:p-8 shadow-2xl">
+                <div className="relative z-10 max-w-2xl space-y-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-black uppercase tracking-wider">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Espace Télévendeurs Dokya</span>
+                  </div>
+                  <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+                    Vos Offres, Vos Ventes, Vos Commissions
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                    Vendez des produits physiques et digitaux de commerçants certifiés sans stock ni logistique. Enregistrez vos commandes clients et touchez vos commissions immédiatement.
+                  </p>
+                  <div className="pt-3 flex items-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setIsOrderModalOpen(true)}
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black shadow-lg shadow-emerald-900/40 flex items-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Plus className="w-4 h-4 stroke-[3]" />
+                      <span>Enregistrer une Vente Client</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('marketplace')}
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Package className="w-4 h-4 text-emerald-400" />
+                      <span>Explorer les {offers.length} Offres Disponibles</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 Stat Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                
+                {/* 1. Commissions Encaissées */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Commissions Validées</span>
+                    <DollarSign className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-white">
+                    {formatPrice(totalCommissionsEarned)}
+                  </div>
+                  <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>{validatedOrders.length} commandes livrées</span>
+                  </p>
+                </div>
+
+                {/* 2. Commissions en attente */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">En Attente</span>
+                    <Clock className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-amber-300">
+                    {formatPrice(pendingCommissions)}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    En cours de livraison / validation
+                  </p>
+                </div>
+
+                {/* 3. Ventes Conclues */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Commandes Totales</span>
+                    <Package className="w-4 h-4 text-teal-400" />
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-white">
+                    {totalSalesCount}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Générées depuis votre compte
+                  </p>
+                </div>
+
+                {/* 4. Statut Monétisation */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Mode de Gains</span>
+                    <Crown className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-white truncate">
+                    {isVipMode ? '👑 VIP (100% Net)' : 'Standard (80% Net)'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsVipModalOpen(true)}
+                    className="text-[10px] font-bold text-emerald-400 hover:underline cursor-pointer"
+                  >
+                    {isVipMode ? 'Gérer votre Pass VIP' : 'Passer à 100% de commission →'}
+                  </button>
+                </div>
+
+              </div>
+
+              {/* Quick Offers Spotlight */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <Package className="w-4 h-4 text-emerald-400" />
+                    <span>Top Offres Rémunératrices du Moment</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('marketplace')}
+                    className="text-xs font-bold text-emerald-400 hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Voir tout le catalogue</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {offers.slice(0, 3).map(prod => (
+                    <div key={prod.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-emerald-700/60 transition-all flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                            {prod.category}
+                          </span>
+                          <span className="text-xs font-black text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-lg">
+                            +{prod.commissionType === 'percent' ? `${prod.commissionValue || 20}%` : formatPrice(prod.commissionValue || 2000)}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-white line-clamp-1">{prod.title}</h4>
+                        <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">{prod.description}</p>
+                        <div className="mt-2 text-sm font-black text-white">
+                          Prix client : <span className="text-emerald-400">{formatPrice(prod.price)}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProductForOrder(prod);
+                          setIsOrderModalOpen(true);
+                        }}
+                        className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>Enregistrer une vente</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 2: MARKETPLACE / CATALOGUE DES OFFRES DE VENTE                        */}
+          {/* ========================================================================= */}
+          {activeTab === 'marketplace' && (
+            <div className="space-y-6 animate-in fade-in">
+              
+              {/* Header with Search and Country filters */}
+              <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-black text-white flex items-center gap-2">
+                      <Package className="w-5 h-5 text-emerald-400" />
+                      <span>Catalogue d'Offres Marketplace Dokya</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Filtrez les produits par pays de ciblage, commissions et catégories
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsOrderModalOpen(true)}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>Enregistrer Commande</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filters Strip */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-2">
+                  
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher une offre..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  {/* Country Filter */}
+                  <div>
+                    <select
+                      value={selectedCountryFilter}
+                      onChange={(e) => setSelectedCountryFilter(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-emerald-500 outline-none cursor-pointer"
+                    >
+                      <option value="ALL">🌍 Tous les Pays</option>
+                      <option value="SN">🇸🇳 Sénégal (SN)</option>
+                      <option value="CI">🇨🇮 Côte d'Ivoire (CI)</option>
+                      <option value="CM">🇨🇲 Cameroun (CM)</option>
+                      <option value="CG">🇨🇬 Congo (CG)</option>
+                      <option value="BJ">🇧🇯 Bénin (BJ)</option>
+                      <option value="ML">🇲🇱 Mali (ML)</option>
+                      <option value="TG">🇹🇬 Togo (TG)</option>
+                      <option value="GA">🇬🇦 Gabon (GA)</option>
+                    </select>
+                  </div>
+
+                  {/* Category Filter */}
+                  <div>
+                    <select
+                      value={selectedCategoryFilter}
+                      onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-emerald-500 outline-none cursor-pointer"
+                    >
+                      <option value="ALL">📦 Toutes Catégories</option>
+                      <option value="Services & Formations">Services & Formations</option>
+                      <option value="Mode & Beauté">Mode & Beauté</option>
+                      <option value="Électronique & High-Tech">Électronique & High-Tech</option>
+                      <option value="Maison & Décoration">Maison & Décoration</option>
+                      <option value="Santé & Bien-être">Santé & Bien-être</option>
+                    </select>
+                  </div>
+
+                  {/* Commission Sort */}
+                  <div>
+                    <select
+                      value={commissionSort}
+                      onChange={(e) => setCommissionSort(e.target.value as any)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-emerald-500 outline-none cursor-pointer"
+                    >
+                      <option value="default">↕ Tri par Défaut</option>
+                      <option value="highest">💰 Meilleure Commission</option>
+                      <option value="percent">% Commission Élevée</option>
+                    </select>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Offer Cards Grid */}
+              {filteredOffers.length === 0 ? (
+                <div className="p-12 text-center rounded-3xl bg-slate-900/40 border border-dashed border-slate-800 space-y-3">
+                  <Package className="w-10 h-10 text-slate-600 mx-auto" />
+                  <h4 className="text-sm font-bold text-white">Aucune offre ne correspond à vos filtres</h4>
+                  <p className="text-xs text-slate-400">Essayez de modifier votre recherche ou de sélectionner "Tous les pays".</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredOffers.map((prod) => {
+                    const calc = calculateTelemarketerCommission(
+                      prod.price, 
+                      prod.commissionType || 'percent', 
+                      prod.commissionValue || 20, 
+                      isVipMode
+                    );
+
+                    return (
+                      <div 
+                        key={prod.id} 
+                        className="rounded-3xl bg-slate-900 border border-slate-800/90 overflow-hidden flex flex-col justify-between hover:border-emerald-600/60 transition-all shadow-xl group"
+                      >
+                        {/* Top banner / Image placeholder */}
+                        <div className="h-36 bg-gradient-to-br from-slate-800 via-slate-900 to-emerald-950/40 relative overflow-hidden flex items-center justify-center p-4">
+                          {prod.imageUrl ? (
+                            <img src={prod.imageUrl} alt={prod.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          ) : (
+                            <Package className="w-12 h-12 text-slate-700" />
+                          )}
+                          
+                          {/* Commission Tag */}
+                          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-xl bg-emerald-900/90 border border-emerald-500/50 backdrop-blur-md text-emerald-200 text-xs font-black shadow-lg">
+                            {prod.commissionType === 'percent' ? `${prod.commissionValue || 20}%` : formatPrice(prod.commissionValue || 2000)} commission
+                          </div>
+
+                          {/* Country Badges */}
+                          <div className="absolute bottom-2 left-3 flex items-center gap-1">
+                            {prod.targetCountries?.includes('ALL') ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-950/80 text-slate-200 border border-white/10">
+                                🌍 Tous pays
+                              </span>
+                            ) : (
+                              prod.targetCountries?.slice(0, 3).map(c => (
+                                <span key={c} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950/80 text-emerald-300 border border-white/10">
+                                  {c}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-4">
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {prod.category}
+                            </span>
+                            <h3 className="text-base font-black text-white line-clamp-1 group-hover:text-emerald-300 transition-colors">
+                              {prod.title}
+                            </h3>
+                            <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                              {prod.description || 'Offre vérifiée par Dokya AI.'}
+                            </p>
+                          </div>
+
+                          {/* Price & Telemarketer Net Earnings */}
+                          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-1.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-slate-400">Prix Vente Client :</span>
+                              <span className="font-bold text-white">{formatPrice(prod.price)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/60">
+                              <span className="text-emerald-400 font-bold">Votre Gain Net :</span>
+                              <span className="font-black text-sm text-emerald-400">
+                                {formatPrice(calc.telemarketerNet)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Seller & Action */}
+                          <div className="space-y-2 pt-2">
+                            <div className="flex items-center justify-between text-[11px] text-slate-400">
+                              <span className="flex items-center gap-1 truncate max-w-[150px]">
+                                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                                <span>{prod.sellerName || 'Vendeur Dokya'}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReviewSellerId(prod.sellerId);
+                                  setReviewSellerName(prod.sellerName || 'Vendeur');
+                                  setIsReviewModalOpen(true);
+                                }}
+                                className="text-amber-400 hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                              >
+                                <Star className="w-3 h-3 fill-amber-400" />
+                                <span>Noter ce Vendeur</span>
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const link = `${window.location.origin}/p/${prod.slug || prod.id}?ref=${currentUid}`;
+                                  navigator.clipboard.writeText(link);
+                                  setCopiedLinkProductId(prod.id);
+                                  setTimeout(() => setCopiedLinkProductId(null), 2000);
+                                }}
+                                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                              >
+                                {copiedLinkProductId === prod.id ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Copié !</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Lien Vente</span>
+                                  </>
+                                )}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedProductForOrder(prod);
+                                  setIsOrderModalOpen(true);
+                                }}
+                                className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 transition-all"
+                              >
+                                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                                <span>Vendre</span>
+                              </button>
+                            </div>
+                          </div>
+
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 3: MES COMMANDES & COMMISSIONS CLIENTS                                 */}
+          {/* ========================================================================= */}
+          {activeTab === 'orders' && (
+            <div className="space-y-6 animate-in fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-black text-white flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-emerald-400" />
+                    <span>Mes Commandes Clients ({myOrders.length})</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Suivez en temps réel le statut des livraisons et le versement de vos commissions
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsOrderModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Enregistrer une nouvelle vente</span>
+                </button>
+              </div>
+
+              {myOrders.length === 0 ? (
+                <div className="p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 text-emerald-400 flex items-center justify-center mx-auto">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-white">Aucune commande enregistrée pour le moment</h3>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Prenez contact avec vos prospects et clients, puis enregistrez directement leur commande ici pour toucher vos commissions.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsOrderModalOpen(true)}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black cursor-pointer shadow-lg"
+                  >
+                    + Enregistrer ma première vente
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {myOrders.map(order => (
+                    <div 
+                      key={order.id} 
+                      className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-slate-400">#{order.id.slice(0, 10)}</span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            order.status === 'delivered' 
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : order.status === 'validated'
+                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                              : order.status === 'cancelled'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}>
+                            {order.status === 'delivered' ? 'Livré & Validé' : order.status === 'validated' ? 'Validé par Vendeur' : order.status === 'cancelled' ? 'Annulé' : 'En attente livraison'}
+                          </span>
+                          <span className="text-xs text-slate-400">•</span>
+                          <span className="text-xs text-slate-400">{order.sellerName || 'Vendeur'}</span>
+                        </div>
+
+                        <h4 className="text-base font-bold text-white">{order.productTitle}</h4>
+
+                        <div className="flex items-center gap-3 text-xs text-slate-300 flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            <strong>{order.buyerName}</strong>
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1 text-slate-400">
+                            <Phone className="w-3.5 h-3.5" />
+                            <span>{order.buyerPhone}</span>
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1 text-slate-400">
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span>{order.buyerAddress}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Financial info */}
+                      <div className="flex md:flex-col items-end justify-between md:justify-center border-t md:border-t-0 pt-2 md:pt-0 border-slate-800">
+                        <span className="text-xs text-slate-400">Commission Nette :</span>
+                        <div className="text-lg font-black text-emerald-400">
+                          {formatPrice(order.commissionNet || 0)}
+                        </div>
+                        <span className="text-[10px] text-slate-500">
+                          Montant total : {formatPrice(order.totalAmount)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 4: WALLET & DEMANDES DE RETRAIT TÉLÉVENDEUR                           */}
+          {/* ========================================================================= */}
+          {activeTab === 'wallet' && (
+            <div className="space-y-6 animate-in fade-in">
+              <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-800/60 space-y-6 shadow-2xl">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
+                      <Wallet className="w-4 h-4 text-emerald-400" />
+                      <span>Portefeuille Commissions Télévendeur</span>
+                    </span>
+                    <h3 className="text-2xl sm:text-4xl font-black text-white">
+                      Solde Retirable : <span className="text-emerald-400">{formatPrice(availableWithdrawBalance)}</span>
+                    </h3>
+                    <p className="text-xs text-slate-300">
+                      Retrait direct vers Wave, Orange Money ou MTN Mobile Money sans délai caché.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsWithdrawModalOpen(true)}
+                    className="px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black shadow-xl shadow-emerald-900/50 flex items-center gap-2 cursor-pointer transition-all shrink-0"
+                  >
+                    <ArrowUpRight className="w-4 h-4 stroke-[3]" />
+                    <span>Demander un Retrait</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Information Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+                  <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Paiements Rapides</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Les retraits sont traités quotidiennement vers vos comptes Wave, Orange Money ou bancaires sous 24h ouvrées.
+                  </p>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+                  <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Protection Anti-Fraude</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Chaque commande fait l'objet d'une validation avec le commerçant propriétaire afin d'assurer l'encaissement effectif.
+                  </p>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+                  <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <Crown className="w-4 h-4 text-amber-400" />
+                    <span>Avantage VIP 100%</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Activez le mode VIP pour éliminer toute commission plateforme et conserver 100% de la valeur de vos ventes.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 5: AVIS & NOTATIONS ANTI-FRAUDE SUR LES VENDEURS                      */}
+          {/* ========================================================================= */}
+          {activeTab === 'reviews' && (
+            <div className="space-y-6 animate-in fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-black text-white flex items-center gap-2">
+                    <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+                    <span>Système d'Avis & Notations Vendeurs</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Consultez et publiez des avis transparents sur les vendeurs pour sécuriser la communauté des télévendeurs.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsReviewModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer"
+                >
+                  <Star className="w-3.5 h-3.5" />
+                  <span>Laisser un avis sur un vendeur</span>
+                </button>
+              </div>
+
+              {reviews.length === 0 ? (
+                <div className="p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
+                  <Star className="w-10 h-10 text-slate-600 mx-auto" />
+                  <h4 className="text-sm font-bold text-white">Aucun avis publié pour le moment</h4>
+                  <p className="text-xs text-slate-400">Soyez le premier télévendeur à évaluer la réactivité et la ponctualité d'un commerçant.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {reviews.map(rev => (
+                    <div key={rev.id} className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-emerald-400" />
+                            <span>{rev.sellerName}</span>
+                          </h4>
+                          <span className="text-[11px] text-slate-400">Par {rev.telemarketerName}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-amber-400">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Star 
+                              key={i} 
+                              className={`w-3.5 h-3.5 ${i < rev.rating ? 'fill-amber-400' : 'text-slate-600'}`} 
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed italic">
+                        "{rev.comment}"
+                      </p>
+                      <div className="text-[10px] text-slate-500 text-right">
+                        Publié le {new Date(rev.createdAt).toLocaleDateString('fr-FR')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 6: BADGE TÉLÉVENDEUR CERTIFIÉ & MODES DE MONÉTISATION                 */}
+          {/* ========================================================================= */}
+          {activeTab === 'badge' && (
+            <div className="space-y-6 animate-in fade-in max-w-4xl mx-auto">
+              
+              {/* Badge Status Card */}
+              <div className="p-6 sm:p-8 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                    hasCertifiedBadge 
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  }`}>
+                    {hasCertifiedBadge ? <ShieldCheck className="w-7 h-7" /> : <Lock className="w-7 h-7" />}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-white">
+                      {hasCertifiedBadge ? 'Badge Télévendeur Certifié : ACTIF ★' : 'Badge Télévendeur Certifié : NON ACTIVÉ'}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      {hasCertifiedBadge 
+                        ? 'Votre profil est vérifié. Vous avez un accès prioritaire à l\'ensemble des catalogues de vente.'
+                        : 'Activez votre badge pour débloquer le catalogue complet et enregistrer des commandes sans restriction.'}
+                    </p>
+                  </div>
+                </div>
+
+                {!hasCertifiedBadge && (
+                  <button
+                    type="button"
+                    onClick={() => setIsBadgeModalOpen(true)}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs shadow-lg hover:from-emerald-500 hover:to-teal-500 cursor-pointer transition-all"
+                  >
+                    Activer mon Badge Certifié ({formatPrice(10000)})
+                  </button>
+                )}
+              </div>
+
+              {/* Comparison 2 Modes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                {/* Standard */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${
+                  !isVipMode ? 'bg-slate-900 border-emerald-600 ring-1 ring-emerald-500/50' : 'bg-slate-900/50 border-slate-800'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-400">Formule Gratuite</span>
+                    {!isVipMode && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">Actif</span>}
+                  </div>
+                  <h4 className="text-xl font-black text-white">Mode Standard</h4>
+                  <div className="text-2xl font-black text-white">
+                    0 FCFA <span className="text-xs font-normal text-slate-400">/ mois</span>
+                  </div>
+                  <ul className="space-y-2 text-xs text-slate-300">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span>Vous conservez <strong>80%</strong> de chaque commission</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span>Prélèvement automatique plateforme de 20%</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span>Accès complet au catalogue d'offres</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* VIP */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${
+                  isVipMode ? 'bg-slate-900 border-amber-500 ring-1 ring-amber-500/50' : 'bg-slate-900/50 border-slate-800'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                      <Crown className="w-3.5 h-3.5" />
+                      <span>Recommandé</span>
+                    </span>
+                    {isVipMode && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300">Actif</span>}
+                  </div>
+                  <h4 className="text-xl font-black text-white">Mode VIP Mensuel</h4>
+                  <div className="text-2xl font-black text-amber-300">
+                    {formatPrice(5000)} <span className="text-xs font-normal text-slate-400">/ mois</span>
+                  </div>
+                  <ul className="space-y-2 text-xs text-slate-300">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-amber-400" />
+                      <span>Vous conservez <strong>100%</strong> de vos commissions</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-amber-400" />
+                      <span><strong>0% de prélèvement</strong> par Dokya</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-amber-400" />
+                      <span>Paiements prioritaires sous 12h</span>
+                    </li>
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={handleToggleVipMode}
+                    className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer shadow-md transition-all"
+                  >
+                    {isVipMode ? 'Repasser en Mode Standard (80%)' : 'Activer le Mode VIP (100%)'}
+                  </button>
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 7: PARAMÈTRES TÉLÉVENDEUR                                             */}
+          {/* ========================================================================= */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6 animate-in fade-in max-w-2xl mx-auto">
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+                <h3 className="text-base font-black text-white flex items-center gap-2">
+                  <Globe className="w-4.5 h-4.5 text-emerald-400" />
+                  <span>Paramètres du Compte Télévendeur</span>
+                </h3>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      Devise active pour les commissions & tarifs
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { code: 'XOF' as SupportedCurrency, label: 'FCFA (XOF)', flag: '🇸🇳' },
+                        { code: 'XAF' as SupportedCurrency, label: 'FCFA (XAF)', flag: '🇨🇲' },
+                        { code: 'EUR' as SupportedCurrency, label: 'Euro (€)', flag: '🇪🇺' },
+                        { code: 'USD' as SupportedCurrency, label: 'USD ($)', flag: '🇺🇸' }
+                      ].map(curr => (
+                        <button
+                          key={curr.code}
+                          type="button"
+                          onClick={() => setUserCurrency(curr.code)}
+                          className={`p-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 cursor-pointer transition-all ${
+                            userCurrency === curr.code
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                              : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-base">{curr.flag}</span>
+                          <span>{curr.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800">
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      Numéro de réception des commissions (Wave / OM)
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={profile.personalInfo?.phone || profile.phone || ''}
+                      onChange={(e) => {
+                        if (onUpdateProfile) onUpdateProfile({ phone: e.target.value });
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                      placeholder="+221 77 000 00 00"
+                    />
+                  </div>
+
+                  <div className="pt-4 flex justify-between items-center border-t border-slate-800">
+                    <span className="text-xs text-slate-400">Rôle Actuel :</span>
+                    <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Télévendeur / Affilié
+                    </span>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={onSwitchToSeller}
+                      className="w-full py-2.5 px-3 rounded-xl bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    >
+                      <ShoppingBag className="w-4 h-4 text-indigo-400" />
+                      <span>Basculer vers mon Compte Vendeur Dokya</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </main>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL: ENREGISTRER UNE VENTE CLIENT (DIRECT ORDER FORM)                    */}
+      {/* ========================================================================= */}
+      {isOrderModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            
+            <div className="p-4 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Enregistrer une Vente Client</h3>
+                  <p className="text-[11px] text-slate-400">Le commerçant recevra la notification immédiatement</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsOrderModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitOrder} className="p-4 sm:p-6 space-y-4 overflow-y-auto">
+              
+              {orderSuccessMessage && (
+                <div className="p-3 rounded-2xl bg-emerald-950/80 border border-emerald-800 text-emerald-200 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{orderSuccessMessage}</span>
+                </div>
+              )}
+
+              {orderErrorMessage && (
+                <div className="p-3 rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-200 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{orderErrorMessage}</span>
+                </div>
+              )}
+
+              {/* Produit Sélectionné */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Produit Vendu *
+                </label>
+                <select
+                  value={selectedProductForOrder?.id || ''}
+                  onChange={(e) => {
+                    const found = offers.find(o => o.id === e.target.value);
+                    setSelectedProductForOrder(found || null);
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500 cursor-pointer"
+                  required
+                >
+                  <option value="">Sélectionnez un produit...</option>
+                  {offers.map(prod => (
+                    <option key={prod.id} value={prod.id}>
+                      {prod.title} — {formatPrice(prod.price)} (Commission : {prod.commissionType === 'percent' ? `${prod.commissionValue}%` : formatPrice(prod.commissionValue || 0)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Client Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Nom du Client *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Amadou Diallo"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Téléphone / WhatsApp *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: +221 77 123 45 67"
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Adresse & Quantité */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Adresse de Livraison *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Quartier, Rue, Ville"
+                    value={clientAddress}
+                    onChange={(e) => setClientAddress(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Quantité *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={orderQuantity}
+                    onChange={(e) => setOrderQuantity(Number(e.target.value) || 1)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Estimated Commission Preview */}
+              {selectedProductForOrder && (
+                <div className="p-3 rounded-2xl bg-emerald-950/40 border border-emerald-800/40 space-y-1">
+                  <div className="flex items-center justify-between text-xs text-slate-300">
+                    <span>Total Commande Client :</span>
+                    <span className="font-bold text-white">{formatPrice(selectedProductForOrder.price * orderQuantity)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-emerald-800/40">
+                    <span className="text-emerald-400 font-bold">Votre Commission Nette ({isVipMode ? '100% VIP' : '80% Standard'}) :</span>
+                    <span className="text-sm font-black text-emerald-400">
+                      {formatPrice(
+                        calculateTelemarketerCommission(
+                          selectedProductForOrder.price, 
+                          selectedProductForOrder.commissionType || 'percent', 
+                          selectedProductForOrder.commissionValue || 20, 
+                          isVipMode
+                        ).telemarketerNet * orderQuantity
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Preuve de livraison / Bordereau */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Preuve de commande / Notes pour le commerçant (Optionnel)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Instructions de livraison, créneau horaire souhaité par le client..."
+                  value={orderNotes}
+                  onChange={(e) => setOrderNotes(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmittingOrder}
+                className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-xs shadow-xl cursor-pointer disabled:opacity-50 transition-all"
+              >
+                {isSubmittingOrder ? 'Transmission en cours...' : 'Confirmer et Notifier le Vendeur'}
+              </button>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: DEMANDE DE RETRAIT                                                 */}
+      {/* ========================================================================= */}
+      {isWithdrawModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4">
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <ArrowUpRight className="w-4 h-4 stroke-[3]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Demande de Retrait</h3>
+                  <p className="text-[11px] text-slate-400">Solde disponible : {formatPrice(availableWithdrawBalance)}</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setIsWithdrawModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {withdrawSuccessMsg ? (
+              <div className="p-4 rounded-2xl bg-emerald-950 border border-emerald-800 text-emerald-200 text-xs space-y-2 text-center">
+                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                <p className="font-bold">{withdrawSuccessMsg}</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Moyen de Retrait</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'wave', label: 'Wave 🌊' },
+                      { id: 'orange_money', label: 'Orange Money 🟠' },
+                      { id: 'mtn', label: 'MTN MoMo 🟡' }
+                    ].map(op => (
+                      <button
+                        key={op.id}
+                        type="button"
+                        onClick={() => setWithdrawOperator(op.id as any)}
+                        className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          withdrawOperator === op.id
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {op.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Montant à Retirer</label>
+                  <input
+                    type="number"
+                    min="1000"
+                    max={availableWithdrawBalance}
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(Number(e.target.value) || 0)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Numéro Mobile Money Récepteur</label>
+                  <input
+                    type="text"
+                    value={withdrawPhone}
+                    onChange={(e) => setWithdrawPhone(e.target.value)}
+                    placeholder="+221 77 000 00 00"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Nom du Titulaire</label>
+                  <input
+                    type="text"
+                    value={withdrawAccountName}
+                    onChange={(e) => setWithdrawAccountName(e.target.value)}
+                    placeholder="Prénom et Nom"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRequestWithdrawal}
+                  className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs cursor-pointer shadow-lg active:scale-95 transition-all"
+                >
+                  Confirmer le Retrait de {formatPrice(withdrawAmount)}
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: NOTER UN VENDEUR PARTENAIRE (ANTI-FRAUDE)                           */}
+      {/* ========================================================================= */}
+      {isReviewModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4">
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white">Évaluer le Vendeur</h3>
+                <p className="text-[11px] text-slate-400">{reviewSellerName || 'Commerçant Dokya'}</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setIsReviewModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {reviewSuccessMessage ? (
+              <div className="p-3 rounded-2xl bg-emerald-950 border border-emerald-800 text-emerald-200 text-xs text-center font-bold">
+                {reviewSuccessMessage}
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitReview} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5">Note de Fiabilité (1 à 5)</label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setReviewRating(star)}
+                        className="p-1 cursor-pointer transition-transform hover:scale-110"
+                      >
+                        <Star className={`w-6 h-6 ${star <= reviewRating ? 'fill-amber-400 text-amber-400' : 'text-slate-600'}`} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Votre Avis Public</label>
+                  <textarea
+                    required
+                    rows={3}
+                    placeholder="Qualité des produits, rapidité de validation et paiement des commissions..."
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingReview}
+                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md cursor-pointer transition-all disabled:opacity-50"
+                >
+                  {isSubmittingReview ? 'Publication...' : 'Publier mon Avis'}
+                </button>
+              </form>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ACHAT DU BADGE TÉLÉVENDEUR CERTIFIÉ                                 */}
+      {/* ========================================================================= */}
+      {isBadgeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-md bg-slate-900 border border-emerald-700/60 rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4">
+            
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto">
+                <ShieldCheck className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-black text-white">Badge Télévendeur Certifié</h3>
+              <p className="text-xs text-slate-400">
+                Débloquez l'accès illimité au catalogue de produits et démarrez immédiatement vos ventes avec commissions garanties.
+              </p>
+            </div>
+
+            {badgeSuccessMessage ? (
+              <div className="p-3 rounded-2xl bg-emerald-950 border border-emerald-800 text-emerald-200 text-xs text-center font-bold">
+                {badgeSuccessMessage}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center">
+                  <span className="text-xs text-slate-400 block">Tarif d'activation unique :</span>
+                  <div className="text-3xl font-black text-emerald-400 mt-1">
+                    {formatPrice(10000)}
+                  </div>
+                </div>
+
+                <ul className="space-y-1.5 text-xs text-slate-300">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Accès permanent à toutes les offres de vente</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Badge "Certifié ★" visible sur toutes vos fiches</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Retraits prioritaires Wave / Orange Money</span>
+                  </li>
+                </ul>
+
+                <button
+                  type="button"
+                  onClick={handlePurchaseCertifiedBadge}
+                  disabled={isPurchasingBadge}
+                  className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isPurchasingBadge ? 'Activation...' : `Activer mon Badge (${formatPrice(10000)})`}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBadgeModalOpen(false)}
+                  className="w-full text-center text-xs text-slate-400 hover:text-white"
+                >
+                  Fermer
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: MODE VIP (100% DES COMMISSIONS)                                     */}
+      {/* ========================================================================= */}
+      {isVipModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-md bg-slate-900 border border-amber-500/60 rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4">
+            
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto">
+                <Crown className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-black text-white">Mode VIP Télévendeur</h3>
+              <p className="text-xs text-slate-400">
+                Conservez 100% de toutes vos commissions sans aucun prélèvement plateforme.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center">
+              <span className="text-xs text-slate-400 block">Abonnement mensuel :</span>
+              <div className="text-3xl font-black text-amber-400 mt-1">
+                {formatPrice(5000)} <span className="text-xs text-slate-400">/ mois</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleVipMode}
+              disabled={isActivatingVip}
+              className="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+            >
+              {isActivatingVip ? 'Mise à jour...' : isVipMode ? 'Repasser en Mode Standard (80%)' : `Activer le Mode VIP (${formatPrice(5000)} / mois)`}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsVipModalOpen(false)}
+              className="w-full text-center text-xs text-slate-400 hover:text-white"
+            >
+              Annuler
+            </button>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

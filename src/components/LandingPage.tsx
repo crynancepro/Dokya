@@ -46,6 +46,7 @@ import { usePricing } from '../contexts/PricingContext';
 interface LandingPageProps {
   onGoToAuth: (mode?: 'login' | 'signup') => void;
   onGoToDashboard: () => void;
+  onGoToTelemarketer?: () => void;
   onSelectService: (service: 'cv' | 'letter' | 'devis' | 'facture') => void;
   onOpenTarifs: () => void;
   onOpenTemplates: (service?: string) => void;
@@ -165,6 +166,7 @@ const PRICING_PLANS: PricingPlan[] = [
 export const LandingPage: React.FC<LandingPageProps> = ({
   onGoToAuth,
   onGoToDashboard,
+  onGoToTelemarketer,
   onSelectService,
   onOpenTarifs,
   onOpenTemplates,
@@ -267,6 +269,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           {/* Action CTAs */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Lien direct Portail Télévendeurs */}
+            <button
+              type="button"
+              onClick={onGoToTelemarketer ? onGoToTelemarketer : onGoToDashboard}
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-700/60 hover:border-emerald-500 text-emerald-300 hover:text-white text-xs font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs"
+              title="Portail Indépendant Télévendeurs & Affiliés Dokya"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Espace Télévendeurs</span>
+            </button>
+
             {currentUser ? (
               <button
                 type="button"
@@ -387,6 +400,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               >
                 FAQ
               </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (onGoToTelemarketer) onGoToTelemarketer();
+                  else onGoToDashboard();
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 font-bold text-xs flex items-center gap-2 text-left"
+              >
+                <Briefcase className="w-4 h-4 text-emerald-400" />
+                <span>Espace Télévendeurs &amp; Affiliés</span>
+              </button>
             </nav>
 
             {!currentUser && (

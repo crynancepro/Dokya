@@ -56,6 +56,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [phone, setPhone] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<CountryOption>(userCountry);
   const [selectedCurrency, setSelectedCurrency] = useState<SupportedCurrency>(userCurrency);
+  const [selectedRole, setSelectedRole] = useState<'seller' | 'telemarketer'>('seller');
   const [showAdvancedLocale, setShowAdvancedLocale] = useState(false);
 
   const [referralCodeInput, setReferralCodeInput] = useState<string>(() => {
@@ -163,8 +164,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           phoneNumber: phone.trim() || undefined,
           country: selectedCountry.name,
           residenceCountry: selectedCountry.code,
-          currency: selectedCurrency
+          currency: selectedCurrency,
+          userRole: selectedRole
         });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('dokya_user_role', selectedRole);
+        }
         // Synchroniser le contexte global avec les choix d'inscription
         setUserCountry(selectedCountry);
         setUserCurrency(selectedCurrency);
@@ -204,8 +209,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       await initializeUserAccountDoc(userCred.user, {
         country: selectedCountry.name,
         residenceCountry: selectedCountry.code,
-        currency: selectedCurrency
+        currency: selectedCurrency,
+        userRole: selectedRole
       });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('dokya_user_role', selectedRole);
+      }
       setUserCountry(selectedCountry);
       setUserCurrency(selectedCurrency);
       setSuccessMsg('Connexion Google réussie !');
@@ -233,8 +242,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       await initializeUserAccountDoc(userCred.user, {
         country: selectedCountry.name,
         residenceCountry: selectedCountry.code,
-        currency: selectedCurrency
+        currency: selectedCurrency,
+        userRole: selectedRole
       });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('dokya_user_role', selectedRole);
+      }
       setUserCountry(selectedCountry);
       setUserCurrency(selectedCurrency);
       setSuccessMsg('Connexion Apple réussie !');
@@ -472,6 +485,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {/* Formulaire Principal */}
             <form onSubmit={handleSubmit} className="space-y-3.5">
               
+              {/* SÉLECTEUR DE DEVISE À L'INSCRIPTION */}
+              {mode === 'signup' && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-neutral-300">
+                      Devise d'affichage (USD, FCFA, EUR)
+                    </label>
+                    <span className="text-[10px] text-indigo-400 font-mono">
+                      Active : {selectedCurrency}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { code: 'XOF' as SupportedCurrency, label: 'FCFA (XOF)', flag: '🇸🇳' },
+                      { code: 'XAF' as SupportedCurrency, label: 'FCFA (XAF)', flag: '🇨🇲' },
+                      { code: 'USD' as SupportedCurrency, label: 'USD ($)', flag: '🇺🇸' },
+                      { code: 'EUR' as SupportedCurrency, label: 'EUR (€)', flag: '🇪🇺' }
+                    ].map((c) => (
+                      <button
+                        key={c.code}
+                        type="button"
+                        onClick={() => setSelectedCurrency(c.code)}
+                        className={`py-1.5 px-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          selectedCurrency === c.code
+                            ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>{c.flag}</span>
+                        <span className="truncate">{c.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {mode === 'signup' && (
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-neutral-300">Nom complet</label>

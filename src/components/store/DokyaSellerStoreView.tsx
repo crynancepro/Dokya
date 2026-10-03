@@ -67,6 +67,7 @@ import {
   slugify 
 } from '../../lib/storeService';
 import { auth } from '../../lib/firebase';
+import { useLocale } from '../../contexts/LocaleContext';
 
 // Helper to compress and resize local image files before saving
 function compressImageFile(
@@ -140,6 +141,7 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
 }) => {
   const currentUid = auth.currentUser?.uid || profile.uid || 'guest';
   const defaultUsername = slugify(profile.personalInfo?.firstName || profile.email?.split('@')[0] || 'vendeur');
+  const { formatPrice, userCurrency } = useLocale();
 
   // Sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<'products' | 'orders' | 'settings'>('products');
@@ -203,6 +205,12 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
   const [productRedirectUrl, setProductRedirectUrl] = useState('');
   const [productCustomSlug, setProductCustomSlug] = useState('');
   const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
+
+  // Télévendeurs / Marketplace Affiliation Form State
+  const [commissionType, setCommissionType] = useState<'percent' | 'fixed'>('percent');
+  const [commissionValue, setCommissionValue] = useState<number | string>(20); // 20% par défaut
+  const [targetCountries, setTargetCountries] = useState<string[]>(['ALL']);
+  const [isAffiliationEnabled, setIsAffiliationEnabled] = useState<boolean>(true);
 
   // Store Settings Form State
   const [storeNameInput, setStoreNameInput] = useState('');
@@ -286,6 +294,10 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     setProductSaleType('direct_order');
     setProductRedirectUrl('');
     setProductCustomSlug('');
+    setCommissionType('percent');
+    setCommissionValue(20);
+    setTargetCountries(['ALL']);
+    setIsAffiliationEnabled(true);
     setIsProductModalOpen(true);
   };
 
@@ -302,6 +314,10 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     setProductSaleType(prod.saleType);
     setProductRedirectUrl(prod.redirectUrl || '');
     setProductCustomSlug(prod.slug);
+    setCommissionType(prod.commissionType || 'percent');
+    setCommissionValue(prod.commissionValue !== undefined ? prod.commissionValue : 20);
+    setTargetCountries(Array.isArray(prod.targetCountries) && prod.targetCountries.length > 0 ? prod.targetCountries : ['ALL']);
+    setIsAffiliationEnabled(prod.isAffiliationEnabled ?? true);
     setIsProductModalOpen(true);
   };
 
@@ -348,7 +364,11 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
         saleType: productSaleType,
         redirectUrl: productSaleType === 'redirect' ? productRedirectUrl.trim() : '',
         enableDirectOrder: productSaleType === 'direct_order',
-        status: 'active'
+        status: 'active',
+        commissionType,
+        commissionValue: Number(commissionValue) || 0,
+        targetCountries: targetCountries.length > 0 ? targetCountries : ['ALL'],
+        isAffiliationEnabled
       });
 
       // Synchroniser explicitement le profil de la vitrine pour que la boutique publique le reconnaisse immédiatement
@@ -620,8 +640,8 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              {(Number(metrics.totalSalesAmount) || 0).toLocaleString('fr-FR')} <span className="text-sm font-semibold text-emerald-400">FCFA</span>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">
+              {formatPrice(Number(metrics.totalSalesAmount) || 0)}
             </div>
             <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
               <span className="text-emerald-400 font-semibold">{metrics.validatedOrdersCount}</span> commandes validées
@@ -892,10 +912,10 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                           </h4>
                           <div className="flex items-baseline gap-2 mt-0.5">
                             <span className="text-xl font-black text-emerald-400">
-                              {(Number(prod.price) || 0).toLocaleString('fr-FR')} <span className="text-xs font-semibold">FCFA</span>
+                              {formatPrice(Number(prod.price) || 0)}
                             </span>
                             <span className="text-xs text-slate-500 line-through">
-                              {(Math.round((Number(prod.price) || 0) * 1.25 / 500) * 500).toLocaleString('fr-FR')} FCFA
+                              {formatPrice(Math.round((Number(prod.price) || 0) * 1.25 / 500) * 500)}
                             </span>
                           </div>
                         </div>
@@ -1058,7 +1078,7 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                       </h4>
                       <p className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-3">
                         <span className="font-semibold text-emerald-400">
-                          {(Number(order.totalAmount) || 0).toLocaleString('fr-FR')} FCFA (Qté : {order.quantity || 1})
+                          {formatPrice(Number(order.totalAmount) || 0)} (Qté : {order.quantity || 1})
                         </span>
                         <span>•</span>
                         <span className="flex items-center gap-1">
@@ -1536,6 +1556,161 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                       placeholder="https://wa.me/221... ou https://mon-site.com"
                       className="w-full px-4 py-2.5 rounded-2xl bg-slate-900 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500"
                     />
+                  </div>
+                )}
+              </div>
+
+              {/* MODULE TÉLÉVENDEURS & MARKETPLACE D'AFFILIATION */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-950/40 to-slate-950 border border-indigo-500/30 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-black text-white uppercase tracking-wider">
+                      Module Télévendeurs & Affiliation Dokya
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={isAffiliationEnabled}
+                      onChange={(e) => setIsAffiliationEnabled(e.target.checked)}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+
+                <p className="text-[11px] text-slate-400">
+                  Permettez au réseau de télévendeurs certifiés Dokya de vendre votre produit contre une commission.
+                </p>
+
+                {isAffiliationEnabled && (
+                  <div className="space-y-3 pt-1 border-t border-indigo-500/20 animate-in fade-in duration-200">
+                    {/* Choix Type de Commission et Montant */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                        Commission attribuée au télévendeur par vente
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="flex items-center rounded-xl bg-slate-900 border border-slate-800 p-1">
+                          <button
+                            type="button"
+                            onClick={() => setCommissionType('percent')}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                              commissionType === 'percent'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Pourcentage (%)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCommissionType('fixed')}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                              commissionType === 'fixed'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Montant Fixe (FCFA)
+                          </button>
+                        </div>
+
+                        <div className="relative">
+                          <input 
+                            type="number"
+                            min={1}
+                            value={commissionValue}
+                            onChange={(e) => setCommissionValue(e.target.value)}
+                            placeholder={commissionType === 'percent' ? "Ex: 20%" : "Ex: 3000 FCFA"}
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-sm font-bold text-white focus:outline-none focus:border-indigo-500"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-bold">
+                            {commissionType === 'percent' ? '%' : 'FCFA'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Aperçu du gain calculé */}
+                      <div className="mt-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center justify-between">
+                        <span>Gain télévendeur par vente conclue :</span>
+                        <span className="font-black text-sm">
+                          {commissionType === 'percent'
+                            ? `${Math.round(((Number(productPrice) || 0) * (Number(commissionValue) || 0)) / 100).toLocaleString('fr-FR')} FCFA (${commissionValue}%)`
+                            : `${(Number(commissionValue) || 0).toLocaleString('fr-FR')} FCFA`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Ciblage géographique multi-pays */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-bold text-slate-300">
+                          Ciblage géographique de l'offre
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (targetCountries.includes('ALL')) {
+                              setTargetCountries(['SN', 'CI', 'CM', 'CG']);
+                            } else {
+                              setTargetCountries(['ALL']);
+                            }
+                          }}
+                          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+                        >
+                          {targetCountries.includes('ALL') ? 'Cibler des pays précis' : 'Tous les pays (Par défaut)'}
+                        </button>
+                      </div>
+
+                      {targetCountries.includes('ALL') ? (
+                        <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-indigo-400 shrink-0" />
+                          <span><strong>Tous les pays éligibles</strong> (Afrique de l'Ouest, Centrale et International)</span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                          {[
+                            { code: 'SN', label: 'Sénégal', flag: '🇸🇳' },
+                            { code: 'CI', label: 'Côte d\'Ivoire', flag: '🇨🇮' },
+                            { code: 'CM', label: 'Cameroun', flag: '🇨🇲' },
+                            { code: 'CG', label: 'Congo', flag: '🇨🇬' },
+                            { code: 'BF', label: 'Burkina Faso', flag: '🇧🇫' },
+                            { code: 'ML', label: 'Mali', flag: '🇲🇱' },
+                            { code: 'BJ', label: 'Bénin', flag: '🇧🇯' },
+                            { code: 'TG', label: 'Togo', flag: '🇹🇬' },
+                            { code: 'GA', label: 'Gabon', flag: '🇬🇦' },
+                            { code: 'FR', label: 'France', flag: '🇫🇷' },
+                            { code: 'US', label: 'Monde / US', flag: '🌐' }
+                          ].map(c => {
+                            const isSelected = targetCountries.includes(c.code);
+                            return (
+                              <button
+                                key={c.code}
+                                type="button"
+                                onClick={() => {
+                                  if (isSelected) {
+                                    const next = targetCountries.filter(x => x !== c.code);
+                                    setTargetCountries(next.length === 0 ? ['ALL'] : next);
+                                  } else {
+                                    setTargetCountries([...targetCountries.filter(x => x !== 'ALL'), c.code]);
+                                  }
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-indigo-600/30 border-indigo-500 text-white'
+                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                <span>{c.flag}</span>
+                                <span className="truncate">{c.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

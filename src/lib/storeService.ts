@@ -12,15 +12,19 @@ import {
   updateDoc, 
   increment 
 } from 'firebase/firestore';
-import { ProductItem, StoreOrder, SellerStoreProfile, StoreOrderStatus } from '../types';
+import { ProductItem, StoreOrder, SellerStoreProfile, StoreOrderStatus, SellerReview } from '../types';
+import { createNotification } from './firebase';
 
 const PRODUCTS_COLLECTION = 'products';
 const STORE_ORDERS_COLLECTION = 'store_orders';
 const SELLER_STORES_COLLECTION = 'seller_stores';
+const SELLER_REVIEWS_COLLECTION = 'seller_reviews';
 
 const LOCAL_PRODUCTS_PREFIX = 'dokya_seller_products_';
 const LOCAL_ORDERS_PREFIX = 'dokya_seller_orders_';
 const LOCAL_STORE_PREFIX = 'dokya_seller_store_';
+const LOCAL_TELEMARKETER_ORDERS_PREFIX = 'dokya_telemarketer_orders_';
+const LOCAL_REVIEWS_PREFIX = 'dokya_seller_reviews_';
 
 /**
  * Nettoie une chaîne pour en faire un slug URL parfait
@@ -80,6 +84,14 @@ export async function saveProduct(product: Partial<ProductItem> & { userId: stri
     status: product.status || 'active',
     viewsCount: product.viewsCount || 0,
     ordersCount: product.ordersCount || 0,
+    commissionType: product.commissionType || 'percent',
+    commissionValue: product.commissionValue !== undefined ? Number(product.commissionValue) : 20, // 20% par défaut
+    targetCountries: Array.isArray(product.targetCountries) && product.targetCountries.length > 0 
+      ? product.targetCountries 
+      : ['ALL'],
+    isAffiliationEnabled: product.isAffiliationEnabled ?? true,
+    sellerRating: product.sellerRating || 4.9,
+    sellerReviewsCount: product.sellerReviewsCount || 12,
     createdAt: product.createdAt || now,
     updatedAt: now
   };
@@ -658,3 +670,495 @@ export async function saveSellerStoreProfile(
 
   return profile;
 }
+
+// ============================================================================
+// MODULE TÉLÉVENDEURS & MARKETPLACE D'AFFILIATION
+// ============================================================================
+
+export const DEFAULT_MARKETPLACE_OFFERS: ProductItem[] = [
+  {
+    id: 'prod_mk_formation_ats',
+    userId: 'seller_dokya_academy',
+    sellerUsername: 'dokya-academy',
+    sellerName: 'Dokya Academy Pro',
+    sellerPhone: '+221 77 123 45 67',
+    sellerWhatsapp: '+221 77 123 45 67',
+    sellerEmail: 'academy@dokya.site',
+    title: 'Programme Masterclass Recrutement & CV ATS 2026',
+    slug: 'masterclass-recrutement-ats-2026',
+    description: 'Formation complète en vidéo + templates certifiés pour réussir tous les entretiens et décrocher un emploi international ou local. Éligible commissions télévendeurs prioritaires.',
+    price: 15000,
+    currency: 'FCFA',
+    category: 'Formations & Coaching',
+    images: ['https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80'],
+    saleType: 'direct_order',
+    status: 'active',
+    viewsCount: 342,
+    ordersCount: 48,
+    commissionType: 'percent',
+    commissionValue: 30, // 30% = 4 500 FCFA
+    targetCountries: ['ALL'],
+    isAffiliationEnabled: true,
+    sellerRating: 4.9,
+    sellerReviewsCount: 24,
+    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'prod_mk_pack_business',
+    userId: 'seller_fatou_consulting',
+    sellerUsername: 'fatou-consulting',
+    sellerName: 'Fatou Ndiaye Consulting',
+    sellerPhone: '+221 78 987 65 43',
+    sellerWhatsapp: '+221 78 987 65 43',
+    sellerEmail: 'fatou@consulting-sn.com',
+    title: 'Kit Juridique & Modèles Contrats Commerciaux OHADA',
+    slug: 'kit-juridique-contrats-ohada',
+    description: '35 contrats types prêts à l\'emploi pour PME et indépendants (Prestations, Vente, NDA, Partenariats, Baux). Très demandé par les commerçants et entrepreneurs.',
+    price: 25000,
+    currency: 'FCFA',
+    category: 'Juridique & Entreprise',
+    images: ['https://images.unsplash.com/photo-1450133064473-71024230f91b?auto=format&fit=crop&w=800&q=80'],
+    saleType: 'direct_order',
+    status: 'active',
+    viewsCount: 215,
+    ordersCount: 29,
+    commissionType: 'fixed',
+    commissionValue: 6000, // 6 000 FCFA fixe
+    targetCountries: ['SN', 'CI', 'CM', 'CG', 'BF', 'ML'],
+    isAffiliationEnabled: true,
+    sellerRating: 4.8,
+    sellerReviewsCount: 18,
+    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'prod_mk_cosmetique_bio',
+    userId: 'seller_abidjan_beaute',
+    sellerUsername: 'abidjan-beaute-naturelle',
+    sellerName: 'Kenza Cosmétiques Bio',
+    sellerPhone: '+225 07 45 89 12 34',
+    sellerWhatsapp: '+225 07 45 89 12 34',
+    sellerEmail: 'contact@kenzacosmetics.ci',
+    title: 'Gamme Sérum Éclat & Soin Peaux Noires 100% Naturel',
+    slug: 'serum-eclat-naturel-peaux-noires',
+    description: 'Pack de soins formulé à base d\'huiles précieuses africaines (Karité, Baobab, Moringa). Forte demande en Côte d\'Ivoire, Sénégal et Cameroun.',
+    price: 18000,
+    currency: 'FCFA',
+    category: 'Santé & Beauté',
+    images: ['https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=800&q=80'],
+    saleType: 'direct_order',
+    status: 'active',
+    viewsCount: 520,
+    ordersCount: 82,
+    commissionType: 'percent',
+    commissionValue: 25, // 25% = 4 500 FCFA
+    targetCountries: ['CI', 'SN', 'CM'],
+    isAffiliationEnabled: true,
+    sellerRating: 5.0,
+    sellerReviewsCount: 31,
+    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'prod_mk_gadget_smart',
+    userId: 'seller_tech_dakar',
+    sellerUsername: 'tech-dakar-express',
+    sellerName: 'Tech Dakar Express',
+    sellerPhone: '+221 70 888 99 00',
+    sellerWhatsapp: '+221 70 888 99 00',
+    sellerEmail: 'sales@techdakar.sn',
+    title: 'Montre Connectée Pro Santé & Sport Étanche GPS',
+    slug: 'smartwatch-pro-sante-sport',
+    description: 'Smartwatch multifonctions avec suivi cardiaque, sommeil, appels Bluetooth et autonomie 10 jours. Livraison rapide sur Dakar et sous-région.',
+    price: 22000,
+    currency: 'FCFA',
+    category: 'High-Tech & Gadgets',
+    images: ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80'],
+    saleType: 'direct_order',
+    status: 'active',
+    viewsCount: 680,
+    ordersCount: 95,
+    commissionType: 'fixed',
+    commissionValue: 5000, // 5 000 FCFA fixe
+    targetCountries: ['SN', 'CI', 'CM', 'CG'],
+    isAffiliationEnabled: true,
+    sellerRating: 4.7,
+    sellerReviewsCount: 14,
+    createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
+
+/**
+ * Récupère toutes les offres marketplace disponibles pour les télévendeurs
+ */
+export async function fetchAllMarketplaceOffers(options?: {
+  country?: string;
+  category?: string;
+  minCommission?: number;
+  searchQuery?: string;
+}): Promise<ProductItem[]> {
+  const offersMap = new Map<string, ProductItem>();
+
+  // 1. Charger les offres par défaut
+  DEFAULT_MARKETPLACE_OFFERS.forEach(offer => {
+    offersMap.set(offer.id, offer);
+  });
+
+  // 2. Récupérer les produits réels depuis Firestore
+  try {
+    const q = query(
+      collection(db, PRODUCTS_COLLECTION),
+      where('status', '==', 'active')
+    );
+    const snap = await getDocs(q);
+    snap.forEach(d => {
+      const p = d.data() as ProductItem;
+      if (p.isAffiliationEnabled !== false) {
+        offersMap.set(p.id, p);
+      }
+    });
+  } catch (err) {
+    console.warn('[StoreService] Erreur fetchAllMarketplaceOffers Firestore:', err);
+  }
+
+  // 3. Récupérer aussi depuis le cache local des vendeurs
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(LOCAL_PRODUCTS_PREFIX)) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const list: ProductItem[] = JSON.parse(raw);
+            list.forEach(p => {
+              if (p.status === 'active' && p.isAffiliationEnabled !== false) {
+                offersMap.set(p.id, p);
+              }
+            });
+          }
+        }
+      }
+    }
+  } catch (_e) {}
+
+  let list = Array.from(offersMap.values());
+
+  // 4. Filtrage par pays
+  if (options?.country && options.country !== 'ALL') {
+    list = list.filter(p => {
+      const targets = p.targetCountries || ['ALL'];
+      return targets.includes('ALL') || targets.includes(options.country!);
+    });
+  }
+
+  // 5. Filtrage par catégorie
+  if (options?.category && options.category !== 'all') {
+    list = list.filter(p => p.category?.toLowerCase() === options.category?.toLowerCase());
+  }
+
+  // 6. Filtrage par montant de commission minimum
+  if (options?.minCommission && options.minCommission > 0) {
+    list = list.filter(p => {
+      const commissionAmount = p.commissionType === 'percent'
+        ? (p.price * (p.commissionValue || 0)) / 100
+        : (p.commissionValue || 0);
+      return commissionAmount >= options.minCommission!;
+    });
+  }
+
+  // 7. Recherche textuelle
+  if (options?.searchQuery?.trim()) {
+    const queryTerm = options.searchQuery.toLowerCase().trim();
+    list = list.filter(p => 
+      p.title.toLowerCase().includes(queryTerm) ||
+      p.description.toLowerCase().includes(queryTerm) ||
+      p.sellerName.toLowerCase().includes(queryTerm) ||
+      (p.category && p.category.toLowerCase().includes(queryTerm))
+    );
+  }
+
+  return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+/**
+ * Calcule la commission d'un télévendeur sur un produit (Standard 80% vs VIP 100%)
+ */
+export function calculateTelemarketerCommission(
+  price: number,
+  commissionType: 'percent' | 'fixed' = 'percent',
+  commissionValue: number = 20,
+  isVip: boolean = false
+): {
+  grossCommission: number;
+  telemarketerNet: number;
+  dokyaFee: number;
+  ratePercent: number;
+} {
+  const safePrice = Number(price) || 0;
+  const safeVal = Number(commissionValue) || 20;
+  const grossCommission = commissionType === 'percent'
+    ? Math.round((safePrice * safeVal) / 100)
+    : Math.round(safeVal);
+
+  const telemarketerNet = isVip
+    ? grossCommission
+    : Math.round(grossCommission * 0.8);
+
+  const dokyaFee = Math.max(0, grossCommission - telemarketerNet);
+  const ratePercent = isVip ? 100 : 80;
+
+  return {
+    grossCommission,
+    telemarketerNet,
+    dokyaFee,
+    ratePercent
+  };
+}
+
+/**
+ * Permet au télévendeur d'enregistrer une commande client directement depuis son espace
+ * Calcule automatiquement la commission brute et la commission nette selon le mode (Standard 20% Dokya vs VIP 100% conservé)
+ * Envoie une notification instantanée au Vendeur propriétaire du produit
+ */
+export async function createTelemarketerOrder(params: {
+  product: ProductItem;
+  telemarketerId: string;
+  telemarketerName: string;
+  telemarketerPhone?: string;
+  telemarketerEmail?: string;
+  telemarketerMode?: 'standard' | 'vip';
+  buyerName: string;
+  buyerPhone: string;
+  buyerAddress: string;
+  buyerNotes?: string;
+  quantity?: number;
+  proofUrl?: string;
+  proofNote?: string;
+}): Promise<StoreOrder> {
+  const shortId = Math.floor(100000 + Math.random() * 900000);
+  const id = `CMD-TEL-${shortId}`;
+  const now = new Date().toISOString();
+  const quantity = Math.max(1, params.quantity || 1);
+  const totalAmount = params.product.price * quantity;
+
+  // Calcul commission
+  const commissionType = params.product.commissionType || 'percent';
+  const commissionValue = params.product.commissionValue || 20;
+  const unitCommission = commissionType === 'percent'
+    ? (params.product.price * commissionValue) / 100
+    : commissionValue;
+  const commissionGross = Math.round(unitCommission * quantity);
+
+  // Mode Standard : Dokya prélève 20% -> Télévendeur reçoit 80%
+  // Mode VIP : Dokya prélève 0% -> Télévendeur reçoit 100%
+  const isVip = params.telemarketerMode === 'vip';
+  const commissionRateDokya = isVip ? 0 : 20;
+  const commissionNet = isVip 
+    ? commissionGross 
+    : Math.round(commissionGross * 0.8);
+
+  const newOrder: StoreOrder = {
+    id,
+    productId: params.product.id,
+    productSlug: params.product.slug,
+    productTitle: params.product.title,
+    productPrice: params.product.price,
+    productImage: params.product.images?.[0] || '',
+    sellerId: params.product.userId,
+    sellerUsername: params.product.sellerUsername,
+    buyerName: params.buyerName.trim(),
+    buyerPhone: params.buyerPhone.trim(),
+    buyerAddress: params.buyerAddress.trim(),
+    buyerNotes: params.buyerNotes?.trim() || '',
+    quantity,
+    totalAmount,
+    currency: params.product.currency || 'FCFA',
+    status: 'pending',
+    paymentMethod: 'telemarketer_cash_on_delivery',
+    // Télévendeur tracking & commission
+    telemarketerId: params.telemarketerId,
+    telemarketerName: params.telemarketerName,
+    telemarketerPhone: params.telemarketerPhone || '',
+    telemarketerEmail: params.telemarketerEmail || '',
+    commissionGross,
+    commissionNet,
+    commissionRateDokya,
+    telemarketerMode: isVip ? 'vip' : 'standard',
+    proofUrl: params.proofUrl || '',
+    proofNote: params.proofNote || '',
+    sourceType: 'telemarketer_offsite',
+    createdAt: now,
+    updatedAt: now
+  };
+
+  // 1. Sauvegarde Firestore
+  try {
+    const orderDocRef = doc(db, STORE_ORDERS_COLLECTION, id);
+    await setDoc(orderDocRef, newOrder);
+
+    // Incrémente commandes sur le produit
+    if (params.product.id) {
+      try {
+        const prodRef = doc(db, PRODUCTS_COLLECTION, params.product.id);
+        await updateDoc(prodRef, { ordersCount: increment(1) });
+      } catch (_e) {}
+    }
+  } catch (err) {
+    console.warn('[StoreService] Erreur createTelemarketerOrder Firestore:', err);
+  }
+
+  // 2. Sauvegarde cache local (Télévendeur & Vendeur)
+  try {
+    // Cache du télévendeur
+    const telKey = `${LOCAL_TELEMARKETER_ORDERS_PREFIX}${params.telemarketerId}`;
+    const rawTel = localStorage.getItem(telKey);
+    const existingTel: StoreOrder[] = rawTel ? JSON.parse(rawTel) : [];
+    existingTel.unshift(newOrder);
+    localStorage.setItem(telKey, JSON.stringify(existingTel));
+
+    // Cache du vendeur
+    const selKey = `${LOCAL_ORDERS_PREFIX}${params.product.userId}`;
+    const rawSel = localStorage.getItem(selKey);
+    const existingSel: StoreOrder[] = rawSel ? JSON.parse(rawSel) : [];
+    existingSel.unshift(newOrder);
+    localStorage.setItem(selKey, JSON.stringify(existingSel));
+  } catch (_e) {}
+
+  // 3. Notification instantanée transmise au Vendeur propriétaire du produit
+  try {
+    if (params.product.userId) {
+      await createNotification(params.product.userId, {
+        title: `📦 Nouvelle commande apportée par un Télévendeur !`,
+        message: `Le télévendeur ${params.telemarketerName} vient d'enregistrer une commande pour "${params.product.title}" : Client ${params.buyerName} (${params.buyerPhone}), ${params.buyerAddress}. Commission à verser : ${commissionGross.toLocaleString('fr-FR')} FCFA.`,
+        type: 'order',
+        read: false,
+        tabTarget: 'store'
+      });
+    }
+  } catch (_e) {
+    console.warn('[StoreService] Erreur envoi notification vendeur:', _e);
+  }
+
+  return newOrder;
+}
+
+/**
+ * Récupère l'historique des commandes apportées par un télévendeur
+ */
+export async function fetchTelemarketerOrders(telemarketerId: string): Promise<StoreOrder[]> {
+  if (!telemarketerId) return [];
+
+  let orders: StoreOrder[] = [];
+
+  // Firestore
+  try {
+    const q = query(
+      collection(db, STORE_ORDERS_COLLECTION),
+      where('telemarketerId', '==', telemarketerId)
+    );
+    const snap = await getDocs(q);
+    snap.forEach(d => {
+      orders.push(d.data() as StoreOrder);
+    });
+  } catch (err) {
+    console.warn('[StoreService] Erreur fetchTelemarketerOrders Firestore:', err);
+  }
+
+  // Fallback local
+  if (orders.length === 0) {
+    try {
+      const localKey = `${LOCAL_TELEMARKETER_ORDERS_PREFIX}${telemarketerId}`;
+      const raw = localStorage.getItem(localKey);
+      if (raw) orders = JSON.parse(raw);
+    } catch (_e) {}
+  } else {
+    try {
+      const localKey = `${LOCAL_TELEMARKETER_ORDERS_PREFIX}${telemarketerId}`;
+      localStorage.setItem(localKey, JSON.stringify(orders));
+    } catch (_e) {}
+  }
+
+  return orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+/**
+ * Sauvegarde un avis / note public laissé par un télévendeur sur un vendeur
+ */
+export async function saveSellerReview(review: Omit<SellerReview, 'id' | 'createdAt'>): Promise<SellerReview> {
+  const id = `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const now = new Date().toISOString();
+
+  const newReview: SellerReview = {
+    ...review,
+    id,
+    createdAt: now
+  };
+
+  try {
+    const docRef = doc(db, SELLER_REVIEWS_COLLECTION, id);
+    await setDoc(docRef, newReview);
+  } catch (err) {
+    console.warn('[StoreService] Erreur saveSellerReview Firestore:', err);
+  }
+
+  try {
+    const localKey = `${LOCAL_REVIEWS_PREFIX}${review.sellerId}`;
+    const raw = localStorage.getItem(localKey);
+    const existing: SellerReview[] = raw ? JSON.parse(raw) : [];
+    existing.unshift(newReview);
+    localStorage.setItem(localKey, JSON.stringify(existing));
+  } catch (_e) {}
+
+  return newReview;
+}
+
+/**
+ * Récupère les avis publics sur un vendeur (ou tous les avis si aucun sellerId n'est fourni)
+ */
+export async function fetchSellerReviews(sellerId?: string): Promise<SellerReview[]> {
+  let reviews: SellerReview[] = [];
+
+  try {
+    let q;
+    if (sellerId) {
+      q = query(
+        collection(db, SELLER_REVIEWS_COLLECTION),
+        where('sellerId', '==', sellerId)
+      );
+    } else {
+      q = query(collection(db, SELLER_REVIEWS_COLLECTION));
+    }
+    const snap = await getDocs(q);
+    snap.forEach(d => {
+      reviews.push(d.data() as SellerReview);
+    });
+  } catch (err) {
+    console.warn('[StoreService] Erreur fetchSellerReviews Firestore:', err);
+  }
+
+  if (reviews.length === 0) {
+    try {
+      if (sellerId) {
+        const localKey = `${LOCAL_REVIEWS_PREFIX}${sellerId}`;
+        const raw = localStorage.getItem(localKey);
+        if (raw) reviews = JSON.parse(raw);
+      } else {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(LOCAL_REVIEWS_PREFIX)) {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) reviews.push(...parsed);
+            }
+          }
+        }
+      }
+    } catch (_e) {}
+  }
+
+  return reviews.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+

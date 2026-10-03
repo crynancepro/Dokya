@@ -5,8 +5,9 @@ import {
   Briefcase, GraduationCap, Award, Globe, Phone, Mail, MapPin, Linkedin, 
   Check, ArrowRight, ShieldCheck, Zap, X, Wallet, History, Menu, Crown, Lock, Unlock,
   Search, Filter, Wand2, Receipt, BookOpen, Clock, Package, UserCircle2, FileCheck, LogOut, BookmarkCheck,
-  Building2, Users
+  Building2, Users, ShoppingBag, ChevronDown
 } from 'lucide-react';
+import { useLocale, SupportedCurrency } from '../contexts/LocaleContext';
 import { 
   CandidateProfile, SavedUserDocument, CVFormData, Experience, Education, 
   SkillCategory, Language, PersonalInfo, TransactionRecord, UserSubscription,
@@ -46,6 +47,8 @@ import { DokyaAffiliateView } from './DokyaAffiliateView';
 import { DokyaSupportChat } from './DokyaSupportChat';
 import { NotificationBell } from './NotificationBell';
 import { DokyaSellerStoreView } from './store/DokyaSellerStoreView';
+import { DokyaTelemarketerMarketplaceView } from './DokyaTelemarketerMarketplaceView';
+import { SettingsView } from './SettingsView';
 
 interface CandidateDashboardProps {
   onLoadDocumentToEditor: (formData: CVFormData, aiData: any) => void;
@@ -55,6 +58,9 @@ interface CandidateDashboardProps {
   onOpenAdmin?: () => void;
   onSignOut?: () => void;
   initialTab?: SidebarTab | string;
+  userRole?: 'seller' | 'telemarketer';
+  onSwitchRole?: (role: 'seller' | 'telemarketer') => void;
+  onSwitchToTelemarketer?: () => void;
   onOpenInterviewPrepDocument?: (prepData: InterviewPrepData) => void;
   onLoadBusinessDocToEditor?: (data: BusinessDocData, docId?: string) => void;
   onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture', business?: UserBusiness) => void;
@@ -72,6 +78,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   onOpenAdmin,
   onSignOut,
   initialTab = 'dashboard_home',
+  userRole,
+  onSwitchRole,
+  onSwitchToTelemarketer,
   onOpenInterviewPrepDocument,
   onLoadBusinessDocToEditor,
   onOpenInvoiceGenerator,
@@ -83,6 +92,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   const [user, setUser] = useState<FirebaseUser | null>(auth.currentUser);
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab | string>(initialTab);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const { formatPrice, userCurrency, setUserCurrency } = useLocale();
+  const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
   
   // Recharge, Payment & Subscription Modals
   const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
@@ -898,6 +909,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         profile={profile}
         documentsCount={documents.length}
         userBalance={profile.balance ?? 0}
+        userRole={userRole || (profile.userRole as 'seller' | 'telemarketer')}
+        onSwitchRole={onSwitchRole}
+        onSwitchToTelemarketer={onSwitchToTelemarketer}
         onOpenRecharge={() => setIsRechargeModalOpen(true)}
         onOpenAdmin={onOpenAdmin}
         onSignOut={onSignOut ? onSignOut : async () => {
@@ -948,6 +962,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       <>
                         <span className="sm:hidden">Ma Boutique</span>
                         <span className="hidden sm:inline">Ma Boutique & Liens de Vente</span>
+                      </>
+                    )
+                    : activeSidebarTab === 'marketplace' || activeSidebarTab === 'telemarketer' ? (
+                      <>
+                        <span className="sm:hidden">Marketplace Offres</span>
+                        <span className="hidden sm:inline">Marketplace Télévendeurs & Offres Certifiées</span>
+                      </>
+                    )
+                    : activeSidebarTab === 'settings' || activeSidebarTab === 'parametres' ? (
+                      <>
+                        <span className="sm:hidden">Paramètres</span>
+                        <span className="hidden sm:inline">Paramètres du Compte & Préférences</span>
                       </>
                     )
                     : activeSidebarTab === 'affiliation' ? (
@@ -1005,6 +1031,103 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               </button>
             )}
 
+            {/* RÔLE UTILISATEUR : [Vendeur / Commerçant] vs [Télévendeur / Affilié] */}
+            <div className="inline-flex items-center rounded-xl bg-slate-900 border border-slate-800 p-0.5 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={async () => {
+                  setProfile(prev => ({ ...prev, userRole: 'seller' }));
+                  try {
+                    if (user?.uid) await saveCandidateProfile({ ...profile, userRole: 'seller' });
+                  } catch (_e) {}
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('dokya_user_role', 'seller');
+                  }
+                  setActiveSidebarTab('store');
+                }}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  profile.userRole !== 'telemarketer'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Mode Vendeur / Commerçant"
+              >
+                <ShoppingBag className="w-3 h-3" />
+                <span>Vendeur</span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setProfile(prev => ({ ...prev, userRole: 'telemarketer' }));
+                  try {
+                    if (user?.uid) await saveCandidateProfile({ ...profile, userRole: 'telemarketer' });
+                  } catch (_e) {}
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('dokya_user_role', 'telemarketer');
+                  }
+                  if (onSwitchToTelemarketer) {
+                    onSwitchToTelemarketer();
+                  } else {
+                    setActiveSidebarTab('marketplace');
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  profile.userRole === 'telemarketer'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Accéder à l'Espace Dédié Télévendeur"
+              >
+                <Briefcase className="w-3 h-3" />
+                <span>Télévendeur</span>
+              </button>
+            </div>
+
+            {/* SÉLECTEUR GLOBAL DE DEVISE */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl bg-slate-900 text-slate-300 hover:text-white border border-slate-700/80 transition-all cursor-pointer"
+                title="Changer la devise globale (USD, FCFA XOF/XAF, EUR)"
+              >
+                <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="font-mono">{userCurrency}</span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {isCurrencyDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                  {[
+                    { code: 'XOF' as SupportedCurrency, label: 'FCFA XOF', flag: '🇸🇳' },
+                    { code: 'XAF' as SupportedCurrency, label: 'FCFA XAF', flag: '🇨🇲' },
+                    { code: 'EUR' as SupportedCurrency, label: 'Euro (€)', flag: '🇪🇺' },
+                    { code: 'USD' as SupportedCurrency, label: 'Dollar ($)', flag: '🇺🇸' }
+                  ].map((curr) => (
+                    <button
+                      key={curr.code}
+                      type="button"
+                      onClick={() => {
+                        setUserCurrency(curr.code);
+                        setIsCurrencyDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                        userCurrency === curr.code
+                          ? 'bg-indigo-600 text-white font-bold'
+                          : 'text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span>{curr.flag}</span>
+                        <span>{curr.label}</span>
+                      </span>
+                      {userCurrency === curr.code && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Quick Balance indicator */}
             <div 
               onClick={() => setIsRechargeModalOpen(true)}
@@ -1013,7 +1136,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             >
               <Wallet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
               <span className="text-[11px] sm:text-xs font-black text-emerald-400 whitespace-nowrap">
-                {(profile.balance ?? 0).toLocaleString('fr-FR')} <span className="text-[9px] sm:text-[10px] text-emerald-300">FCFA</span>
+                {formatPrice(profile.balance ?? 0)}
               </span>
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded-md hidden lg:inline">
                 + Recharger
@@ -1854,6 +1977,22 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           )}
 
           {/* ========================================================================= */}
+          {/* TAB: MARKETPLACE DES OFFRES DE VENTE (RÉSERVÉ TÉLÉVENDEURS CERTIFIÉS)     */}
+          {/* ========================================================================= */}
+          {(activeSidebarTab === 'marketplace' || activeSidebarTab === 'telemarketer') && (
+            <div className="space-y-6 animate-in fade-in">
+              <DokyaTelemarketerMarketplaceView
+                profile={profile}
+                onUpdateProfile={(updated) => {
+                  setProfile(prev => ({ ...prev, ...updated }));
+                }}
+                onOpenRecharge={() => setIsRechargeModalOpen(true)}
+                userBalance={profile.balance ?? 0}
+              />
+            </div>
+          )}
+
+          {/* ========================================================================= */}
           {/* TAB: AFFILIATION & PARRAINAGE (20% COMMISSION DIRECTE)                   */}
           {/* ========================================================================= */}
           {activeSidebarTab === 'affiliation' && (
@@ -2280,7 +2419,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       Compte Dokya Wallet
                     </span>
                     <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                      Solde Disponible : <span className="text-emerald-400">{(profile.balance ?? 0).toLocaleString('fr-FR')} FCFA</span>
+                      Solde Disponible : <span className="text-emerald-400">{formatPrice(profile.balance ?? 0)}</span>
                     </h3>
                     <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
                       Utilisez votre solde pour débloquer vos documents en 1 clic ou activer un Pass VIP.
@@ -2335,6 +2474,22 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 currentUser={user}
                 userProfile={profile}
                 onBack={() => setActiveSidebarTab('dashboard_home')}
+              />
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 9: PARAMÈTRES DU COMPTE & PRÉFÉRENCES (LANGUE, DEVISE, SÉCURITÉ, RÔLE) */}
+          {/* ========================================================================= */}
+          {(activeSidebarTab === 'settings' || activeSidebarTab === 'parametres') && (
+            <div className="space-y-6 animate-in fade-in">
+              <SettingsView
+                profile={profile}
+                onUpdateProfile={(updated) => {
+                  setProfile(prev => ({ ...prev, ...updated }));
+                }}
+                userBalance={profile.balance ?? 0}
+                onSwitchToTelemarketer={onSwitchToTelemarketer}
               />
             </div>
           )}

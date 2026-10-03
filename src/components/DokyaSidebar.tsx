@@ -18,16 +18,18 @@ import {
   CheckCircle2, 
   ShieldCheck, 
   LogOut, 
-  ExternalLink,
-  ChevronLeft,
-  Menu,
-  X,
-  Building2,
-  Users,
-  MessageSquare,
-  Boxes,
-  ShoppingBag,
-  Store
+  ExternalLink, 
+  ChevronLeft, 
+  Menu, 
+  X, 
+  Building2, 
+  Users, 
+  MessageSquare, 
+  Boxes, 
+  ShoppingBag, 
+  Store,
+  Briefcase,
+  Settings
 } from 'lucide-react';
 import { CandidateProfile, SavedUserDocument, isUserVipActive } from '../types';
 import { auth } from '../lib/firebase';
@@ -43,6 +45,7 @@ export type SidebarTab =
   | 'business'
   | 'inventory'
   | 'store'
+  | 'marketplace'
   | 'affiliation'
   | 'help'
   | 'support'
@@ -52,6 +55,7 @@ export type SidebarTab =
   | 'tarifs'
   | 'subscription'
   | 'profile'
+  | 'settings'
   | 'wallet'
   | 'transactions';
 
@@ -61,6 +65,9 @@ interface DokyaSidebarProps {
   profile: CandidateProfile;
   documentsCount?: number;
   userBalance: number;
+  userRole?: 'seller' | 'telemarketer';
+  onSwitchRole?: (role: 'seller' | 'telemarketer') => void;
+  onSwitchToTelemarketer?: () => void;
   onOpenRecharge: () => void;
   onOpenAdmin?: () => void;
   onSignOut?: () => void;
@@ -110,6 +117,9 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
   profile,
   documentsCount = 0,
   userBalance,
+  userRole,
+  onSwitchRole,
+  onSwitchToTelemarketer,
   onOpenRecharge,
   onOpenAdmin,
   onSignOut,
@@ -118,6 +128,10 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
 }) => {
   const [isGeneratorOpen, setIsGeneratorOpen] = useState<boolean>(true);
   const completionPercentage = calculateProfileCompletion(profile);
+
+  const isTelemarketer = (userRole === 'telemarketer') || 
+    profile?.userRole === 'telemarketer' || 
+    (typeof window !== 'undefined' && localStorage.getItem('dokya_user_role') === 'telemarketer');
 
   const currentUser = auth.currentUser;
   const isUserAdmin = isAdminEmail(currentUser?.email || profile?.email);
@@ -327,46 +341,96 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </div>
             </button>
 
-            {/* 2.3b Dokya Business : Stock & Inventaire */}
-            <button
-              id="nav-dokya-inventory"
-              type="button"
-              onClick={() => handleNavClick('inventory')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
-                activeTab === 'inventory'
-                  ? 'bg-white/10 text-white font-semibold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Boxes className={`w-4 h-4 shrink-0 transition-colors ${
-                  activeTab === 'inventory' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                }`} />
-                <span>Stock & Inventaire</span>
-              </div>
-            </button>
+            {/* 2.3b Dokya Business : Stock & Inventaire (Vendeur) */}
+            {!isTelemarketer && (
+              <button
+                id="nav-dokya-inventory"
+                type="button"
+                onClick={() => handleNavClick('inventory')}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
+                  activeTab === 'inventory'
+                    ? 'bg-white/10 text-white font-semibold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Boxes className={`w-4 h-4 shrink-0 transition-colors ${
+                    activeTab === 'inventory' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                  }`} />
+                  <span>Stock & Inventaire</span>
+                </div>
+              </button>
+            )}
 
-            {/* 2.3c Dokya Boutique : Mes Produits & Liens de Vente */}
-            <button
-              id="nav-dokya-store"
-              type="button"
-              onClick={() => handleNavClick('store')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
-                activeTab === 'store' || activeTab === 'boutique'
-                  ? 'bg-white/10 text-white font-semibold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <ShoppingBag className={`w-4 h-4 shrink-0 transition-colors ${
-                  activeTab === 'store' || activeTab === 'boutique' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'
-                }`} />
-                <span>Boutique & Liens</span>
-              </div>
-              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                Shop ✨
-              </span>
-            </button>
+            {/* 2.3c Dokya Boutique : Mes Produits & Liens de Vente (Vendeur) */}
+            {!isTelemarketer && (
+              <button
+                id="nav-dokya-store"
+                type="button"
+                onClick={() => handleNavClick('store')}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
+                  activeTab === 'store' || activeTab === 'boutique'
+                    ? 'bg-white/10 text-white font-semibold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <ShoppingBag className={`w-4 h-4 shrink-0 transition-colors ${
+                    activeTab === 'store' || activeTab === 'boutique' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'
+                  }`} />
+                  <span>Boutique & Liens</span>
+                </div>
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  Shop ✨
+                </span>
+              </button>
+            )}
+
+            {/* 2.3d MARKETPLACE DES OFFRES DE VENTE (Réservé Télévendeurs) */}
+            {isTelemarketer ? (
+              <button
+                id="nav-dokya-marketplace"
+                type="button"
+                onClick={() => {
+                  if (onSwitchToTelemarketer) onSwitchToTelemarketer();
+                  else handleNavClick('marketplace');
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
+                  activeTab === 'marketplace' || activeTab === 'telemarketer'
+                    ? 'bg-white/10 text-white font-semibold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Briefcase className={`w-4 h-4 shrink-0 transition-colors ${
+                    activeTab === 'marketplace' || activeTab === 'telemarketer' ? 'text-emerald-400' : 'text-slate-400 group-hover:text-slate-200'
+                  }`} />
+                  <span>Catalogue d'Offres</span>
+                </div>
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Marketplace 💰
+                </span>
+              </button>
+            ) : (
+              <button
+                id="nav-go-telemarketer"
+                type="button"
+                onClick={() => {
+                  if (onSwitchToTelemarketer) onSwitchToTelemarketer();
+                  else handleNavClick('marketplace');
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/50 text-emerald-300 hover:text-white"
+                title="Accéder au portail indépendant des Télévendeurs Dokya"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Briefcase className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>Espace Télévendeurs</span>
+                </div>
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  PRO 💼
+                </span>
+              </button>
+            )}
 
             {/* 2.4 Parrainage & Affiliation */}
             <button
@@ -504,7 +568,7 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               )}
             </button>
 
-            {/* 6. Mon Profil & Paramètres */}
+            {/* 6. Mon Profil */}
             <button
               id="nav-profile"
               type="button"
@@ -519,7 +583,26 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
                 <UserCircle2 className={`w-4 h-4 shrink-0 transition-colors ${
                   activeTab === 'profile' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
                 }`} />
-                <span>Mon Profil & Paramètres</span>
+                <span>Mon Profil</span>
+              </div>
+            </button>
+
+            {/* 6.1 Paramètres (Devise, Langue, Sécurité, Rôle) */}
+            <button
+              id="nav-settings"
+              type="button"
+              onClick={() => handleNavClick('settings')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
+                activeTab === 'settings'
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Settings className={`w-4 h-4 shrink-0 transition-colors ${
+                  activeTab === 'settings' ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                }`} />
+                <span>Paramètres</span>
               </div>
             </button>
 

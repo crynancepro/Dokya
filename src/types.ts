@@ -673,6 +673,17 @@ export interface CandidateProfile {
   affiliateBalance?: number; // Solde d'affiliation disponible pour retrait en FCFA
   totalAffiliateEarnings?: number; // Cumul historique des commissions approuvées en FCFA
   totalReferred?: number; // Nombre de filleuls apportés
+  userRole?: 'seller' | 'telemarketer' | 'candidate'; // Rôle utilisateur Dokya actif (Vendeur / Télévendeur / Candidat)
+  telemarketerBadge?: boolean; // Badge Télévendeur Certifié acheté
+  telemarketerBadgeDate?: string;
+  isTelemarketerCertified?: boolean;
+  certifiedBadgePurchased?: boolean;
+  certifiedBadgeDate?: string;
+  telemarketerPlan?: 'vip' | 'standard';
+  telemarketerMode?: 'standard' | 'vip'; // standard = prélèvement 20%, vip = 100% commissions conservées
+  telemarketerVipExpiresAt?: string;
+  languagePreference?: 'fr' | 'en';
+  preferredCurrency?: string; // XOF, XAF, EUR, USD
   updatedAt: string;
 }
 
@@ -1059,6 +1070,7 @@ export type ProductStatus = 'active' | 'archived' | 'draft';
 export interface ProductItem {
   id: string;
   userId: string; // Propriétaire du produit / vendeur
+  sellerId?: string; // Alias pour userId
   sellerUsername: string; // ex: 'moussa-diop' pour dokya.site/b/moussa-diop
   sellerName: string;
   sellerPhone?: string;
@@ -1071,12 +1083,20 @@ export interface ProductItem {
   currency: string; // 'FCFA'
   category?: string;
   images: string[];
+  imageUrl?: string; // Première image ou image principale
   saleType: ProductSaleType;
   redirectUrl?: string; // Si Option A (Redirection externe)
   enableDirectOrder?: boolean; // Si Option B (Formulaire direct Dokya)
   status: ProductStatus;
   viewsCount?: number;
   ordersCount?: number;
+  // Télévendeurs / Marketplace d'Affiliation
+  commissionType?: 'fixed' | 'percent'; // Type de commission
+  commissionValue?: number; // Valeur (ex: 2000 FCFA ou 15%)
+  targetCountries?: string[]; // 'ALL' ou codes pays ['SN', 'CI', 'CM', 'CG', 'BF', 'ML', 'BJ', 'TG', 'GA', 'FR', 'US', etc.]
+  isAffiliationEnabled?: boolean; // Visible sur la marketplace télévendeurs (défaut true si commission définie)
+  sellerRating?: number; // Note moyenne du vendeur (1-5)
+  sellerReviewsCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1091,6 +1111,7 @@ export interface StoreOrder {
   productPrice: number;
   productImage?: string;
   sellerId: string;
+  sellerName?: string;
   sellerUsername: string;
   buyerName: string;
   buyerPhone: string; // WhatsApp ou Téléphone
@@ -1101,8 +1122,33 @@ export interface StoreOrder {
   currency: string;
   status: StoreOrderStatus;
   paymentMethod?: string;
+  // Flux Télévendeur / Marketplace & Anti-Fraude
+  telemarketerId?: string; // UID du télévendeur
+  telemarketerName?: string;
+  telemarketerPhone?: string;
+  telemarketerEmail?: string;
+  commissionGross?: number; // Montant brut de commission
+  commissionNet?: number; // Montant net après prélèvement 20% (si standard) ou 100% (si VIP)
+  commissionRateDokya?: number; // 20 si standard, 0 si VIP
+  telemarketerMode?: 'standard' | 'vip';
+  proofUrl?: string; // Image ou document de preuve (conversation WhatsApp, bordereau, etc.)
+  proofNote?: string;
+  sourceType?: 'direct_store' | 'telemarketer_offsite'; // Source commande
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SellerReview {
+  id: string;
+  sellerId: string;
+  sellerName?: string;
+  sellerUsername?: string;
+  telemarketerId: string;
+  telemarketerName: string;
+  rating: number; // 1 à 5 étoiles
+  comment: string;
+  tags?: string[]; // ex: ['Paiement rapide', 'Produit conforme', 'Support réactif']
+  createdAt: string;
 }
 
 export interface SellerStoreProfile {

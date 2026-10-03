@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { CandidateProfile, isUserVipActive } from '../types';
 import { usePricing } from '../contexts/PricingContext';
+import { useLocale } from '../contexts/LocaleContext';
 
 interface PricingOffersViewProps {
   userBalance: number;
@@ -58,6 +59,8 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
     formatPrice
   } = usePricing();
 
+  const { formatPrice: formatLocalePrice } = useLocale();
+
   const [promoInput, setPromoInput] = useState<string>('');
   const [isCheckingPromo, setIsCheckingPromo] = useState<boolean>(false);
   const [promoError, setPromoError] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
     setIsCheckingPromo(true);
     setPromoError(null);
     try {
-      const res = await applyGlobalPromo(code, 1.99);
+      const res = await applyGlobalPromo(code, 1000);
       if (!res.valid) {
         setPromoError(res.message || `Code "${code}" non valide.`);
       } else {
@@ -91,8 +94,8 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
     {
       id: 'cv' as const,
       title: 'CV ATS Professionnel',
-      price: '1.99 $',
-      priceNum: 1.99,
+      price: formatLocalePrice(1000),
+      priceNum: 1000,
       badge: 'Indispensable',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
       icon: FileText,
@@ -104,14 +107,14 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Score ATS en temps réel & conseils IA',
         'Sans filigrane & téléchargements illimités'
       ],
-      cta: 'Créer mon CV ATS (1.99 $)',
+      cta: `Créer mon CV ATS (${formatLocalePrice(1000)})`,
       serviceKey: 'cv' as const
     },
     {
       id: 'letter' as const,
       title: 'Lettre de Motivation IA',
-      price: '1.99 $',
-      priceNum: 1.99,
+      price: formatLocalePrice(1000),
+      priceNum: 1000,
       badge: 'Sur-mesure',
       badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
       icon: Mail,
@@ -123,14 +126,14 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Exportation immédiate PDF & Word (.docx)',
         'Sans filigrane & modifications libres'
       ],
-      cta: 'Rédiger ma Lettre (1.99 $)',
+      cta: `Rédiger ma Lettre (${formatLocalePrice(1000)})`,
       serviceKey: 'letter' as const
     },
     {
       id: 'pack_duo' as const,
       title: 'Pack Duo Carrière',
-      price: '2.99 $',
-      priceNum: 2.99,
+      price: formatLocalePrice(1500),
+      priceNum: 1500,
       badge: 'Économie 25%',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
       icon: Package,
@@ -142,14 +145,14 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Zéro filigrane & ré-édition permanente',
         'Idéal pour toute candidature stratégique'
       ],
-      cta: 'Choisir le Pack Duo (2.99 $)',
+      cta: `Choisir le Pack Duo (${formatLocalePrice(1500)})`,
       serviceKey: 'full_pack' as const
     },
     {
       id: 'business_doc' as const,
       title: 'Facture & Devis OHADA',
-      price: '1.99 $',
-      priceNum: 1.99,
+      price: formatLocalePrice(1000),
+      priceNum: 1000,
       badge: 'Entreprises & PME',
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
       icon: FileText,
@@ -161,7 +164,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Export PDF vectoriel & conversion devis en facture',
         'Sans filigrane avec signature & logo officiel'
       ],
-      cta: 'Créer Devis / Facture (1.99 $)',
+      cta: `Créer Devis / Facture (${formatLocalePrice(1000)})`,
       serviceKey: 'facture' as const
     }
   ];
@@ -171,7 +174,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
       id: 'free' as const,
       title: 'Formule Gratuite',
       duration: 'Gratuit pour toujours',
-      price: '0 $',
+      price: formatLocalePrice(0),
       priceNum: 0,
       popular: false,
       badge: 'Découverte',
@@ -184,14 +187,14 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Accès aux 50+ modèles et assistant IA de rédaction',
         'Aperçu interactif complet avant export'
       ],
-      cta: 'Formule Actuelle (0 $)'
+      cta: `Formule Actuelle (${formatLocalePrice(0)})`
     },
     {
       id: 'monthly' as const,
       title: 'Abonnement Mensuel',
       duration: '30 Jours d\'accès illimité',
-      price: '9.99 $',
-      priceNum: 9.99,
+      price: formatLocalePrice(5000),
+      priceNum: 5000,
       popular: true,
       badge: '🔥 Le Plus Populaire',
       badgeColor: 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black border-amber-400',
@@ -204,14 +207,14 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Exports Word (.docx) & PDF HD illimités',
         'Support prioritaire 7j/7 sur WhatsApp'
       ],
-      cta: "S'abonner (9.99 $ / mois)"
+      cta: `S'abonner (${formatLocalePrice(5000)} / mois)`
     },
     {
       id: 'semester' as const,
       title: 'Abonnement 6 Mois',
-      duration: '6 Mois d\'accès illimité (~7.99 $/mois)',
-      price: '47.95 $',
-      priceNum: 47.95,
+      duration: `6 Mois d'accès illimité (~${formatLocalePrice(4166)}/mois)`,
+      price: formatLocalePrice(25000),
+      priceNum: 25000,
       popular: false,
       badge: '💎 Économisez 20%',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30 font-black',
@@ -223,14 +226,14 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Zéro filigrane sur l\'intégralité des exports',
         'Support prioritaire dédié sur WhatsApp'
       ],
-      cta: "S'abonner (47.95 $ pour 6 mois)"
+      cta: `S'abonner (${formatLocalePrice(25000)} pour 6 mois)`
     },
     {
       id: 'annual' as const,
       title: 'Abonnement Annuel',
-      duration: '365 Jours d\'accès illimité (~5.99 $/mois)',
-      price: '71.90 $',
-      priceNum: 71.90,
+      duration: `365 Jours d'accès illimité (~${formatLocalePrice(3333)}/mois)`,
+      price: formatLocalePrice(40000),
+      priceNum: 40000,
       popular: false,
       badge: '👑 Économisez 40%',
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 font-black',
@@ -242,7 +245,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
         'Mises à jour & nouveaux modèles en avant-première',
         'Assistance VIP dédiée et relecture personnalisée'
       ],
-      cta: "S'abonner (71.90 $ / an)"
+      cta: `S'abonner (${formatLocalePrice(40000)} / an)`
     }
   ];
 
@@ -295,7 +298,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
           <div className="bg-slate-900/90 border border-slate-800 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-inner">
             <Wallet className="w-4 h-4 text-emerald-400" />
             <span className="text-xs text-slate-300">Votre Solde Actuel :</span>
-            <span className="text-sm font-black text-emerald-400">{(userBalance ?? 0).toLocaleString('fr-FR')} FCFA</span>
+            <span className="text-sm font-black text-emerald-400">{formatLocalePrice(userBalance ?? 0)}</span>
           </div>
 
           <button

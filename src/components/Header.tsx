@@ -2,22 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, RotateCcw, Zap, User, ShieldCheck, LogIn, LogOut,
   ArrowLeft, FileText, Mail, FileCheck, Receipt, Package, Wallet, Check, BookOpen, Crown, CreditCard,
-  Layers, LayoutDashboard
+  Layers, LayoutDashboard, Coins, Briefcase, ShoppingBag, ChevronDown, Globe
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { isAdminEmail } from '../lib/adminAuth';
 import { DokyaLogo } from './DokyaLogo';
-import { useLocale } from '../contexts/LocaleContext';
+import { useLocale, SupportedCurrency } from '../contexts/LocaleContext';
 import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   currentView?: string;
   userBalance?: number;
+  userRole?: 'seller' | 'telemarketer';
+  onSwitchRole?: (role: 'seller' | 'telemarketer') => void;
   onLoadSample: () => void;
   onReset: () => void;
   hasData: boolean;
   onOpenDashboard?: () => void;
+  onOpenTelemarketer?: () => void;
   onOpenAuth?: () => void;
   onSignOut?: () => void;
   onBackToTemplates?: () => void;
@@ -30,10 +33,13 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ 
   currentView = 'cv',
   userBalance = 0,
+  userRole: propUserRole,
+  onSwitchRole,
   onLoadSample, 
   onReset, 
   hasData,
   onOpenDashboard,
+  onOpenTelemarketer,
   onOpenAuth,
   onSignOut,
   onBackToTemplates,
@@ -41,7 +47,47 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenRecharge
 }) => {
   const [user, setUser] = useState<FirebaseUser | null>(auth.currentUser);
-  const { formatPrice, userCurrency } = useLocale();
+  const { formatPrice, userCurrency, setUserCurrency } = useLocale();
+
+  // Active Role state
+  const [activeRole, setActiveRole] = useState<'seller' | 'telemarketer'>(() => {
+    if (propUserRole) return propUserRole;
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dokya_user_role') as 'seller' | 'telemarketer';
+      if (saved) return saved;
+    }
+    return 'seller';
+  });
+
+  const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (propUserRole) {
+      setActiveRole(propUserRole);
+    }
+  }, [propUserRole]);
+
+  const handleRoleChange = (newRole: 'seller' | 'telemarketer') => {
+    setActiveRole(newRole);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dokya_user_role', newRole);
+    }
+    if (onSwitchRole) {
+      onSwitchRole(newRole);
+    }
+    // Si l'utilisateur clique sur Télévendeur, on le dirige sur la page dédiée Télévendeur
+    if (newRole === 'telemarketer') {
+      if (onOpenTelemarketer) {
+        onOpenTelemarketer();
+      } else if (onOpenDashboard) {
+        onOpenDashboard();
+      }
+    } else {
+      if (onOpenDashboard) {
+        onOpenDashboard();
+      }
+    }
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
@@ -175,6 +221,78 @@ export const Header: React.FC<HeaderProps> = ({
           {/* ZONE 3 (RIGHT): FORM ACTIONS & WALLET BALANCE */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             
+            {/* RÔLE UTILISATEUR : [Vendeur / Commerçant] vs [Télévendeur / Affilié] */}
+            <div className="hidden sm:inline-flex items-center rounded-xl bg-slate-900 border border-slate-800 p-0.5 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => handleRoleChange('seller')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  activeRole === 'seller'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Mode Vendeur / Commerçant : Créez vos produits et gérez vos ventes"
+              >
+                <ShoppingBag className="w-3 h-3" />
+                <span>Vendeur</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRoleChange('telemarketer')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  activeRole === 'telemarketer'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Mode Télévendeur / Affilié : Marketplace d'offres et commissions directes"
+              >
+                <Briefcase className="w-3 h-3" />
+                <span>Télévendeur</span>
+              </button>
+            </div>
+
+            {/* SÉLECTEUR GLOBAL DE DEVISE */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl bg-slate-900 text-slate-300 hover:text-white border border-slate-700/80 transition-all cursor-pointer"
+                title="Changer la devise globale d'affichage (USD, FCFA, EUR)"
+              >
+                <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="font-mono">{userCurrency}</span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {isCurrencyDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                  {[
+                    { code: 'XOF' as SupportedCurrency, label: 'FCFA XOF', flag: '🇸🇳' },
+                    { code: 'XAF' as SupportedCurrency, label: 'FCFA XAF', flag: '🇨🇲' },
+                    { code: 'USD' as SupportedCurrency, label: 'USD ($)', flag: '🇺🇸' },
+                    { code: 'EUR' as SupportedCurrency, label: 'EUR (€)', flag: '🇪🇺' }
+                  ].map((c) => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => {
+                        setUserCurrency(c.code);
+                        setIsCurrencyDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                        userCurrency === c.code
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      <span>{c.flag} {c.label}</span>
+                      {userCurrency === c.code && <Check className="w-3 h-3 text-white" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Quick Sample Filler */}
             <button
               onClick={onLoadSample}
