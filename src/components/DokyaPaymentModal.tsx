@@ -358,8 +358,8 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
 
-      // Auto-apply published promo
-      if (publishedPromo && (publishedPromo.active || publishedPromo.isPublished)) {
+      // Auto-apply published promo (only for non-recharge purchases)
+      if (mode !== 'recharge' && publishedPromo && (publishedPromo.active || publishedPromo.isPublished)) {
         applyPublishedPromo(publishedPromo);
       } else {
         setAppliedPromo(null);
@@ -368,13 +368,18 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     } else {
       stopScanningProcesses();
     }
-  }, [isOpen, publishedPromo]);
+  }, [isOpen, publishedPromo, mode]);
 
   if (!isOpen) return null;
 
   const rawPrice = getRawPrice();
   const safeBalance = Number(userBalance) || 0;
-  const payablePrice = appliedPromo ? appliedPromo.finalAmount : rawPrice;
+  const effectiveRechargeAmount = isCustomRecharge
+    ? (parseInt(customRechargeInput, 10) || 0)
+    : rechargeAmount;
+  const payablePrice = activeMode === 'recharge'
+    ? effectiveRechargeAmount
+    : (appliedPromo ? appliedPromo.finalAmount : rawPrice);
   const priceInFCFA = isUSDItem ? Math.round(payablePrice * USD_TO_FCFA_RATE) : payablePrice;
   const isFreeWithPromo = appliedPromo !== null && appliedPromo.isFree;
   const hasEnoughBalance = safeBalance >= priceInFCFA;
@@ -1217,9 +1222,15 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         placeholder="Autre montant libre (min. 300 FCFA)..."
                         value={customRechargeInput}
                         onChange={(e) => {
-                          setCustomRechargeInput(e.target.value);
+                          const rawVal = e.target.value;
+                          setCustomRechargeInput(rawVal);
                           setIsCustomRecharge(true);
-                          if (errorMessage) setErrorMessage(null);
+                          const parsed = parseInt(rawVal, 10);
+                          const safeVal = isNaN(parsed) ? 0 : parsed;
+                          setRechargeAmount(safeVal);
+                          if (safeVal >= 300 && errorMessage) {
+                            setErrorMessage(null);
+                          }
                         }}
                         className={`w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-950 border transition-all text-white placeholder:text-slate-500 focus:outline-hidden ${
                           isCustomRecharge

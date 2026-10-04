@@ -1,14 +1,14 @@
 /**
- * API Route: /api/admin/stats
+ * API Route: /api/admin/stats.js
  * 100% autonome - Compatible Vercel Serverless Function & Next.js App Router
  * Renvoie les métriques et KPIs administratifs de Dokya
  */
 
 import { dbAdmin as importedDbAdmin } from '../../lib/firebaseAdmin.js';
 
-let _resolvedDb: any = importedDbAdmin || null;
+let _resolvedDb = importedDbAdmin || null;
 
-async function getDbAdmin(): Promise<any> {
+async function getDbAdmin() {
   if (_resolvedDb) return _resolvedDb;
   try {
     const mod = await import('../../lib/firebaseAdmin.js');
@@ -25,7 +25,7 @@ async function getDbAdmin(): Promise<any> {
   return null;
 }
 
-function isRealCashInflow(tx: any): boolean {
+function isRealCashInflow(tx) {
   if (!tx) return false;
   const isApproved =
     tx.status === 'APPROVED' ||
@@ -99,15 +99,15 @@ async function computeRealStats() {
     let unlimitedRevenue = 0;
     let walletRechargeRevenue = 0;
 
-    const allTx = (txSnap?.docs || []).map((d: any) => ({ id: d.id, ...d.data() }));
+    const allTx = (txSnap?.docs || []).map(d => ({ id: d.id, ...d.data() }));
     allTx.forEach(tx => {
       if (isRealCashInflow(tx)) {
-        const amt = Math.abs(Number((tx as any).amount || (tx as any).expectedAmount || 0));
+        const amt = Math.abs(Number(tx.amount || tx.expectedAmount || 0));
         totalRevenue += amt;
         successfulCount++;
 
-        const typeStr = ((tx as any).type || '').toLowerCase();
-        const desc = (((tx as any).description || '') + ' ' + ((tx as any).title || '')).toLowerCase();
+        const typeStr = (tx.type || '').toLowerCase();
+        const desc = ((tx.description || '') + ' ' + (tx.title || '')).toLowerCase();
 
         if (typeStr.includes('wallet') || desc.includes('recharge') || desc.includes('crédit')) {
           walletRechargeRevenue += amt;
@@ -125,7 +125,7 @@ async function computeRealStats() {
 
     let totalCirculatingBalance = 0;
     let totalCVsGenerated = 0;
-    (userSnap?.docs || []).forEach((d: any) => {
+    (userSnap?.docs || []).forEach(d => {
       const u = d.data();
       totalCirculatingBalance += Number(u.walletBalance || u.balance || 0);
       totalCVsGenerated += Number(u.documentsCount || 0);
@@ -158,7 +158,7 @@ async function computeRealStats() {
   }
 }
 
-export async function GET(req?: Request): Promise<Response> {
+export async function GET(req) {
   const stats = await computeRealStats();
   return new Response(
     JSON.stringify({
@@ -177,7 +177,7 @@ export async function GET(req?: Request): Promise<Response> {
   );
 }
 
-export async function OPTIONS(): Promise<Response> {
+export async function OPTIONS() {
   return new Response(null, {
     status: 204,
     headers: {
@@ -188,7 +188,7 @@ export async function OPTIONS(): Promise<Response> {
   });
 }
 
-export default async function handler(req: any, res?: any) {
+export default async function handler(req, res) {
   if (!res || typeof res.status !== 'function') {
     return GET(req);
   }

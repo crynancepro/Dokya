@@ -4,7 +4,7 @@
  * Compatible Vercel Serverless Function & Next.js App Router / Express
  */
 
-import admin, { db } from '../../app/lib/firebaseAdmin';
+import admin, { db } from '../../lib/firebaseAdmin.js';
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json',

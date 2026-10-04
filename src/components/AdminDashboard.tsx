@@ -1582,7 +1582,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handlePurgeReceipts = async () => {
     setIsPurgingReceipts(true);
     try {
-      const res = await purgeExpiredPaymentReceipts(transactionsList as any);
+      const res = await purgeExpiredPaymentReceipts(Array.isArray(transactionsList) ? transactionsList : []);
       if (res.purgedCount > 0) {
         setSuccessMsg(`🧹 ${res.purgedCount} reçu(s) (+24h) purgé(s) du stockage avec succès. Historique comptable conservé.`);
       } else {

@@ -118,6 +118,13 @@ service cloud.firestore {
       allow create, update, delete: if true;
     }
 
+    // Avis & évaluations vendeurs / télévendeurs
+    match /seller_reviews/{reviewId} {
+      allow read, list: if true;
+      allow create: if true;
+      allow update, delete: if isSignedIn() || isAdmin();
+    }
+
     match /notifications/{notifId} {
       allow read, list: if true;
       allow create, update, delete: if isSignedIn() || isAdmin();

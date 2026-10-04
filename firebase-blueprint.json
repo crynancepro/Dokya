@@ -294,9 +294,42 @@
         }
       },
       "required": ["name", "quantity"]
+    },
+    "SellerReview": {
+      "title": "SellerReview",
+      "description": "Reviews and ratings left for sellers and telemarketers",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sellerId": {
+          "type": "string"
+        },
+        "authorName": {
+          "type": "string"
+        },
+        "rating": {
+          "type": "number"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["sellerId", "rating"]
     }
   },
   "firestore": {
+    "/seller_reviews/{reviewId}": {
+      "schema": {
+        "$ref": "#/entities/SellerReview"
+      },
+      "description": "Collection of seller reviews and ratings"
+    },
     "/user_profiles/{userId}": {
       "schema": {
         "$ref": "#/entities/UserProfile"
