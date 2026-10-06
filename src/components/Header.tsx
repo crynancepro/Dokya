@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Sparkles, RotateCcw, Zap, User, ShieldCheck, LogIn, LogOut,
   ArrowLeft, FileText, Mail, FileCheck, Receipt, Package, Wallet, Check, BookOpen, Crown, CreditCard,
@@ -48,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [user, setUser] = useState<FirebaseUser | null>(auth.currentUser);
   const { formatPrice, userCurrency, setUserCurrency } = useLocale();
+  const currencyDropdownRef = useRef<HTMLDivElement>(null);
 
   // Active Role state
   const [activeRole, setActiveRole] = useState<'seller' | 'telemarketer'>(() => {
@@ -60,6 +61,21 @@ export const Header: React.FC<HeaderProps> = ({
   });
 
   const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
+
+  // Fermeture automatique au clic en dehors
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(e.target as Node)) {
+        setIsCurrencyDropdownOpen(false);
+      }
+    };
+    if (isCurrencyDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCurrencyDropdownOpen]);
 
   useEffect(() => {
     if (propUserRole) {
@@ -97,8 +113,8 @@ export const Header: React.FC<HeaderProps> = ({
   const isUserAdmin = isAdminEmail(user?.email);
 
   const getServiceBadge = () => {
-    const cvPrice = userCurrency === 'XOF' ? '1.99 $' : formatPrice(1.99, 'USD');
-    const packPrice = userCurrency === 'XOF' ? '2.99 $' : formatPrice(2.99, 'USD');
+    const cvPrice = formatPrice(1000);
+    const packPrice = formatPrice(1500);
 
     switch (currentView) {
       case 'cv':
@@ -159,7 +175,7 @@ export const Header: React.FC<HeaderProps> = ({
   const activeBadge = getServiceBadge();
 
   return (
-    <header className="bg-slate-950/95 backdrop-blur-md text-slate-100 border-b border-slate-800/90 sticky top-0 z-40 shadow-xl">
+    <header className="bg-slate-950/95 backdrop-blur-md text-slate-100 border-b border-slate-800/90 sticky top-0 z-50 shadow-xl">
       <div className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3">
         
         {/* Clean Dedicated Editor Header Bar */}
@@ -252,7 +268,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* SÉLECTEUR GLOBAL DE DEVISE */}
-            <div className="relative">
+            <div className="relative z-50" ref={currencyDropdownRef}>
               <button
                 type="button"
                 onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
@@ -265,7 +281,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
 
               {isCurrencyDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-[9999] animate-in fade-in zoom-in-95 duration-150">
                   {[
                     { code: 'XOF' as SupportedCurrency, label: 'FCFA XOF', flag: '🇸🇳' },
                     { code: 'XAF' as SupportedCurrency, label: 'FCFA XAF', flag: '🇨🇲' },
@@ -318,14 +334,12 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Notification Bell */}
-            {user && (
-              <NotificationBell 
-                userId={user.uid}
-                onNavigateTab={(tab) => {
-                  if (onOpenDashboard) onOpenDashboard();
-                }}
-              />
-            )}
+            <NotificationBell 
+              userId={user?.uid || 'current_user'}
+              onNavigateTab={(tab) => {
+                if (onOpenDashboard) onOpenDashboard();
+              }}
+            />
 
             {/* Espace Candidat Button with Balance */}
             {onOpenDashboard && (

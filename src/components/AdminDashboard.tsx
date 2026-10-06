@@ -1668,15 +1668,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="flex-1 min-w-0 flex flex-col min-h-screen pb-20">
         
         {/* Top Header */}
-        <header className="sticky top-0 z-30 bg-[#090D16]/95 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-6 lg:px-8 py-3.5 shadow-xl">
-          <div className="flex items-center justify-between flex-wrap gap-3">
+        <header className="sticky top-0 z-30 bg-[#090D16]/95 backdrop-blur-xl border-b border-slate-800/80 px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 shadow-xl">
+          <div className="flex items-center justify-between gap-2 sm:gap-3">
             
             {/* Mobile Hamburger / Desktop Collapse Toggle & Platform Badge */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
                 type="button"
                 onClick={() => setIsMobileSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-xl bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700/60 transition-all cursor-pointer"
+                className="lg:hidden p-2 rounded-xl bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700/60 transition-all cursor-pointer shrink-0"
                 aria-label="Ouvrir le menu de navigation"
               >
                 <Menu className="w-5 h-5" />
@@ -1685,26 +1685,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={handleToggleSidebarCollapse}
-                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-all cursor-pointer text-xs"
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-all cursor-pointer text-xs shrink-0"
                 title={isSidebarCollapsed ? "Agrandir le menu latéral" : "Réduire le menu latéral pour libérer de l'espace"}
               >
                 {isSidebarCollapsed ? <PanelLeftOpen className="w-4 h-4 text-indigo-400" /> : <PanelLeftClose className="w-4 h-4 text-slate-400" />}
                 <span>{isSidebarCollapsed ? "Agrandir menu" : "Réduire menu"}</span>
               </button>
 
-              <div className="flex items-center gap-2.5">
-                <span className="text-xs px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  SUPER ADMIN ACTIF
+                  SUPER ADMIN
                 </span>
-                <span className="hidden sm:inline-block text-xs text-slate-400 font-medium font-mono">
+                <span className="hidden sm:inline-block text-xs text-slate-400 font-medium font-mono truncate max-w-[200px]">
                   {adminEmail}
                 </span>
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Quick Actions (Desktop Full, Mobile Compact) */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Siren Audio Alert Control / Manual Test */}
               <button
                 type="button"
@@ -1724,7 +1724,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   }
                 }}
                 title={isAlarmMuted ? "Alarme coupée (Cliquer pour réactiver ou tester)" : "Sirène audio active pour les alertes urgentes"}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer border ${
+                className={`inline-flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer border ${
                   isAlarmTesting || (!isAlarmMuted && totalEmergencyCount > 0)
                     ? 'bg-rose-600 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-950/50'
                     : isAlarmMuted
@@ -1733,18 +1733,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }`}
               >
                 {isAlarmMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-                <span>{isAlarmTesting ? 'Test Sirène...' : isAlarmMuted ? 'Sirène Coupée' : 'Sirène Active'}</span>
+                <span className="hidden sm:inline">{isAlarmTesting ? 'Test Sirène...' : isAlarmMuted ? 'Sirène Coupée' : 'Sirène Active'}</span>
               </button>
 
               {adminEmail === PRIMARY_ADMIN_EMAIL && (
                 <button
                   onClick={() => setIsPurgeModalOpen(true)}
                   type="button"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-xl bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-600 hover:to-rose-600 text-amber-300 hover:text-white border border-amber-500/40 transition-all cursor-pointer shadow-sm"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-xl bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-600 hover:to-rose-600 text-amber-300 hover:text-white border border-amber-500/40 transition-all cursor-pointer shadow-sm"
                   title="Purger les faux reçus et réinitialiser les soldes de test pour le lancement réel"
                 >
                   <Flame className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline">🔥 Nettoyer démos</span>
+                  <span>🔥 Nettoyer démos</span>
                 </button>
               )}
 
@@ -1756,17 +1756,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }}
                 type="button"
                 disabled={loading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-all cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-all cursor-pointer disabled:opacity-50"
                 title="Rafraîchir les données"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
-                <span>Actualiser</span>
+                <span className="hidden sm:inline">Actualiser</span>
               </button>
 
               <button
                 onClick={onBackHome}
                 type="button"
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950/30 transition-all cursor-pointer"
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950/30 transition-all cursor-pointer"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Voir le Site</span>
@@ -1775,19 +1775,151 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 onClick={handleLogout}
                 type="button"
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs font-bold rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 transition-all cursor-pointer"
                 title="Se déconnecter de la session Administrateur"
               >
                 <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                <span>Déconnexion</span>
+                <span className="hidden sm:inline">Déconnexion</span>
               </button>
             </div>
 
           </div>
         </header>
 
+        {/* MOBILE ADMIN QUICK TAB STRIP (< 1024px) */}
+        <div className="lg:hidden bg-[#090D16] border-b border-slate-800/80 sticky top-[53px] z-20 shadow-md">
+          <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setActiveTab('overview')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'overview'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Aperçu</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('users')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'users'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Utilisateurs ({usersList.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('transactions')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'transactions'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Transactions</span>
+              {financialStats.pendingCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center">
+                  {financialStats.pendingCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('subscriptions')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'subscriptions'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-400" />
+              <span>Pass VIP ({vipStats.active})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('affiliations')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'affiliations'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Télévendeurs</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('business')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'business'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Boutiques</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('pricing')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'pricing'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Tarifs</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('promo')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'promo'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Tag className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Codes Promo ({promoCodesList.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('support')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'support'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Support</span>
+              {urgentSupportCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center animate-pulse">
+                  {urgentSupportCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
         {/* Main Container */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-8 pt-6 space-y-6">
+        <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 space-y-5 sm:space-y-6 min-w-0 w-full overflow-x-hidden">
 
         {/* Urgent Emergency Alert Banner */}
         {totalEmergencyCount > 0 && (

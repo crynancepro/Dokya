@@ -830,6 +830,9 @@ export interface AdminUserRecord {
   affiliateBalance?: number; // Solde d'affiliation disponible
   totalAffiliateEarnings?: number; // Total des commissions générées
   totalReferred?: number; // Nombre de filleuls apportés
+  isTelemarketerCertified?: boolean;
+  certifiedBadgePurchased?: boolean;
+  telemarketerPlan?: 'standard' | 'vip';
   createdAt: string;
   updatedAt: string;
 }

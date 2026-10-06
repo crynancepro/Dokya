@@ -407,6 +407,21 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     }
   };
 
+  // Delete All Products (Vider le catalogue)
+  const handleDeleteAllProducts = async () => {
+    if (!window.confirm('Voulez-vous vraiment supprimer TOUS les produits de votre catalogue vendeur ? Cette action est irréversible.')) return;
+    try {
+      for (const prod of products) {
+        await deleteProduct(prod.id, currentUid);
+      }
+      setProducts([]);
+      showToast('Tous les produits du catalogue ont été supprimés.');
+      loadData();
+    } catch (err) {
+      showToast('Erreur lors de la suppression des produits.');
+    }
+  };
+
   // Update Order Status
   const handleUpdateOrderStatus = async (orderId: string, newStatus: StoreOrderStatus) => {
     try {
@@ -559,68 +574,73 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
       )}
 
       {/* HEADER SECTION: Store Identity & Quick Action */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/20 rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-2xl">
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/20 rounded-2xl sm:rounded-3xl p-4 sm:p-8 relative overflow-hidden shadow-2xl">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+          <div className="space-y-2 min-w-0">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold">
               <ShoppingBag className="w-3.5 h-3.5" />
               <span>Boutique & Liens de Vente Dokya</span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             </div>
             
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-3">
-              <span>{storeProfile?.storeName || `Boutique ${profile.personalInfo?.firstName || 'Dokya'}`}</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2 sm:gap-3 flex-wrap">
+              <span className="truncate max-w-[240px] xs:max-w-md sm:max-w-none">{storeProfile?.storeName || `Boutique ${profile.personalInfo?.firstName || 'Dokya'}`}</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold shrink-0">
                 En Ligne 🟢
               </span>
             </h1>
 
-            <p className="text-sm text-slate-400 max-w-xl">
+            <p className="text-xs sm:text-sm text-slate-400 max-w-xl">
               Vendez vos formations, e-books, services ou produits avec des liens de paiement et commandes directes Dokya.
             </p>
 
-            {/* Public Store Link Bar */}
-            <div className="pt-2 flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-slate-300">
+            {/* Public Store Link Bar (Mobile Responsive & Overflow-Safe) */}
+            <div className="pt-2 flex flex-wrap items-center gap-2 max-w-full">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-slate-300 min-w-0 max-w-full">
                 <Store className="w-4 h-4 text-indigo-400 shrink-0" />
-                <span className="text-slate-500 select-none">dokya.site/b/</span>
-                <span className="text-white font-bold">{activeStoreUsername}</span>
+                <span className="text-slate-500 select-none shrink-0">dokya.site/b/</span>
+                <span className="text-white font-bold truncate max-w-[130px] xs:max-w-[180px] sm:max-w-none">{activeStoreUsername}</span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => copyToClipboard(publicStoreUrl, 'Boutique')}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all cursor-pointer"
-              >
-                {copiedLink === 'Boutique' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>Copier</span>
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(publicStoreUrl, 'Boutique')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all cursor-pointer shrink-0"
+                  title="Copier le lien de la vitrine"
+                >
+                  {copiedLink === 'Boutique' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>Copier</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (onOpenPublicStore) {
-                    onOpenPublicStore(activeStoreUsername);
-                  } else {
-                    window.open(`/b/${activeStoreUsername}`, '_blank');
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-all cursor-pointer"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Voir ma vitrine</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenPublicStore) {
+                      onOpenPublicStore(activeStoreUsername);
+                    } else {
+                      window.open(`/b/${activeStoreUsername}`, '_blank');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-all cursor-pointer shrink-0"
+                  title="Ouvrir la vitrine publique"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline">Voir ma vitrine</span>
+                  <span className="xs:hidden">Vitrine</span>
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Right Action: Add Product */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="w-full md:w-auto">
             <button
               type="button"
               onClick={handleOpenAddProduct}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-bold text-sm shadow-xl shadow-indigo-500/25 transition-all hover:scale-[1.02] active:scale-98 cursor-pointer"
+              className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm shadow-xl shadow-indigo-500/25 transition-all hover:scale-[1.02] active:scale-98 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Nouveau Produit / Service</span>
@@ -630,95 +650,95 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
       </div>
 
       {/* KPI CARDS (REVENUE, ORDERS, PRODUCTS, VIEWS) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {/* Card 1: Chiffre d'Affaires Encaissé */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-lg relative overflow-hidden group hover:border-emerald-500/30 transition-all">
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-lg relative overflow-hidden group hover:border-emerald-500/30 transition-all min-w-0">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ventes Encaissées</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
-              <DollarSign className="w-5 h-5" />
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider truncate">Ventes Encaissées</span>
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20 shrink-0">
+              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">
+          <div className="mt-2 sm:mt-3 min-w-0">
+            <div className="text-lg sm:text-2xl lg:text-3xl font-black text-emerald-400 tracking-tight truncate">
               {formatPrice(Number(metrics.totalSalesAmount) || 0)}
             </div>
-            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-              <span className="text-emerald-400 font-semibold">{metrics.validatedOrdersCount}</span> commandes validées
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 flex items-center gap-1 truncate">
+              <span className="text-emerald-400 font-semibold">{metrics.validatedOrdersCount}</span> validées
             </p>
           </div>
         </div>
 
         {/* Card 2: Commandes Reçues */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-lg relative overflow-hidden group hover:border-indigo-500/30 transition-all">
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-lg relative overflow-hidden group hover:border-indigo-500/30 transition-all min-w-0">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Commandes Totales</span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
-              <Package className="w-5 h-5" />
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider truncate">Commandes Totales</span>
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20 shrink-0">
+              <Package className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+          <div className="mt-2 sm:mt-3 min-w-0">
+            <div className="text-lg sm:text-2xl lg:text-3xl font-black text-white tracking-tight">
               {metrics.totalOrdersCount}
             </div>
-            <p className="text-xs text-slate-400 mt-1">Direct Dokya & WhatsApp</p>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Direct & WhatsApp</p>
           </div>
         </div>
 
         {/* Card 3: Produits Actifs */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-lg relative overflow-hidden group hover:border-amber-500/30 transition-all">
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-lg relative overflow-hidden group hover:border-amber-500/30 transition-all min-w-0">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Produits Actifs</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
-              <ShoppingBag className="w-5 h-5" />
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider truncate">Produits Actifs</span>
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20 shrink-0">
+              <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+          <div className="mt-2 sm:mt-3 min-w-0">
+            <div className="text-lg sm:text-2xl lg:text-3xl font-black text-white tracking-tight">
               {metrics.activeProductsCount}
             </div>
-            <p className="text-xs text-slate-400 mt-1">Visibles sur votre boutique</p>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">En vitrine publique</p>
           </div>
         </div>
 
         {/* Card 4: Vues Cumulées */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-lg relative overflow-hidden group hover:border-cyan-500/30 transition-all">
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-lg relative overflow-hidden group hover:border-cyan-500/30 transition-all min-w-0">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Visites / Vues</span>
-            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center border border-cyan-500/20">
-              <Eye className="w-5 h-5" />
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider truncate">Visites / Vues</span>
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center border border-cyan-500/20 shrink-0">
+              <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+          <div className="mt-2 sm:mt-3 min-w-0">
+            <div className="text-lg sm:text-2xl lg:text-3xl font-black text-white tracking-tight">
               {metrics.totalViews}
             </div>
-            <p className="text-xs text-slate-400 mt-1">Trafic sur vos liens</p>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Trafic sur liens</p>
           </div>
         </div>
       </div>
 
       {/* INTERACTIVE RECHARTS GRAPH: Sales & Orders Trend */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-3 sm:space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-indigo-400" />
+            <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
               <span>Évolution des Ventes & Commandes Reçues</span>
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
               Suivi graphique en temps réel du chiffre d'affaires généré par votre boutique
             </p>
           </div>
 
           {/* Time Filter Buttons */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-950 border border-slate-800 rounded-2xl">
+          <div className="flex items-center gap-1 p-1 bg-slate-950 border border-slate-800 rounded-xl self-start sm:self-auto">
             {(['7d', '30d', 'all'] as const).map(p => (
               <button
                 key={p}
                 type="button"
                 onClick={() => setChartPeriod(p)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   chartPeriod === p
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
@@ -731,7 +751,7 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
         </div>
 
         {/* Recharts Area Chart */}
-        <div className="h-64 w-full pt-2">
+        <div className="h-52 sm:h-64 w-full pt-2">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
@@ -782,34 +802,34 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
         </div>
       </div>
 
-      {/* NAVIGATION TABS: Products / Orders / Settings */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+      {/* NAVIGATION TABS: Products / Orders / Settings (Mobile Responsive Scrollable Bar) */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto no-scrollbar -mx-2 px-2 sm:mx-0 sm:px-0">
         <button
           type="button"
           onClick={() => setActiveSubTab('products')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeSubTab === 'products'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'text-slate-400 hover:text-white hover:bg-slate-900'
           }`}
         >
-          <ShoppingBag className="w-4 h-4" />
-          <span>Mes Produits & Services ({products.length})</span>
+          <ShoppingBag className="w-4 h-4 shrink-0" />
+          <span>Mes Produits ({products.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveSubTab('orders')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeSubTab === 'orders'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'text-slate-400 hover:text-white hover:bg-slate-900'
           }`}
         >
-          <Package className="w-4 h-4" />
+          <Package className="w-4 h-4 shrink-0" />
           <span>Commandes Reçues ({orders.length})</span>
           {orders.filter(o => o.status === 'pending').length > 0 && (
-            <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center">
+            <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center shrink-0">
               {orders.filter(o => o.status === 'pending').length}
             </span>
           )}
@@ -818,13 +838,13 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveSubTab('settings')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeSubTab === 'settings'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'text-slate-400 hover:text-white hover:bg-slate-900'
           }`}
         >
-          <Settings className="w-4 h-4" />
+          <Settings className="w-4 h-4 shrink-0" />
           <span>Paramètres Boutique</span>
         </button>
       </div>
@@ -848,14 +868,29 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
               />
             </div>
 
-            <button
-              type="button"
-              onClick={handleOpenAddProduct}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-lg transition-all cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Créer une fiche produit</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {products.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDeleteAllProducts}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold text-xs transition-all cursor-pointer"
+                  title="Supprimer tous les produits du catalogue"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Vider le catalogue</span>
+                  <span className="sm:hidden">Vider</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleOpenAddProduct}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-lg transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Créer une fiche produit</span>
+              </button>
+            </div>
           </div>
 
           {/* Product Cards Grid */}
@@ -1073,45 +1108,45 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                     </div>
 
                     <div>
-                      <h4 className="text-base font-bold text-white">
+                      <h4 className="text-sm sm:text-base font-bold text-white break-words">
                         {order.productTitle}
                       </h4>
-                      <p className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-3">
+                      <div className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-2 sm:gap-3">
                         <span className="font-semibold text-emerald-400">
                           {formatPrice(Number(order.totalAmount) || 0)} (Qté : {order.quantity || 1})
                         </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1">
-                          <User className="w-3.5 h-3.5 text-slate-400" />
-                          <strong className="text-white">{order.buyerName}</strong>
+                        <span className="hidden xs:inline">•</span>
+                        <span className="flex items-center gap-1 min-w-0">
+                          <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <strong className="text-white truncate max-w-[140px]">{order.buyerName}</strong>
                         </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1 text-slate-400">
-                          <Phone className="w-3.5 h-3.5" />
-                          {order.buyerPhone}
+                        <span className="hidden xs:inline">•</span>
+                        <span className="flex items-center gap-1 text-slate-400 min-w-0">
+                          <Phone className="w-3.5 h-3.5 shrink-0" />
+                          <span className="font-mono">{order.buyerPhone}</span>
                         </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1 text-slate-400">
-                          <MapPin className="w-3.5 h-3.5" />
-                          {order.buyerAddress}
+                        <span className="hidden xs:inline">•</span>
+                        <span className="flex items-center gap-1 text-slate-400 min-w-0">
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate max-w-[180px]">{order.buyerAddress}</span>
                         </span>
-                      </p>
+                      </div>
                       {order.buyerNotes && (
-                        <p className="text-xs text-slate-400 bg-slate-950 p-2 rounded-xl border border-slate-800/80 mt-2 italic">
+                        <p className="text-xs text-slate-400 bg-slate-950 p-2 rounded-xl border border-slate-800/80 mt-2 italic break-words">
                           "{order.buyerNotes}"
                         </p>
                       )}
                     </div>
                   </div>
 
-                  {/* Right Actions: Status Dropdown & WhatsApp Direct Contact */}
-                  <div className="flex flex-wrap items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800">
+                  {/* Right Actions: Status Dropdown, WhatsApp, Invoice (Mobile Responsive Grid) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-slate-800 shrink-0">
                     
                     {/* Status Changer Select */}
                     <select
                       value={order.status}
                       onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value as StoreOrderStatus)}
-                      className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
                     >
                       <option value="pending">En attente 🟡</option>
                       <option value="validated">Validée 🟢</option>
@@ -1124,7 +1159,7 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                       href={getBuyerWhatsAppLink(order)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
                     >
                       <MessageCircle className="w-4 h-4" />
                       <span>WhatsApp Acheteur</span>
@@ -1134,11 +1169,11 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleGenerateInvoiceForOrder(order)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-md shadow-indigo-600/25 transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-md shadow-indigo-600/25 transition-all cursor-pointer active:scale-95 whitespace-nowrap"
                       title="Générer la facture officielle pré-remplie en 1-clic pour cette commande"
                     >
                       <Receipt className="w-4 h-4 text-indigo-200" />
-                      <span>Générer la Facture</span>
+                      <span>Générer Facture</span>
                     </button>
                   </div>
                 </div>
@@ -1248,21 +1283,20 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
       )}
 
       {/* ===================================================================== */}
-      {/* MODAL: CREATE / EDIT PRODUCT                                          */}
-      {/* ===================================================================== */}
+      {/* MODAL: CREATE / EDIT PRODUCT (Mobile Responsive & Touch Optimized) */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-7 max-w-xl w-full shadow-2xl space-y-4 sm:space-y-5 max-h-[92vh] overflow-y-auto">
             
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <h3 className="text-lg font-black text-white flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-indigo-400" />
-                <span>{editingProduct ? 'Modifier le Produit / Service' : 'Créer une Fiche Produit / Service'}</span>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 sm:pb-4">
+              <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-indigo-400 shrink-0" />
+                <span className="truncate">{editingProduct ? 'Modifier le Produit' : 'Créer une Fiche Produit'}</span>
               </h3>
               <button 
                 type="button"
                 onClick={() => setIsProductModalOpen(false)}
-                className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
               >
                 ✕
               </button>

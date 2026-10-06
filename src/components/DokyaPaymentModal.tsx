@@ -374,8 +374,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
 
   const rawPrice = getRawPrice();
   const safeBalance = Number(userBalance) || 0;
+  const customParsed = customRechargeInput.trim() !== '' ? Number(customRechargeInput) : NaN;
   const effectiveRechargeAmount = isCustomRecharge
-    ? (parseInt(customRechargeInput, 10) || 0)
+    ? (!isNaN(customParsed) ? Math.floor(customParsed) : 0)
     : rechargeAmount;
   const payablePrice = activeMode === 'recharge'
     ? effectiveRechargeAmount
@@ -1224,9 +1225,14 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                         onChange={(e) => {
                           const rawVal = e.target.value;
                           setCustomRechargeInput(rawVal);
+                          if (rawVal.trim() === '') {
+                            setIsCustomRecharge(false);
+                            setRechargeAmount(500);
+                            return;
+                          }
                           setIsCustomRecharge(true);
-                          const parsed = parseInt(rawVal, 10);
-                          const safeVal = isNaN(parsed) ? 0 : parsed;
+                          const parsed = Number(rawVal);
+                          const safeVal = isNaN(parsed) ? 0 : Math.floor(parsed);
                           setRechargeAmount(safeVal);
                           if (safeVal >= 300 && errorMessage) {
                             setErrorMessage(null);

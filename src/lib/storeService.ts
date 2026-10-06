@@ -675,123 +675,36 @@ export async function saveSellerStoreProfile(
 // MODULE TÉLÉVENDEURS & MARKETPLACE D'AFFILIATION
 // ============================================================================
 
-export const DEFAULT_MARKETPLACE_OFFERS: ProductItem[] = [
-  {
-    id: 'prod_mk_formation_ats',
-    userId: 'seller_dokya_academy',
-    sellerUsername: 'dokya-academy',
-    sellerName: 'Dokya Academy Pro',
-    sellerPhone: '+221 77 123 45 67',
-    sellerWhatsapp: '+221 77 123 45 67',
-    sellerEmail: 'academy@dokya.site',
-    title: 'Programme Masterclass Recrutement & CV ATS 2026',
-    slug: 'masterclass-recrutement-ats-2026',
-    description: 'Formation complète en vidéo + templates certifiés pour réussir tous les entretiens et décrocher un emploi international ou local. Éligible commissions télévendeurs prioritaires.',
-    price: 15000,
-    currency: 'FCFA',
-    category: 'Formations & Coaching',
-    images: ['https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80'],
-    saleType: 'direct_order',
-    status: 'active',
-    viewsCount: 342,
-    ordersCount: 48,
-    commissionType: 'percent',
-    commissionValue: 30, // 30% = 4 500 FCFA
-    targetCountries: ['ALL'],
-    isAffiliationEnabled: true,
-    sellerRating: 4.9,
-    sellerReviewsCount: 24,
-    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: 'prod_mk_pack_business',
-    userId: 'seller_fatou_consulting',
-    sellerUsername: 'fatou-consulting',
-    sellerName: 'Fatou Ndiaye Consulting',
-    sellerPhone: '+221 78 987 65 43',
-    sellerWhatsapp: '+221 78 987 65 43',
-    sellerEmail: 'fatou@consulting-sn.com',
-    title: 'Kit Juridique & Modèles Contrats Commerciaux OHADA',
-    slug: 'kit-juridique-contrats-ohada',
-    description: '35 contrats types prêts à l\'emploi pour PME et indépendants (Prestations, Vente, NDA, Partenariats, Baux). Très demandé par les commerçants et entrepreneurs.',
-    price: 25000,
-    currency: 'FCFA',
-    category: 'Juridique & Entreprise',
-    images: ['https://images.unsplash.com/photo-1450133064473-71024230f91b?auto=format&fit=crop&w=800&q=80'],
-    saleType: 'direct_order',
-    status: 'active',
-    viewsCount: 215,
-    ordersCount: 29,
-    commissionType: 'fixed',
-    commissionValue: 6000, // 6 000 FCFA fixe
-    targetCountries: ['SN', 'CI', 'CM', 'CG', 'BF', 'ML'],
-    isAffiliationEnabled: true,
-    sellerRating: 4.8,
-    sellerReviewsCount: 18,
-    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: 'prod_mk_cosmetique_bio',
-    userId: 'seller_abidjan_beaute',
-    sellerUsername: 'abidjan-beaute-naturelle',
-    sellerName: 'Kenza Cosmétiques Bio',
-    sellerPhone: '+225 07 45 89 12 34',
-    sellerWhatsapp: '+225 07 45 89 12 34',
-    sellerEmail: 'contact@kenzacosmetics.ci',
-    title: 'Gamme Sérum Éclat & Soin Peaux Noires 100% Naturel',
-    slug: 'serum-eclat-naturel-peaux-noires',
-    description: 'Pack de soins formulé à base d\'huiles précieuses africaines (Karité, Baobab, Moringa). Forte demande en Côte d\'Ivoire, Sénégal et Cameroun.',
-    price: 18000,
-    currency: 'FCFA',
-    category: 'Santé & Beauté',
-    images: ['https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=800&q=80'],
-    saleType: 'direct_order',
-    status: 'active',
-    viewsCount: 520,
-    ordersCount: 82,
-    commissionType: 'percent',
-    commissionValue: 25, // 25% = 4 500 FCFA
-    targetCountries: ['CI', 'SN', 'CM'],
-    isAffiliationEnabled: true,
-    sellerRating: 5.0,
-    sellerReviewsCount: 31,
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: 'prod_mk_gadget_smart',
-    userId: 'seller_tech_dakar',
-    sellerUsername: 'tech-dakar-express',
-    sellerName: 'Tech Dakar Express',
-    sellerPhone: '+221 70 888 99 00',
-    sellerWhatsapp: '+221 70 888 99 00',
-    sellerEmail: 'sales@techdakar.sn',
-    title: 'Montre Connectée Pro Santé & Sport Étanche GPS',
-    slug: 'smartwatch-pro-sante-sport',
-    description: 'Smartwatch multifonctions avec suivi cardiaque, sommeil, appels Bluetooth et autonomie 10 jours. Livraison rapide sur Dakar et sous-région.',
-    price: 22000,
-    currency: 'FCFA',
-    category: 'High-Tech & Gadgets',
-    images: ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80'],
-    saleType: 'direct_order',
-    status: 'active',
-    viewsCount: 680,
-    ordersCount: 95,
-    commissionType: 'fixed',
-    commissionValue: 5000, // 5 000 FCFA fixe
-    targetCountries: ['SN', 'CI', 'CM', 'CG'],
-    isAffiliationEnabled: true,
-    sellerRating: 4.7,
-    sellerReviewsCount: 14,
-    createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+export const DEFAULT_MARKETPLACE_OFFERS: ProductItem[] = [];
+
+/**
+ * Nettoie en profondeur les caches locaux de fausses offres ou données de test
+ */
+export function purgeLocalMockProducts(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key && (
+          key.startsWith('dokya_seller_products_') ||
+          key.startsWith('dokya_products_') ||
+          key === 'dokya_marketplace_offers' ||
+          key.startsWith('mock_') ||
+          key.includes('fake_offers')
+        )
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (_e) {}
+}
 
 /**
  * Récupère toutes les offres marketplace disponibles pour les télévendeurs
+ * Strictement vierge par défaut : uniquement les produits réels actifs publiés dans Firestore
  */
 export async function fetchAllMarketplaceOffers(options?: {
   country?: string;
@@ -801,12 +714,7 @@ export async function fetchAllMarketplaceOffers(options?: {
 }): Promise<ProductItem[]> {
   const offersMap = new Map<string, ProductItem>();
 
-  // 1. Charger les offres par défaut
-  DEFAULT_MARKETPLACE_OFFERS.forEach(offer => {
-    offersMap.set(offer.id, offer);
-  });
-
-  // 2. Récupérer les produits réels depuis Firestore
+  // 1. Récupérer uniquement les produits réels actifs depuis Firestore (catalogue vierge si aucun produit réel)
   try {
     const q = query(
       collection(db, PRODUCTS_COLLECTION),
@@ -815,33 +723,13 @@ export async function fetchAllMarketplaceOffers(options?: {
     const snap = await getDocs(q);
     snap.forEach(d => {
       const p = d.data() as ProductItem;
-      if (p.isAffiliationEnabled !== false) {
+      if (p && p.id && p.isAffiliationEnabled !== false) {
         offersMap.set(p.id, p);
       }
     });
   } catch (err) {
     console.warn('[StoreService] Erreur fetchAllMarketplaceOffers Firestore:', err);
   }
-
-  // 3. Récupérer aussi depuis le cache local des vendeurs
-  try {
-    if (typeof localStorage !== 'undefined') {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(LOCAL_PRODUCTS_PREFIX)) {
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            const list: ProductItem[] = JSON.parse(raw);
-            list.forEach(p => {
-              if (p.status === 'active' && p.isAffiliationEnabled !== false) {
-                offersMap.set(p.id, p);
-              }
-            });
-          }
-        }
-      }
-    }
-  } catch (_e) {}
 
   let list = Array.from(offersMap.values());
 

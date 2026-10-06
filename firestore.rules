@@ -125,6 +125,18 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() || isAdmin();
     }
 
+    match /avis_vendeurs/{reviewId} {
+      allow read, list: if true;
+      allow create: if true;
+      allow update, delete: if isSignedIn() || isAdmin();
+    }
+
+    match /avis_televendeurs/{reviewId} {
+      allow read, list: if true;
+      allow create: if true;
+      allow update, delete: if isSignedIn() || isAdmin();
+    }
+
     match /notifications/{notifId} {
       allow read, list: if true;
       allow create, update, delete: if isSignedIn() || isAdmin();

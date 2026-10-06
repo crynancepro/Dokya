@@ -107,9 +107,9 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (_e) {}
   };
 
-  // Published promo code (automatically applied across public pricing and checkout)
+  // Published promo code (automatically applied across public pricing and checkout and telemarketer portal)
   const publishedPromo = useMemo(() => {
-    return promoCodes.find((p) => p.active && p.isPublished) || null;
+    return promoCodes.find((p) => (p.active !== false) && Boolean(p.isPublished || (p as any).published)) || null;
   }, [promoCodes]);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -456,13 +456,17 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       // Update local state & storage
       setPromoCodes((prev) => {
-        const existingIdx = prev.findIndex((p) => p.id === promoId || p.code === cleanCode);
+        let baseList = prev;
+        if (newPromo.isPublished) {
+          baseList = baseList.map(p => (p.id === promoId || p.code === cleanCode ? p : { ...p, isPublished: false }));
+        }
+        const existingIdx = baseList.findIndex((p) => p.id === promoId || p.code === cleanCode);
         let updated: PromoCode[];
         if (existingIdx >= 0) {
-          updated = [...prev];
+          updated = [...baseList];
           updated[existingIdx] = newPromo;
         } else {
-          updated = [newPromo, ...prev];
+          updated = [newPromo, ...baseList];
         }
         try {
           localStorage.setItem(PROMOS_STORAGE_KEY, JSON.stringify(updated));
@@ -649,13 +653,24 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  // 8. Helper to format price with currency
-  const formatPrice = (amount: number, currency: string = 'USD'): string => {
-    const num = Number(amount) || 0;
-    if (currency === 'USD' || currency === '$') {
-      return `${num.toFixed(2)} $`;
+  // 8. Helper to dynamically format and convert price with currency
+  // Dokya base amounts are always stored in Franc CFA (XOF/FCFA)
+  const formatPrice = (amountInXOF: number, currency: string = 'XOF'): string => {
+    const num = Number(amountInXOF) || 0;
+    const curr = (currency || 'XOF').toUpperCase().trim();
+
+    if (curr === 'USD' || curr === '$') {
+      const converted = num / 600; // 1 USD ≈ 600 XOF (ex: 1000 FCFA => 1.67 $)
+      return `${converted.toFixed(2)} $`;
     }
-    return `${num.toLocaleString('fr-FR')} ${currency}`;
+    if (curr === 'EUR' || curr === '€') {
+      const converted = num / 655.95; // 1 EUR ≈ 655.95 XOF (ex: 1000 FCFA => 1.52 €)
+      return `${converted.toFixed(2).replace('.', ',')} €`;
+    }
+    if (curr === 'XAF' || curr === 'CEMAC') {
+      return `${Math.round(num).toLocaleString('fr-FR')} FCFA`;
+    }
+    return `${Math.round(num).toLocaleString('fr-FR')} FCFA`;
   };
 
   // 9. Calcul dynamique de réduction pour les tarifs publics et checkout

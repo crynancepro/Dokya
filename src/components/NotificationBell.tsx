@@ -189,7 +189,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
   };
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
+    <div className={`relative z-50 ${className}`} ref={dropdownRef}>
       {/* Bell Trigger Button */}
       <button
         id="dokya-notification-bell"
@@ -211,7 +211,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
       {/* Dropdown Drawer */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl z-[9999] overflow-hidden animate-in fade-in slide-from-top-2 duration-200">
           
           {/* Header */}
           <div className="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
@@ -338,15 +338,31 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                     )}
                   </div>
 
-                  {/* Delete button */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleDelete(notif.id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 rounded transition-opacity cursor-pointer self-start"
-                    title="Supprimer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Actions buttons */}
+                  <div className="flex items-center gap-1 self-start shrink-0">
+                    {!notif.read ? (
+                      <button
+                        type="button"
+                        onClick={(e) => handleMarkAsRead(notif.id, e)}
+                        className="p-1 text-slate-400 hover:text-emerald-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                        title="Marquer comme lu"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <span className="p-1 text-slate-600" title="Déjà lu">
+                        <CheckCheck className="w-3.5 h-3.5" />
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => handleDelete(notif.id, e)}
+                      className="p-1 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))
             )}

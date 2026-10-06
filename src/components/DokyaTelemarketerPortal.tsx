@@ -40,7 +40,8 @@ import {
   Unlock,
   CreditCard,
   Tag,
-  ArrowUpRight
+  ArrowUpRight,
+  Coins
 } from 'lucide-react';
 import { CandidateProfile, ProductItem, StoreOrder, SellerReview } from '../types';
 import { 
@@ -49,12 +50,15 @@ import {
   fetchTelemarketerOrders, 
   saveSellerReview, 
   fetchSellerReviews,
-  calculateTelemarketerCommission 
+  calculateTelemarketerCommission,
+  purgeLocalMockProducts
 } from '../lib/storeService';
 import { useLocale, SupportedCurrency } from '../contexts/LocaleContext';
-import { auth, updateDoc, doc, db, createNotification } from '../lib/firebase';
+import { usePricing } from '../contexts/PricingContext';
+import { auth, setDoc, updateDoc, doc, db, createNotification, recordTransactionEverywhere } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { NotificationBell } from './NotificationBell';
+import { RechargeWalletModal } from './RechargeWalletModal';
 
 interface DokyaTelemarketerPortalProps {
   profile: CandidateProfile;
@@ -81,6 +85,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
 }) => {
   const currentUid = auth.currentUser?.uid || profile.uid || 'guest';
   const { formatPrice, userCurrency, setUserCurrency } = useLocale();
+  const { publishedPromo, calculateDiscountedPrice } = usePricing();
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<TelemarketerTab>('overview');
@@ -121,14 +126,36 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewSuccessMessage, setReviewSuccessMessage] = useState<string | null>(null);
 
-  // Certified badge modal
+  // Rechargement du solde de compte Dokya
+  const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
+  const effectiveUserBalance = profile.walletBalance ?? profile.balance ?? 0;
+
+  // Certified badge & VIP prices with dynamic admin promo code discounts
+  const BASE_BADGE_PRICE = 10000;
+  const BASE_VIP_MONTHLY_PRICE = 5000;
+
+  // Calcul dynamique de réduction si un code promo admin est publié
+  const badgeDiscount = useMemo(() => {
+    return calculateDiscountedPrice(BASE_BADGE_PRICE);
+  }, [calculateDiscountedPrice]);
+  const effectiveBadgePrice = badgeDiscount.hasDiscount ? badgeDiscount.finalPrice : BASE_BADGE_PRICE;
+  const BADGE_PRICE = effectiveBadgePrice;
+
+  const vipDiscount = useMemo(() => {
+    return calculateDiscountedPrice(BASE_VIP_MONTHLY_PRICE);
+  }, [calculateDiscountedPrice]);
+  const effectiveVipPrice = vipDiscount.hasDiscount ? vipDiscount.finalPrice : BASE_VIP_MONTHLY_PRICE;
+  const VIP_MONTHLY_PRICE = effectiveVipPrice;
+
   const [isBadgeModalOpen, setIsBadgeModalOpen] = useState(false);
   const [isPurchasingBadge, setIsPurchasingBadge] = useState(false);
   const [badgeSuccessMessage, setBadgeSuccessMessage] = useState<string | null>(null);
+  const [badgeErrorMsg, setBadgeErrorMsg] = useState<string | null>(null);
 
   // VIP Subscription modal
   const [isVipModalOpen, setIsVipModalOpen] = useState(false);
   const [isActivatingVip, setIsActivatingVip] = useState(false);
+  const [vipErrorMsg, setVipErrorMsg] = useState<string | null>(null);
 
   // Withdrawal modal
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
@@ -138,9 +165,27 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
   const [withdrawAccountName, setWithdrawAccountName] = useState(profile.displayName || '');
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState<string | null>(null);
 
-  // Certified badge & VIP status
-  const hasCertifiedBadge = Boolean(profile.isTelemarketerCertified || profile.certifiedBadgePurchased);
-  const isVipMode = profile.telemarketerPlan === 'vip' || profile.subscriptionStatus === 'unlimited';
+  // Certified badge & VIP status with local reactive state and fallback storage
+  const [localBadge, setLocalBadge] = useState<boolean>(() => {
+    if (profile.isTelemarketerCertified || profile.certifiedBadgePurchased || profile.telemarketerBadge) return true;
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(`dokya_badge_${currentUid}`) === 'true' || 
+             localStorage.getItem(`dokya_tel_badge_${currentUid}`) === 'true';
+    }
+    return false;
+  });
+
+  const [localPlan, setLocalPlan] = useState<'standard' | 'vip'>(() => {
+    if (profile.telemarketerPlan === 'vip' || profile.telemarketerMode === 'vip' || profile.subscriptionStatus === 'unlimited') return 'vip';
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`dokya_tel_plan_${currentUid}`) || localStorage.getItem(`dokya_tel_mode_${currentUid}`);
+      if (saved === 'vip') return 'vip';
+    }
+    return 'standard';
+  });
+
+  const hasCertifiedBadge = Boolean(localBadge || profile.isTelemarketerCertified || profile.certifiedBadgePurchased || profile.telemarketerBadge);
+  const isVipMode = localPlan === 'vip' || profile.telemarketerPlan === 'vip' || profile.telemarketerMode === 'vip' || profile.subscriptionStatus === 'unlimited';
 
   // Copied link toast feedback
   const [copiedLinkProductId, setCopiedLinkProductId] = useState<string | null>(null);
@@ -149,6 +194,9 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
   const loadData = async () => {
     setIsLoading(true);
     try {
+      // Nettoyage proactif de sécurité des caches locaux de fausses offres
+      purgeLocalMockProducts();
+
       const [allOffers, teleOrders, allReviews] = await Promise.all([
         fetchAllMarketplaceOffers(),
         fetchTelemarketerOrders(currentUid),
@@ -263,58 +311,201 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
     }
   };
 
-  // Handle Buy Badge
+  // Handle Buy Badge with Balance Check & Automatic Wallet Debit
   const handlePurchaseCertifiedBadge = async () => {
+    // Si code promo 100% ou gratuit, aucun solde requis
+    if (BADGE_PRICE > 0 && effectiveUserBalance < BADGE_PRICE) {
+      setBadgeErrorMsg(`Solde insuffisant : Vous avez ${formatPrice(effectiveUserBalance)}. Il vous manque ${formatPrice(BADGE_PRICE - effectiveUserBalance)}. Veuillez recharger votre solde.`);
+      return;
+    }
+
     setIsPurchasingBadge(true);
+    setBadgeErrorMsg(null);
     try {
+      const deduction = BADGE_PRICE > 0 ? Math.min(effectiveUserBalance, BADGE_PRICE) : 0;
+      const newBalance = Math.max(0, effectiveUserBalance - deduction);
       const updatedProfileData = {
+        balance: newBalance,
+        walletBalance: newBalance,
         isTelemarketerCertified: true,
         certifiedBadgePurchased: true,
+        telemarketerBadge: true,
         certifiedBadgeDate: new Date().toISOString()
       };
+
+      setLocalBadge(true);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`dokya_badge_${currentUid}`, 'true');
+          localStorage.setItem(`dokya_tel_badge_${currentUid}`, 'true');
+        } catch (_e) {}
+      }
 
       if (onUpdateProfile) {
         onUpdateProfile(updatedProfileData);
       }
 
       if (currentUid && currentUid !== 'guest') {
-        const userRef = doc(db, 'candidates', currentUid);
-        await updateDoc(userRef, updatedProfileData);
+        try {
+          const userRef = doc(db, 'candidates', currentUid);
+          await setDoc(userRef, updatedProfileData, { merge: true });
+        } catch (_e) {}
+        try {
+          await setDoc(doc(db, 'users', currentUid), {
+            balance: newBalance,
+            walletBalance: newBalance,
+            isTelemarketerCertified: true,
+            telemarketerBadge: true
+          }, { merge: true });
+        } catch (_e) {}
       }
 
-      setBadgeSuccessMessage('Félicitations ! Votre Badge Télévendeur Certifié est activé. Vous avez un accès illimité à toutes les offres de vente.');
+      // Record transaction
+      const txId = `TX-BADGE-${Date.now()}`;
+      try {
+        await recordTransactionEverywhere({
+          id: txId,
+          transactionId: txId,
+          userId: currentUid,
+          userEmail: profile.email || auth.currentUser?.email || 'televendeur@dokya.sn',
+          userName: profile.displayName || profile.personalInfo?.firstName || 'Télévendeur Dokya',
+          type: 'telemarketer_badge',
+          amount: -BADGE_PRICE,
+          expectedAmount: BADGE_PRICE,
+          currency: 'FCFA',
+          description: publishedPromo
+            ? `Achat Badge Télévendeur Certifié VIP (Code Promo ${publishedPromo.code}: -${badgeDiscount.discountLabel})`
+            : 'Achat Badge Télévendeur Certifié VIP (Débit solde de compte)',
+          status: 'SUCCESS',
+          aiStatus: 'COMPLETED',
+          paymentMethod: BADGE_PRICE === 0 ? 'promo_code' : 'wallet',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      } catch (errTx) {
+        console.warn('Error recording badge transaction:', errTx);
+      }
+
+      try {
+        await createNotification(currentUid, {
+          title: 'Badge Télévendeur Certifié Activé !',
+          message: BADGE_PRICE === 0
+            ? `Félicitations ! Votre Badge Télévendeur Certifié a été activé Gratuitement grâce au Code Promo ${publishedPromo?.code || 'VIP'}. Accès illimité débloqué.`
+            : `Félicitations ! Votre Badge Télévendeur Certifié a été validé (-${formatPrice(BADGE_PRICE)} débités du solde). Accès illimité débloqué.`,
+          type: 'success',
+          tabTarget: 'badge'
+        });
+      } catch (_e) {}
+
+      setBadgeSuccessMessage(
+        BADGE_PRICE === 0
+          ? `Félicitations ! Votre Badge Télévendeur Certifié est activé Gratuitement (Code Promo). Vous avez désormais un accès illimité à toutes les offres de vente.`
+          : `Félicitations ! Votre Badge Télévendeur Certifié est activé (-${formatPrice(BADGE_PRICE)} débité du solde). Vous avez désormais un accès illimité à toutes les offres de vente.`
+      );
       setTimeout(() => {
         setIsBadgeModalOpen(false);
         setBadgeSuccessMessage(null);
-      }, 2000);
+      }, 2500);
     } catch (e: any) {
       console.error('Error purchasing badge:', e);
+      setBadgeErrorMsg(e?.message || 'Erreur lors de l\'activation du badge.');
     } finally {
       setIsPurchasingBadge(false);
     }
   };
 
-  // Handle VIP Activation
+  // Handle VIP Activation with Balance Check & Automatic Wallet Debit
   const handleToggleVipMode = async () => {
+    // If activating VIP, check balance if price > 0
+    if (!isVipMode && VIP_MONTHLY_PRICE > 0) {
+      if (effectiveUserBalance < VIP_MONTHLY_PRICE) {
+        setVipErrorMsg(`Solde insuffisant : Vous avez ${formatPrice(effectiveUserBalance)}. Il vous manque ${formatPrice(VIP_MONTHLY_PRICE - effectiveUserBalance)}. Veuillez recharger votre solde.`);
+        setIsVipModalOpen(true);
+        return;
+      }
+    }
+
     setIsActivatingVip(true);
+    setVipErrorMsg(null);
     try {
-      const newPlan = isVipMode ? 'standard' : 'vip';
+      const willBeVip = !isVipMode;
+      const deduction = willBeVip && VIP_MONTHLY_PRICE > 0 ? Math.min(effectiveUserBalance, VIP_MONTHLY_PRICE) : 0;
+      const newBalance = Math.max(0, effectiveUserBalance - deduction);
+
       const updated = {
-        telemarketerPlan: newPlan as 'standard' | 'vip'
+        telemarketerPlan: (willBeVip ? 'vip' : 'standard') as 'standard' | 'vip',
+        telemarketerMode: (willBeVip ? 'vip' : 'standard') as 'standard' | 'vip',
+        balance: newBalance,
+        walletBalance: newBalance
       };
+
+      setLocalPlan(willBeVip ? 'vip' : 'standard');
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`dokya_tel_plan_${currentUid}`, willBeVip ? 'vip' : 'standard');
+          localStorage.setItem(`dokya_tel_mode_${currentUid}`, willBeVip ? 'vip' : 'standard');
+        } catch (_e) {}
+      }
 
       if (onUpdateProfile) {
         onUpdateProfile(updated);
       }
 
       if (currentUid && currentUid !== 'guest') {
-        const userRef = doc(db, 'candidates', currentUid);
-        await updateDoc(userRef, updated);
+        try {
+          const userRef = doc(db, 'candidates', currentUid);
+          await setDoc(userRef, updated, { merge: true });
+        } catch (_e) {}
+        try {
+          await setDoc(doc(db, 'users', currentUid), {
+            telemarketerPlan: updated.telemarketerPlan,
+            telemarketerMode: updated.telemarketerMode,
+            balance: newBalance,
+            walletBalance: newBalance
+          }, { merge: true });
+        } catch (_e) {}
+      }
+
+      if (willBeVip) {
+        const txId = `TX-VIP-${Date.now()}`;
+        try {
+          await recordTransactionEverywhere({
+            id: txId,
+            transactionId: txId,
+            userId: currentUid,
+            userEmail: profile.email || auth.currentUser?.email || 'televendeur@dokya.sn',
+            userName: profile.displayName || profile.personalInfo?.firstName || 'Télévendeur Dokya',
+            type: 'telemarketer_vip',
+            amount: -VIP_MONTHLY_PRICE,
+            expectedAmount: VIP_MONTHLY_PRICE,
+            currency: 'FCFA',
+            description: publishedPromo
+              ? `Souscription Mode VIP Télévendeur 100% Commissions (Code Promo ${publishedPromo.code}: -${vipDiscount.discountLabel})`
+              : 'Souscription Mode VIP Télévendeur (100% Commissions)',
+            status: 'SUCCESS',
+            aiStatus: 'COMPLETED',
+            paymentMethod: VIP_MONTHLY_PRICE === 0 ? 'promo_code' : 'wallet',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        } catch (_tx) {}
+
+        try {
+          await createNotification(currentUid, {
+            title: 'Mode VIP Télévendeur Activé !',
+            message: VIP_MONTHLY_PRICE === 0
+              ? `Mode VIP actif ! Vous touchez désormais 100% de toutes vos commissions (Gratuit via Code Promo).`
+              : `Mode VIP actif ! Vous touchez désormais 100% de toutes vos commissions (-${formatPrice(VIP_MONTHLY_PRICE)} débités).`,
+            type: 'success',
+            tabTarget: 'wallet'
+          });
+        } catch (_n) {}
       }
 
       setIsVipModalOpen(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error toggling VIP mode:', e);
+      setVipErrorMsg(e?.message || 'Erreur lors de la mise à jour du mode VIP.');
     } finally {
       setIsActivatingVip(false);
     }
@@ -365,31 +556,31 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-emerald-500 selection:text-white">
       
       {/* ========================================================================= */}
-      {/* 1. TOP HEADER : DÉDIÉ ESPACE TÉLÉVENDEUR                                  */}
+      {/* 1. TOP HEADER : DÉDIÉ ESPACE TÉLÉVENDEUR (DESKTOP & MOBILE COMPACT)        */}
       {/* ========================================================================= */}
-      <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-xl border-b border-emerald-900/40 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-3 shadow-xl">
+      <header className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-emerald-900/40 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-3 shadow-xl">
         
         {/* Left: Telemarketer Portal Brand & Switch to Seller */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 md:hidden hover:text-white cursor-pointer"
+            className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 md:hidden hover:text-white cursor-pointer shrink-0"
             title="Ouvrir le menu"
           >
             <Menu className="w-5 h-5 text-emerald-400" />
           </button>
 
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-emerald-900/40 shrink-0">
-              <Briefcase className="w-5 h-5" />
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-emerald-900/40 shrink-0">
+              <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm sm:text-base font-black text-white tracking-tight">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="text-xs sm:text-base font-black text-white tracking-tight truncate">
                   Dokya Télévendeurs
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="hidden xs:inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
                   Affiliation Pro 💼
                 </span>
               </div>
@@ -400,31 +591,49 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
           </div>
         </div>
 
-        {/* Right: Actions, Currency, Balance, Switcher to Seller & Profile */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* Right Desktop: Full Toolbar (>= 768px) */}
+        <div className="hidden md:flex items-center gap-2 sm:gap-2.5 flex-wrap">
           
           {/* BOUTON CLÉ : BASCULER VERS ESPACE VENDEUR / COMMERÇANT */}
           <button
             type="button"
             onClick={onSwitchToSeller}
-            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-700/60 hover:border-indigo-500 text-indigo-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
+            className="px-3 py-1.5 rounded-xl bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-700/60 hover:border-indigo-500 text-indigo-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95 shrink-0"
             title="Revenir au compte Vendeur Dokya"
           >
             <ShoppingBag className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">Espace Vendeur</span>
-            <span className="sm:hidden">Vendeur</span>
+            <span>Espace Vendeur</span>
             <ArrowRight className="w-3 h-3 text-indigo-400" />
           </button>
+
+          {/* Solde Dokya partagé du compte & Bouton Recharger */}
+          <div className="bg-slate-900 hover:bg-slate-850 border border-blue-900/50 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-inner shrink-0">
+            <Coins className="w-3.5 h-3.5 text-blue-400" />
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] text-slate-400">Solde Compte :</span>
+              <span className="text-xs font-black text-white whitespace-nowrap">
+                {formatPrice(effectiveUserBalance)}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsRechargeModalOpen(true)}
+              className="px-2 py-0.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-black text-[10px] transition-all cursor-pointer shadow-xs active:scale-95"
+              title="Recharger mon solde de compte Dokya"
+            >
+              + Recharger
+            </button>
+          </div>
 
           {/* Quick Commissions Balance indicator */}
           <div 
             onClick={() => setActiveTab('wallet')}
-            className="bg-slate-900 hover:bg-slate-850 border border-emerald-900/60 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-xl flex items-center gap-1.5 shadow-inner cursor-pointer transition-colors shrink-0"
+            className="bg-slate-900 hover:bg-slate-850 border border-emerald-900/60 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-inner cursor-pointer transition-colors shrink-0"
             title="Voir mon solde commissions et demander un retrait"
           >
             <Wallet className="w-3.5 h-3.5 text-emerald-400" />
             <div className="flex flex-col text-left">
-              <span className="text-[9px] text-slate-400 hidden xs:inline">Commissions :</span>
+              <span className="text-[9px] text-slate-400">Commissions :</span>
               <span className="text-xs font-black text-emerald-400 whitespace-nowrap">
                 {formatPrice(availableWithdrawBalance)}
               </span>
@@ -432,7 +641,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
           </div>
 
           {/* SÉLECTEUR GLOBAL DE DEVISE */}
-          <div className="relative">
+          <div className="relative z-50">
             <button
               type="button"
               onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
@@ -445,7 +654,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
             </button>
 
             {isCurrencyDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-[9999] animate-in fade-in zoom-in-95 duration-150">
                 {[
                   { code: 'XOF' as SupportedCurrency, label: 'FCFA XOF', flag: '🇸🇳' },
                   { code: 'XAF' as SupportedCurrency, label: 'FCFA XAF', flag: '🇨🇲' },
@@ -492,7 +701,207 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
             </button>
           )}
         </div>
+
+        {/* Right Mobile Compact Controls (< 768px): Never Overflows */}
+        <div className="flex md:hidden items-center gap-1.5 shrink-0">
+          {/* SÉLECTEUR GLOBAL DE DEVISE (MOBILE) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+              className="inline-flex items-center gap-0.5 px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-900 text-slate-300 hover:text-white border border-slate-800 cursor-pointer"
+            >
+              <Globe className="w-3 h-3 text-emerald-400" />
+              <span>{userCurrency}</span>
+            </button>
+
+            {isCurrencyDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-[9999]">
+                {[
+                  { code: 'XOF' as SupportedCurrency, label: 'FCFA XOF', flag: '🇸🇳' },
+                  { code: 'XAF' as SupportedCurrency, label: 'FCFA XAF', flag: '🇨🇲' },
+                  { code: 'EUR' as SupportedCurrency, label: 'Euro (€)', flag: '🇪🇺' },
+                  { code: 'USD' as SupportedCurrency, label: 'Dollar ($)', flag: '🇺🇸' }
+                ].map((curr) => (
+                  <button
+                    key={curr.code}
+                    type="button"
+                    onClick={() => {
+                      setUserCurrency(curr.code);
+                      setIsCurrencyDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between cursor-pointer ${
+                      userCurrency === curr.code
+                        ? 'bg-emerald-600 text-white font-bold'
+                        : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>{curr.flag} {curr.label}</span>
+                    {userCurrency === curr.code && <Check className="w-3 h-3" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <NotificationBell userId={currentUid} />
+
+          {onSignOut && (
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-rose-400 hover:bg-rose-950/40 cursor-pointer"
+              title="Déconnexion"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </header>
+
+      {/* ========================================================================= */}
+      {/* MOBILE TELEMARKETER COMMAND & QUICK NAVIGATION BAR (MOBILE ONLY)          */}
+      {/* ========================================================================= */}
+      <div className="md:hidden bg-slate-950 border-b border-slate-800/80 sticky top-[53px] z-40 shadow-lg">
+        {/* Row 1: Switch to Seller + Quick Balances */}
+        <div className="px-3 py-2 flex items-center justify-between gap-1.5 border-b border-slate-900 overflow-x-auto no-scrollbar">
+          {/* Switch to Seller button */}
+          <button
+            type="button"
+            onClick={onSwitchToSeller}
+            className="px-2.5 py-1.5 rounded-xl bg-indigo-950/80 border border-indigo-700/60 text-indigo-200 text-[11px] font-bold flex items-center gap-1 shrink-0 active:scale-95"
+            title="Basculer vers mon compte vendeur"
+          >
+            <ShoppingBag className="w-3 h-3 text-indigo-400" />
+            <span>Espace Vendeur</span>
+            <ArrowRight className="w-2.5 h-2.5 text-indigo-400" />
+          </button>
+
+          {/* Solde Compte */}
+          <div className="px-2 py-1 rounded-xl bg-slate-900 border border-blue-900/40 flex items-center gap-1.5 shrink-0 text-[11px]">
+            <Coins className="w-3 h-3 text-blue-400 shrink-0" />
+            <span className="font-black text-white">{formatPrice(effectiveUserBalance)}</span>
+            <button
+              type="button"
+              onClick={() => setIsRechargeModalOpen(true)}
+              className="px-1.5 py-0.2 rounded bg-blue-600 text-white font-black text-[10px]"
+              title="Recharger mon solde"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Solde Commissions */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('wallet')}
+            className="px-2 py-1 rounded-xl bg-slate-900 border border-emerald-900/50 flex items-center gap-1.5 shrink-0 text-[11px]"
+            title="Voir mes commissions et retraits"
+          >
+            <Wallet className="w-3 h-3 text-emerald-400 shrink-0" />
+            <span className="font-black text-emerald-400">{formatPrice(availableWithdrawBalance)}</span>
+          </button>
+        </div>
+
+        {/* Row 2: Thumb-Friendly Horizontal Scroll Tab Bar */}
+        <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setActiveTab('overview')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'overview'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Aperçu</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('marketplace')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'marketplace'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Offres ({offers.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsOrderModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md whitespace-nowrap shrink-0 flex items-center gap-1 cursor-pointer active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>+ Vendre</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('orders')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'orders'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Ventes ({myOrders.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('wallet')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'wallet'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Portefeuille</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('badge')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'badge'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Badge {hasCertifiedBadge ? '★' : ''}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsVipModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap shrink-0 flex items-center gap-1 cursor-pointer"
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-400" />
+            <span>{isVipMode ? 'VIP Actif' : 'Pass VIP'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('reviews')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'reviews'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            <Star className="w-3.5 h-3.5 text-amber-400" />
+            <span>Avis</span>
+          </button>
+        </div>
+      </div>
 
       {/* ========================================================================= */}
       {/* 2. BODY LAYOUT : SIDEBAR + MAIN CONTENT                                   */}
@@ -697,6 +1106,51 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
         {/* MAIN VIEW CONTENT AREA */}
         <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
           
+          {/* BANDEAU PROMO PUBLIQUE ADMIN EN COURS (SYNCHRONISÉ AVEC LE DASHBOARD ADMIN) */}
+          {publishedPromo && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border-2 border-emerald-500/50 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl shadow-emerald-500/10 animate-in fade-in">
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5 text-emerald-300 fill-emerald-300 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm font-black text-white">
+                      Code promo actif : <span className="font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 font-bold">{publishedPromo.code}</span>
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 text-xs font-black">
+                      {publishedPromo.discountType === 'percentage' ? `-${publishedPromo.discountValue}%` : `-${formatPrice(publishedPromo.discountValue)}`} de Réduction
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-200/90 mt-0.5">
+                    Remise exceptionnelle automatiquement appliquée sur le <strong>Badge Télévendeur Certifié</strong> ({formatPrice(effectiveBadgePrice)}) et l'<strong>Abonnement Mode VIP</strong> ({formatPrice(effectiveVipPrice)}/mois).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {!hasCertifiedBadge && (
+                  <button
+                    type="button"
+                    onClick={() => setIsBadgeModalOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
+                  >
+                    Badge à {formatPrice(effectiveBadgePrice)}
+                  </button>
+                )}
+                {!isVipMode && (
+                  <button
+                    type="button"
+                    onClick={() => setIsVipModalOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
+                  >
+                    VIP à {formatPrice(effectiveVipPrice)}/m
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ========================================================================= */}
           {/* TAB 1: OVERVIEW / TABLEAU DE BORD TÉLÉVENDEUR                              */}
           {/* ========================================================================= */}
@@ -820,38 +1274,48 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {offers.slice(0, 3).map(prod => (
-                    <div key={prod.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-emerald-700/60 transition-all flex flex-col justify-between space-y-3">
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                            {prod.category}
-                          </span>
-                          <span className="text-xs font-black text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-lg">
-                            +{prod.commissionType === 'percent' ? `${prod.commissionValue || 20}%` : formatPrice(prod.commissionValue || 2000)}
-                          </span>
+                {offers.length === 0 ? (
+                  <div className="p-8 text-center rounded-2xl bg-slate-950/60 border border-dashed border-slate-800/80 space-y-2.5">
+                    <Package className="w-8 h-8 text-slate-600 mx-auto" />
+                    <h4 className="text-sm font-bold text-white">Catalogue d'offres actuellement vierge</h4>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      Aucune fausse offre. Dès que des vendeurs certifiés publieront des produits avec commission d'affiliation, ils apparaîtront ici.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {offers.slice(0, 3).map(prod => (
+                      <div key={prod.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-emerald-700/60 transition-all flex flex-col justify-between space-y-3">
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                              {prod.category}
+                            </span>
+                            <span className="text-xs font-black text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-lg">
+                              +{prod.commissionType === 'percent' ? `${prod.commissionValue || 20}%` : formatPrice(prod.commissionValue || 2000)}
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-white line-clamp-1">{prod.title}</h4>
+                          <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">{prod.description}</p>
+                          <div className="mt-2 text-sm font-black text-white">
+                            Prix client : <span className="text-emerald-400">{formatPrice(prod.price)}</span>
+                          </div>
                         </div>
-                        <h4 className="text-sm font-bold text-white line-clamp-1">{prod.title}</h4>
-                        <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">{prod.description}</p>
-                        <div className="mt-2 text-sm font-black text-white">
-                          Prix client : <span className="text-emerald-400">{formatPrice(prod.price)}</span>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProductForOrder(prod);
+                            setIsOrderModalOpen(true);
+                          }}
+                          className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>Enregistrer une vente</span>
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedProductForOrder(prod);
-                          setIsOrderModalOpen(true);
-                        }}
-                        className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                      >
-                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                        <span>Enregistrer une vente</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
             </div>
@@ -958,8 +1422,14 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
               {filteredOffers.length === 0 ? (
                 <div className="p-12 text-center rounded-3xl bg-slate-900/40 border border-dashed border-slate-800 space-y-3">
                   <Package className="w-10 h-10 text-slate-600 mx-auto" />
-                  <h4 className="text-sm font-bold text-white">Aucune offre ne correspond à vos filtres</h4>
-                  <p className="text-xs text-slate-400">Essayez de modifier votre recherche ou de sélectionner "Tous les pays".</p>
+                  <h4 className="text-sm font-bold text-white">
+                    {offers.length === 0 ? "Le catalogue d'offres est actuellement vierge" : "Aucune offre ne correspond à vos filtres"}
+                  </h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    {offers.length === 0 
+                      ? "Le compte télévendeur est parfaitement vierge de toute fausse offre. Les offres réelles créées par les vendeurs partenaires apparaîtront ici." 
+                      : 'Essayez de modifier votre recherche ou de sélectionner "Tous les pays".'}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1372,9 +1842,18 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                   <button
                     type="button"
                     onClick={() => setIsBadgeModalOpen(true)}
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs shadow-lg hover:from-emerald-500 hover:to-teal-500 cursor-pointer transition-all"
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs shadow-lg hover:from-emerald-500 hover:to-teal-500 cursor-pointer transition-all flex items-center justify-center gap-2 active:scale-95"
                   >
-                    Activer mon Badge Certifié ({formatPrice(10000)})
+                    <span>Activer mon Badge Certifié</span>
+                    {badgeDiscount.hasDiscount ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="line-through text-slate-300 opacity-70 text-[11px]">{formatPrice(BASE_BADGE_PRICE)}</span>
+                        <span className="text-amber-300 font-black">{formatPrice(effectiveBadgePrice)}</span>
+                        <span className="bg-amber-400 text-slate-950 px-1.5 py-0.5 rounded text-[10px] font-black">{badgeDiscount.discountLabel}</span>
+                      </div>
+                    ) : (
+                      <span>({formatPrice(effectiveBadgePrice)})</span>
+                    )}
                   </button>
                 )}
               </div>
@@ -1422,8 +1901,21 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                     {isVipMode && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300">Actif</span>}
                   </div>
                   <h4 className="text-xl font-black text-white">Mode VIP Mensuel</h4>
-                  <div className="text-2xl font-black text-amber-300">
-                    {formatPrice(5000)} <span className="text-xs font-normal text-slate-400">/ mois</span>
+                  <div className="flex items-baseline gap-2">
+                    {vipDiscount.hasDiscount && (
+                      <span className="text-sm font-bold text-slate-500 line-through">
+                        {formatPrice(BASE_VIP_MONTHLY_PRICE)}
+                      </span>
+                    )}
+                    <span className="text-2xl font-black text-amber-300">
+                      {formatPrice(effectiveVipPrice)}
+                    </span>
+                    <span className="text-xs font-normal text-slate-400">/ mois</span>
+                    {vipDiscount.hasDiscount && (
+                      <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                        {vipDiscount.discountLabel}
+                      </span>
+                    )}
                   </div>
                   <ul className="space-y-2 text-xs text-slate-300">
                     <li className="flex items-center gap-2">
@@ -1441,10 +1933,20 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                   </ul>
                   <button
                     type="button"
-                    onClick={handleToggleVipMode}
-                    className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer shadow-md transition-all"
+                    onClick={() => {
+                      if (isVipMode) {
+                        handleToggleVipMode();
+                      } else {
+                        if (VIP_MONTHLY_PRICE <= 0 || effectiveUserBalance >= VIP_MONTHLY_PRICE) {
+                          handleToggleVipMode();
+                        } else {
+                          setIsVipModalOpen(true);
+                        }
+                      }
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer shadow-md transition-all active:scale-95"
                   >
-                    {isVipMode ? 'Repasser en Mode Standard (80%)' : 'Activer le Mode VIP (100%)'}
+                    {isVipMode ? 'Repasser en Mode Standard (80%)' : `Activer le Mode VIP (100%) ${vipDiscount.hasDiscount ? `— ${formatPrice(effectiveVipPrice)}` : ''}`}
                   </button>
                 </div>
 
@@ -1897,12 +2399,55 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center">
-                  <span className="text-xs text-slate-400 block">Tarif d'activation unique :</span>
-                  <div className="text-3xl font-black text-emerald-400 mt-1">
-                    {formatPrice(10000)}
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400">Tarif unique d'activation :</span>
+                    <div className="flex items-center gap-2">
+                      {badgeDiscount.hasDiscount && (
+                        <span className="text-xs font-bold text-slate-500 line-through">
+                          {formatPrice(BASE_BADGE_PRICE)}
+                        </span>
+                      )}
+                      <span className="font-black text-emerald-400 text-lg">
+                        {formatPrice(effectiveBadgePrice)}
+                      </span>
+                      {badgeDiscount.hasDiscount && (
+                        <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                          {badgeDiscount.discountLabel}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {publishedPromo && (
+                    <div className="text-[11px] text-emerald-300/90 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-xl flex items-center justify-between">
+                      <span>Code promo actif : <strong className="font-mono text-emerald-200">{publishedPromo.code}</strong></span>
+                      <span className="font-bold text-emerald-300">Remise déduite</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-800/80">
+                    <span className="text-slate-400">Votre Solde Dokya actuel :</span>
+                    <span className={`font-black ${effectiveUserBalance >= effectiveBadgePrice ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {formatPrice(effectiveUserBalance)}
+                    </span>
                   </div>
                 </div>
+
+                {badgeErrorMsg && (
+                  <div className="p-3 rounded-2xl bg-amber-950/60 border border-amber-600/40 text-amber-200 text-xs space-y-2 animate-in fade-in">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>{badgeErrorMsg}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsRechargeModalOpen(true)}
+                      className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md hover:from-blue-500 hover:to-indigo-500 cursor-pointer active:scale-95"
+                    >
+                      <Wallet className="w-3.5 h-3.5" />
+                      <span>Recharger mon Solde (+{formatPrice(Math.max(300, BADGE_PRICE - effectiveUserBalance))})</span>
+                    </button>
+                  </div>
+                )}
 
                 <ul className="space-y-1.5 text-xs text-slate-300">
                   <li className="flex items-center gap-2">
@@ -1919,19 +2464,33 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                   </li>
                 </ul>
 
-                <button
-                  type="button"
-                  onClick={handlePurchaseCertifiedBadge}
-                  disabled={isPurchasingBadge}
-                  className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {isPurchasingBadge ? 'Activation...' : `Activer mon Badge (${formatPrice(10000)})`}
-                </button>
+                {effectiveUserBalance < BADGE_PRICE ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsRechargeModalOpen(true)}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <Wallet className="w-4 h-4" />
+                    <span>Solde insuffisant : Recharger (+{formatPrice(Math.max(300, BADGE_PRICE - effectiveUserBalance))})</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handlePurchaseCertifiedBadge}
+                    disabled={isPurchasingBadge}
+                    className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {isPurchasingBadge ? 'Débit du compte & Activation...' : `Activer mon Badge (-${formatPrice(BADGE_PRICE)} du solde)`}
+                  </button>
+                )}
 
                 <button
                   type="button"
-                  onClick={() => setIsBadgeModalOpen(false)}
-                  className="w-full text-center text-xs text-slate-400 hover:text-white"
+                  onClick={() => {
+                    setIsBadgeModalOpen(false);
+                    setBadgeErrorMsg(null);
+                  }}
+                  className="w-full text-center text-xs text-slate-400 hover:text-white cursor-pointer"
                 >
                   Fermer
                 </button>
@@ -1959,26 +2518,94 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center">
-              <span className="text-xs text-slate-400 block">Abonnement mensuel :</span>
-              <div className="text-3xl font-black text-amber-400 mt-1">
-                {formatPrice(5000)} <span className="text-xs text-slate-400">/ mois</span>
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Abonnement mensuel :</span>
+                <div className="flex items-center gap-2">
+                  {vipDiscount.hasDiscount && (
+                    <span className="text-xs font-bold text-slate-500 line-through">
+                      {formatPrice(BASE_VIP_MONTHLY_PRICE)}
+                    </span>
+                  )}
+                  <div className="text-xl font-black text-amber-400">
+                    {formatPrice(effectiveVipPrice)} <span className="text-xs text-slate-400 font-normal">/ mois</span>
+                  </div>
+                  {vipDiscount.hasDiscount && (
+                    <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                      {vipDiscount.discountLabel}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {publishedPromo && (
+                <div className="text-[11px] text-emerald-300/90 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-xl flex items-center justify-between">
+                  <span>Code promo actif : <strong className="font-mono text-emerald-200">{publishedPromo.code}</strong></span>
+                  <span className="font-bold text-emerald-300">Remise déduite</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-800/80">
+                <span className="text-slate-400">Votre Solde Dokya actuel :</span>
+                <span className={`font-black ${effectiveUserBalance >= effectiveVipPrice ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {formatPrice(effectiveUserBalance)}
+                </span>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleToggleVipMode}
-              disabled={isActivatingVip}
-              className="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 disabled:opacity-50"
-            >
-              {isActivatingVip ? 'Mise à jour...' : isVipMode ? 'Repasser en Mode Standard (80%)' : `Activer le Mode VIP (${formatPrice(5000)} / mois)`}
-            </button>
+            {vipErrorMsg && (
+              <div className="p-3 rounded-2xl bg-amber-950/60 border border-amber-600/40 text-amber-200 text-xs space-y-2 animate-in fade-in">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <span>{vipErrorMsg}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsRechargeModalOpen(true)}
+                  className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md hover:from-blue-500 hover:to-indigo-500 cursor-pointer active:scale-95"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  <span>Recharger mon Solde (+{formatPrice(Math.max(300, VIP_MONTHLY_PRICE - effectiveUserBalance))})</span>
+                </button>
+              </div>
+            )}
+
+            {!isVipMode && effectiveUserBalance < VIP_MONTHLY_PRICE && VIP_MONTHLY_PRICE > 0 ? (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={handleToggleVipMode}
+                  disabled={isActivatingVip}
+                  className="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Crown className="w-4 h-4 text-slate-950" />
+                  <span>{isActivatingVip ? 'Activation en cours...' : 'Activer le Mode VIP (100% Commissions)'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsRechargeModalOpen(true)}
+                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs shadow-sm cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Wallet className="w-4 h-4 text-emerald-400" />
+                  <span>Recharger mon solde (+{formatPrice(Math.max(300, VIP_MONTHLY_PRICE - effectiveUserBalance))})</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleToggleVipMode}
+                disabled={isActivatingVip}
+                className="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+              >
+                {isActivatingVip ? 'Mise à jour...' : isVipMode ? 'Repasser en Mode Standard (80%)' : `Activer le Mode VIP ${VIP_MONTHLY_PRICE > 0 ? `(-${formatPrice(VIP_MONTHLY_PRICE)} du solde)` : '(Gratuit 100%)'}`}
+              </button>
+            )}
 
             <button
               type="button"
-              onClick={() => setIsVipModalOpen(false)}
-              className="w-full text-center text-xs text-slate-400 hover:text-white"
+              onClick={() => {
+                setIsVipModalOpen(false);
+                setVipErrorMsg(null);
+              }}
+              className="w-full text-center text-xs text-slate-400 hover:text-white cursor-pointer"
             >
               Annuler
             </button>
@@ -1986,6 +2613,26 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: RECHARGEMENT DU SOLDE WALLET (COMPTE TÉLÉVENDEUR)                    */}
+      {/* ========================================================================= */}
+      <RechargeWalletModal
+        isOpen={isRechargeModalOpen}
+        onClose={() => setIsRechargeModalOpen(false)}
+        userBalance={effectiveUserBalance}
+        userId={currentUid}
+        userEmail={profile.email || auth.currentUser?.email || undefined}
+        userName={profile.displayName || profile.personalInfo?.firstName || undefined}
+        onSuccess={(addedAmount) => {
+          const newBal = effectiveUserBalance + addedAmount;
+          const updated = { balance: newBal, walletBalance: newBal };
+          if (onUpdateProfile) onUpdateProfile(updated);
+          setIsRechargeModalOpen(false);
+          setBadgeErrorMsg(null);
+          setVipErrorMsg(null);
+        }}
+      />
 
     </div>
   );

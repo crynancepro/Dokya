@@ -386,52 +386,6 @@ export const DokyaSidebar: React.FC<DokyaSidebarProps> = ({
               </button>
             )}
 
-            {/* 2.3d MARKETPLACE DES OFFRES DE VENTE (Réservé Télévendeurs) */}
-            {isTelemarketer ? (
-              <button
-                id="nav-dokya-marketplace"
-                type="button"
-                onClick={() => {
-                  if (onSwitchToTelemarketer) onSwitchToTelemarketer();
-                  else handleNavClick('marketplace');
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
-                  activeTab === 'marketplace' || activeTab === 'telemarketer'
-                    ? 'bg-white/10 text-white font-semibold'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Briefcase className={`w-4 h-4 shrink-0 transition-colors ${
-                    activeTab === 'marketplace' || activeTab === 'telemarketer' ? 'text-emerald-400' : 'text-slate-400 group-hover:text-slate-200'
-                  }`} />
-                  <span>Catalogue d'Offres</span>
-                </div>
-                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Marketplace 💰
-                </span>
-              </button>
-            ) : (
-              <button
-                id="nav-go-telemarketer"
-                type="button"
-                onClick={() => {
-                  if (onSwitchToTelemarketer) onSwitchToTelemarketer();
-                  else handleNavClick('marketplace');
-                }}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/50 text-emerald-300 hover:text-white"
-                title="Accéder au portail indépendant des Télévendeurs Dokya"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Briefcase className="w-4 h-4 shrink-0 text-emerald-400" />
-                  <span>Espace Télévendeurs</span>
-                </div>
-                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  PRO 💼
-                </span>
-              </button>
-            )}
-
             {/* 2.4 Parrainage & Affiliation */}
             <button
               id="nav-affiliation"

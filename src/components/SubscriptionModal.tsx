@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { UserSubscription, TransactionRecord } from '../types';
 import { recordTransactionEverywhere } from '../lib/firebase';
+import { useLocale } from '../contexts/LocaleContext';
 
 export interface SubscriptionModalProps {
   isOpen: boolean;
@@ -37,13 +38,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { formatPrice } = useLocale();
 
   const hasSufficientBalance = userBalance >= price;
   const missingAmount = Math.max(0, price - userBalance);
 
   const handlePaySubscription = async () => {
     if (!hasSufficientBalance) {
-      setErrorMessage(`Votre solde (${userBalance.toLocaleString('fr-FR')} FCFA) est insuffisant (Requis : ${price.toLocaleString('fr-FR')} FCFA).`);
+      setErrorMessage(`Votre solde (${formatPrice(userBalance)}) est insuffisant (Requis : ${formatPrice(price)}).`);
       return;
     }
 
@@ -222,7 +224,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 )}
               </div>
               <div className="text-lg sm:text-xl font-black text-white">
-                {userBalance.toLocaleString('fr-FR')} <span className="text-xs text-slate-400 font-bold">FCFA</span>
+                {formatPrice(userBalance)}
               </div>
             </div>
 
@@ -236,7 +238,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 <span className="text-[10px] font-black text-amber-400">Forfaitaire</span>
               </div>
               <div className="text-lg sm:text-xl font-black text-white">
-                {price.toLocaleString('fr-FR')} <span className="text-xs text-slate-400 font-bold">FCFA</span>
+                {formatPrice(price)}
               </div>
             </div>
 
@@ -269,7 +271,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 ) : (
                   <>
                     <Crown className="w-4 h-4 text-slate-950" />
-                    <span>S'abonner avec mon solde ({price.toLocaleString('fr-FR')} FCFA)</span>
+                    <span>S'abonner avec mon solde ({formatPrice(price)})</span>
                   </>
                 )}
               </button>
@@ -279,7 +281,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex items-center justify-between">
                   <span>Montant manquant pour activer ce pass :</span>
                   <strong className="text-amber-300 font-black">
-                    {missingAmount.toLocaleString('fr-FR')} FCFA
+                    {formatPrice(missingAmount)}
                   </strong>
                 </div>
 

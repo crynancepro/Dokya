@@ -37,8 +37,8 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
     name: 'Euro (€)',
     symbol: '€',
     flag: '🇫🇷 🇪🇺',
-    // 1 000 FCFA ≈ 1.50 € (taux standard Dokya international)
-    rateFromXOF: 0.0015,
+    // 1 EUR ≈ 655.95 XOF (taux officiel zone euro / CFA)
+    rateFromXOF: 1 / 655.95,
     decimals: 2
   },
   USD: {
@@ -46,8 +46,8 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
     name: 'Dollar US ($)',
     symbol: '$',
     flag: '🇺🇸 🌐',
-    // 1 000 FCFA ≈ $1.60 USD
-    rateFromXOF: 0.0016,
+    // 1 USD ≈ 600 XOF
+    rateFromXOF: 1 / 600,
     decimals: 2
   }
 };

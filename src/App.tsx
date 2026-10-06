@@ -1510,7 +1510,13 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
         <DokyaTelemarketerPortal
           profile={userProfile}
           onUpdateProfile={(updated) => {
-            setUserProfile(prev => ({ ...prev, ...updated }));
+            setUserProfile(prev => {
+              const next = { ...prev, ...updated };
+              if (updated.balance !== undefined) {
+                setUserBalance(updated.balance);
+              }
+              return next;
+            });
           }}
           onSwitchToSeller={() => {
             if (typeof window !== 'undefined') {

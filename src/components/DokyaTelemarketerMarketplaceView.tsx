@@ -42,10 +42,12 @@ import {
   createTelemarketerOrder, 
   fetchTelemarketerOrders, 
   saveSellerReview, 
-  fetchSellerReviews 
+  fetchSellerReviews,
+  purgeLocalMockProducts
 } from '../lib/storeService';
 import { useLocale, SupportedCurrency } from '../contexts/LocaleContext';
-import { auth, updateDoc, doc, db } from '../lib/firebase';
+import { usePricing } from '../contexts/PricingContext';
+import { auth, setDoc, updateDoc, doc, db } from '../lib/firebase';
 
 interface DokyaTelemarketerMarketplaceViewProps {
   profile: CandidateProfile;
@@ -62,9 +64,24 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
 }) => {
   const currentUid = auth.currentUser?.uid || profile.uid || 'guest';
   const { formatPrice, userCurrency, setUserCurrency } = useLocale();
+  const { publishedPromo, calculateDiscountedPrice } = usePricing();
 
   // Navigation tab inside Telemarketer space
   const [activeTab, setActiveTab] = useState<'catalog' | 'my_orders' | 'reviews'>('catalog');
+
+  // Tarifs dynamiques synchronisés avec code promo admin
+  const BASE_BADGE_PRICE = 5000;
+  const BASE_VIP_PRICE = 4990;
+
+  const badgeDiscount = useMemo(() => {
+    return calculateDiscountedPrice(BASE_BADGE_PRICE);
+  }, [calculateDiscountedPrice]);
+  const effectiveBadgePrice = badgeDiscount.hasDiscount ? badgeDiscount.finalPrice : BASE_BADGE_PRICE;
+
+  const vipDiscount = useMemo(() => {
+    return calculateDiscountedPrice(BASE_VIP_PRICE);
+  }, [calculateDiscountedPrice]);
+  const effectiveVipPrice = vipDiscount.hasDiscount ? vipDiscount.finalPrice : BASE_VIP_PRICE;
 
   // Badge Status & Monetization Mode
   const [hasBadge, setHasBadge] = useState<boolean>(() => {
@@ -130,6 +147,9 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
   const loadOffers = async () => {
     setIsLoadingOffers(true);
     try {
+      // Purge proactive des caches de fausses offres
+      purgeLocalMockProducts();
+
       const items = await fetchAllMarketplaceOffers({
         country: selectedCountry,
         category: selectedCategory,
@@ -179,24 +199,47 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
       if (currentUid && currentUid !== 'guest') {
         try {
           const userRef = doc(db, 'users', currentUid);
-          await updateDoc(userRef, {
+          await setDoc(userRef, {
             telemarketerBadge: true,
+            isTelemarketerCertified: true,
+            certifiedBadgePurchased: true,
             telemarketerBadgeDate: new Date().toISOString(),
             telemarketerMode: gainMode,
+            telemarketerPlan: gainMode,
             userRole: 'telemarketer',
             updatedAt: new Date().toISOString()
-          });
+          }, { merge: true });
+        } catch (_e) {}
+        try {
+          await setDoc(doc(db, 'candidates', currentUid), {
+            telemarketerBadge: true,
+            isTelemarketerCertified: true,
+            certifiedBadgePurchased: true,
+            telemarketerBadgeDate: new Date().toISOString(),
+            telemarketerMode: gainMode,
+            telemarketerPlan: gainMode,
+            userRole: 'telemarketer',
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
         } catch (_e) {}
       }
 
       setHasBadge(true);
-      localStorage.setItem(`dokya_badge_${currentUid}`, 'true');
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`dokya_badge_${currentUid}`, 'true');
+          localStorage.setItem(`dokya_tel_badge_${currentUid}`, 'true');
+        } catch (_e) {}
+      }
 
       if (onUpdateProfile) {
         onUpdateProfile({
           telemarketerBadge: true,
+          isTelemarketerCertified: true,
+          certifiedBadgePurchased: true,
           telemarketerBadgeDate: new Date().toISOString(),
           telemarketerMode: gainMode,
+          telemarketerPlan: gainMode,
           userRole: 'telemarketer'
         });
       }
@@ -217,20 +260,33 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
     try {
       const newMode = gainMode === 'vip' ? 'standard' : 'vip';
       setGainMode(newMode);
-      localStorage.setItem(`dokya_tel_mode_${currentUid}`, newMode);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`dokya_tel_mode_${currentUid}`, newMode);
+          localStorage.setItem(`dokya_tel_plan_${currentUid}`, newMode);
+        } catch (_e) {}
+      }
 
       if (currentUid && currentUid !== 'guest') {
         try {
           const userRef = doc(db, 'users', currentUid);
-          await updateDoc(userRef, {
+          await setDoc(userRef, {
             telemarketerMode: newMode,
+            telemarketerPlan: newMode,
             updatedAt: new Date().toISOString()
-          });
+          }, { merge: true });
+        } catch (_e) {}
+        try {
+          await setDoc(doc(db, 'candidates', currentUid), {
+            telemarketerMode: newMode,
+            telemarketerPlan: newMode,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
         } catch (_e) {}
       }
 
       if (onUpdateProfile) {
-        onUpdateProfile({ telemarketerMode: newMode });
+        onUpdateProfile({ telemarketerMode: newMode, telemarketerPlan: newMode });
       }
 
       setIsVipModalOpen(false);
@@ -388,45 +444,90 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
         </div>
       )}
 
+      {/* BANDEAU PROMO PUBLIQUE ADMIN EN COURS */}
+      {publishedPromo && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border-2 border-emerald-500/50 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl shadow-emerald-500/10 animate-in fade-in">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5 text-emerald-300 fill-emerald-300 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs sm:text-sm font-black text-white">
+                  Code promo actif : <span className="font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 font-bold">{publishedPromo.code}</span>
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 text-xs font-black">
+                  {publishedPromo.discountType === 'percentage' ? `-${publishedPromo.discountValue}%` : `-${formatPrice(publishedPromo.discountValue)}`} de Réduction
+                </span>
+              </div>
+              <p className="text-xs text-emerald-200/90 mt-0.5">
+                Remise exceptionnelle appliquée sur le <strong>Badge Télévendeur Certifié</strong> ({formatPrice(effectiveBadgePrice)}) et le <strong>Mode VIP</strong> ({formatPrice(effectiveVipPrice)}/mois).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {!hasBadge && (
+              <button
+                type="button"
+                onClick={() => setIsBadgeModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                Badge à {formatPrice(effectiveBadgePrice)}
+              </button>
+            )}
+            {gainMode !== 'vip' && (
+              <button
+                type="button"
+                onClick={() => setIsVipModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                VIP à {formatPrice(effectiveVipPrice)}/m
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ========================================================================= */}
-      {/* HEADER SECTION: TELEMARKETER STATUS & MONETIZATION MODE                     */}
+      {/* HEADER SECTION: TELEMARKETER STATUS & MONETIZATION MODE (RESPONSIVE)       */}
       {/* ========================================================================= */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950/40 to-slate-950 border border-slate-800 p-5 sm:p-7 shadow-xl">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950/40 to-slate-950 border border-slate-800 p-4 sm:p-7 shadow-xl">
         <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-5 relative z-10">
+          <div className="space-y-2 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 sm:px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] sm:text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
                 Espace Télévendeurs Dokya
               </span>
 
               {hasBadge ? (
-                <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                <span className="px-2.5 sm:px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] sm:text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Badge Télévendeur Certifié
+                  Badge Certifié ★
                 </span>
               ) : (
-                <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <span className="px-2.5 sm:px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                   <Lock className="w-3.5 h-3.5 text-amber-400" />
                   Badge Requis
                 </span>
               )}
 
               {gainMode === 'vip' ? (
-                <span className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                <span className="px-2.5 sm:px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] sm:text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                   <Crown className="w-3.5 h-3.5 text-amber-400" />
-                  Mode VIP (100% Commissions)
+                  Mode VIP (100%)
                 </span>
               ) : (
-                <span className="px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold uppercase tracking-wider">
-                  Mode Standard (80% Net)
+                <span className="px-2.5 sm:px-3 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider shrink-0">
+                  Mode Standard (80%)
                 </span>
               )}
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight break-words">
               Marketplace des Offres de Vente & Affiliation
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 max-w-2xl leading-relaxed">
@@ -435,12 +536,12 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
           </div>
 
           {/* Quick Actions (Badge & Gain Mode) */}
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             {!hasBadge ? (
               <button
                 type="button"
                 onClick={() => setIsBadgeModalOpen(true)}
-                className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
               >
                 <ShieldCheck className="w-4 h-4 text-emerald-200" />
                 <span>Débloquer mon Badge Certifié</span>
@@ -449,7 +550,7 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
               <button
                 type="button"
                 onClick={() => setIsVipModalOpen(true)}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
+                className={`w-full sm:w-auto px-4 py-2.5 rounded-2xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
                   gainMode === 'vip'
                     ? 'bg-purple-900/60 border border-purple-500/50 text-purple-200 hover:bg-purple-900'
                     : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30'
@@ -461,7 +562,7 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
             )}
 
             {/* Currency switcher shortcut */}
-            <div className="flex items-center gap-1 bg-slate-950/80 px-2.5 py-1.5 rounded-2xl border border-slate-800 text-xs text-slate-300">
+            <div className="flex items-center gap-1 bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs text-slate-300">
               <span className="text-slate-500 font-bold">Devise :</span>
               {(['XOF', 'USD', 'EUR'] as SupportedCurrency[]).map((c) => (
                 <button
@@ -483,41 +584,41 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
 
         {/* Financial Overview Stats Cards */}
         {hasBadge && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-800">
-            <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Commissions Nettes</p>
-              <p className="text-base sm:text-lg font-black text-emerald-400 mt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 mt-5 pt-4 border-t border-slate-800">
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 min-w-0">
+              <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Commissions Nettes</p>
+              <p className="text-sm sm:text-lg font-black text-emerald-400 mt-1 truncate">
                 {formatPrice(stats.totalNet || 0)}
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                {gainMode === 'vip' ? '100% conservé (0% Dokya)' : '80% net (20% Dokya)'}
+              <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                {gainMode === 'vip' ? '100% net (0% Dokya)' : '80% net (20% Dokya)'}
               </p>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Commandes Conclues</p>
-              <p className="text-base sm:text-lg font-black text-white mt-1">
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 min-w-0">
+              <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Commandes</p>
+              <p className="text-sm sm:text-lg font-black text-white mt-1 truncate">
                 {stats.ordersCount}
               </p>
-              <p className="text-[10px] text-emerald-400 mt-0.5">
+              <p className="text-[10px] text-emerald-400 mt-0.5 truncate">
                 {stats.validatedCount} validée(s)
               </p>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">En Attente Vendeur</p>
-              <p className="text-base sm:text-lg font-black text-amber-400 mt-1">
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 min-w-0">
+              <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">En Attente</p>
+              <p className="text-sm sm:text-lg font-black text-amber-400 mt-1 truncate">
                 {stats.pendingCount}
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">Vérification en cours</p>
+              <p className="text-[10px] text-slate-500 mt-0.5 truncate">Vérification</p>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Mon Solde Dokya</p>
-              <p className="text-base sm:text-lg font-black text-indigo-400 mt-1">
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 min-w-0">
+              <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Solde Dokya</p>
+              <p className="text-sm sm:text-lg font-black text-indigo-400 mt-1 truncate">
                 {formatPrice(userBalance || 0)}
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">Wallet disponible</p>
+              <p className="text-[10px] text-slate-500 mt-0.5 truncate">Wallet</p>
             </div>
           </div>
         )}
@@ -585,39 +686,39 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
       {/* ========================================================================= */}
       {hasBadge && (
         <div className="space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-3">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-3">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-2 px-2 sm:mx-0 sm:px-0">
               <button
                 type="button"
                 onClick={() => setActiveTab('catalog')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
                   activeTab === 'catalog'
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                <ShoppingBag className="w-4 h-4" />
+                <ShoppingBag className="w-4 h-4 shrink-0" />
                 <span>Catalogue des Offres ({offers.length})</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab('my_orders')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
                   activeTab === 'my_orders'
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                <Clock className="w-4 h-4" />
-                <span>Mes Ventes Enregistrées ({telemarketerOrders.length})</span>
+                <Clock className="w-4 h-4 shrink-0" />
+                <span>Mes Ventes ({telemarketerOrders.length})</span>
               </button>
             </div>
 
-            <div className="text-xs text-slate-400 flex items-center gap-1.5">
-              <span>Mode actif :</span>
+            <div className="text-[11px] sm:text-xs text-slate-400 flex items-center gap-1.5 shrink-0">
+              <span>Mode :</span>
               <strong className={gainMode === 'vip' ? 'text-purple-300' : 'text-slate-200'}>
-                {gainMode === 'vip' ? 'VIP (100% de vos gains)' : 'Standard (20% prélevé par Dokya)'}
+                {gainMode === 'vip' ? 'VIP (100% net)' : 'Standard (80% net)'}
               </strong>
             </div>
           </div>
@@ -705,10 +806,16 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                   Chargement des offres certifiées...
                 </div>
               ) : filteredOffers.length === 0 ? (
-                <div className="p-8 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-2">
-                  <AlertCircle className="w-8 h-8 text-slate-500 mx-auto" />
-                  <p className="text-sm font-bold text-white">Aucune offre ne correspond à vos filtres</p>
-                  <p className="text-xs text-slate-400">Essayez d'élargir la sélection géographique ou de réinitialiser la recherche.</p>
+                <div className="p-10 text-center rounded-3xl bg-slate-900 border border-dashed border-slate-800 space-y-3">
+                  <Package className="w-10 h-10 text-slate-500 mx-auto" />
+                  <p className="text-sm font-bold text-white">
+                    {offers.length === 0 ? "Le catalogue d'offres Marketplace est actuellement vierge" : "Aucune offre ne correspond à vos filtres"}
+                  </p>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                    {offers.length === 0
+                      ? "Le compte télévendeur est parfaitement vierge. Dès que des commerçants et formateurs certifiés publieront des produits réels d'affiliation sur Dokya, ils apparaîtront automatiquement ici avec vos commissions garanties."
+                      : "Essayez d'élargir la sélection géographique ou de réinitialiser la recherche."}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1000,7 +1107,21 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
               <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Tarif unique du Badge :</span>
-                  <span className="text-base font-black text-emerald-400">{formatPrice(5000)}</span>
+                  <div className="flex items-center gap-2">
+                    {badgeDiscount.hasDiscount && (
+                      <span className="text-xs font-bold text-slate-500 line-through">
+                        {formatPrice(BASE_BADGE_PRICE)}
+                      </span>
+                    )}
+                    <span className="text-base font-black text-emerald-400">
+                      {formatPrice(effectiveBadgePrice)}
+                    </span>
+                    {badgeDiscount.hasDiscount && (
+                      <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                        {badgeDiscount.discountLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-slate-500">
                   <span>Votre solde portefeuille disponible :</span>
@@ -1043,7 +1164,7 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                 ) : (
                   <>
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Confirmer et Activer ({formatPrice(5000)})</span>
+                    <span>Confirmer et Activer ({formatPrice(effectiveBadgePrice)})</span>
                   </>
                 )}
               </button>
@@ -1097,7 +1218,21 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
 
               <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-500/30 text-xs flex items-center justify-between">
                 <span>Abonnement Télévendeur VIP :</span>
-                <span className="font-black text-purple-300 text-sm">{formatPrice(4990)} / mois</span>
+                <div className="flex items-center gap-2">
+                  {vipDiscount.hasDiscount && (
+                    <span className="text-xs font-bold text-slate-500 line-through">
+                      {formatPrice(BASE_VIP_PRICE)}
+                    </span>
+                  )}
+                  <span className="font-black text-purple-300 text-sm">
+                    {formatPrice(effectiveVipPrice)} / mois
+                  </span>
+                  {vipDiscount.hasDiscount && (
+                    <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                      {vipDiscount.discountLabel}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1120,7 +1255,7 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                 ) : (
                   <>
                     <Crown className="w-4 h-4 text-amber-300" />
-                    <span>{gainMode === 'vip' ? 'Repasser en Standard' : `Activer Mode VIP (${formatPrice(4990)}/mois)`}</span>
+                    <span>{gainMode === 'vip' ? 'Repasser en Standard' : `Activer Mode VIP (${formatPrice(effectiveVipPrice)}/mois)`}</span>
                   </>
                 )}
               </button>

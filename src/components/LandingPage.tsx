@@ -53,19 +53,17 @@ interface LandingPageProps {
 }
 
 // -------------------------------------------------------------
-// PRICING OFFERS (GRILLE TARIFAIRE OFFICIELLE EN USD $)
+// PRICING OFFERS (GRILLE TARIFAIRE OFFICIELLE MULTI-DEVISES)
 // -------------------------------------------------------------
 export interface PricingPlan {
   id: 'free' | 'single' | 'monthly' | 'semester' | 'annual';
   title: string;
-  priceFormatted: string;
-  amountUSD: number;
+  amountXOF: number;
   periodLabel: string;
   subtitle: string;
   popular?: boolean;
   tag: string;
   features: string[];
-  ctaLabel: string;
   colorScheme: 'slate' | 'indigo' | 'emerald' | 'amber';
 }
 
@@ -73,8 +71,7 @@ const PRICING_PLANS: PricingPlan[] = [
   {
     id: 'free',
     title: 'Formule Gratuite',
-    priceFormatted: '0 $',
-    amountUSD: 0,
+    amountXOF: 0,
     periodLabel: '/ mois',
     subtitle: 'Idéal pour tester la plateforme Dokya sans engagement',
     tag: 'Découverte Gratuite',
@@ -85,32 +82,28 @@ const PRICING_PLANS: PricingPlan[] = [
       '1 Facture & 1 Devis par mois avec filigrane Dokya',
       'Accès aux 50+ modèles et assistant IA de rédaction',
       'Aperçu interactif et stockage de vos documents'
-    ],
-    ctaLabel: 'Commencer Gratuitement (0 $)'
+    ]
   },
   {
     id: 'single',
     title: "Achat à l'Acte",
-    priceFormatted: '1.99 $',
-    amountUSD: 1.99,
+    amountXOF: 1000,
     periodLabel: '/ document',
-    subtitle: 'Paiement unique sans abonnement • 1.99 $ par CV et 1.99 $ par Lettre',
+    subtitle: 'Paiement unique sans abonnement pour débloquer votre document',
     tag: 'Paiement Unique',
     colorScheme: 'indigo',
     features: [
-      '1.99 $ par CV ATS haute définition sans filigrane',
-      '1.99 $ par Lettre de motivation ciblée sans filigrane',
+      'Téléchargement haute définition sans filigrane',
       'Exports illimités en PDF vectoriel HD & Word (.docx)',
       'Score de conformité ATS supérieur à 98%',
-      'Archivage sécurisé et ré-édition sans frais supplémentaires'
-    ],
-    ctaLabel: "Payer à l'acte (1.99 $)"
+      'Archivage sécurisé et ré-édition sans frais supplémentaires',
+      'Accès instantané via votre solde ou Mobile Money'
+    ]
   },
   {
     id: 'monthly',
     title: 'Abonnement Mensuel',
-    priceFormatted: '9.99 $',
-    amountUSD: 9.99,
+    amountXOF: 5000,
     periodLabel: '/ mois',
     subtitle: 'Accès complet illimité • Idéal pour booster votre carrière et vos ventes',
     popular: true,
@@ -122,16 +115,14 @@ const PRICING_PLANS: PricingPlan[] = [
       'Factures & Devis professionnels OHADA illimités',
       'Gestion complète de vos Clients & Suivi des Stocks',
       'Simulateur d\'entretien RH & Support prioritaire WhatsApp'
-    ],
-    ctaLabel: "S'abonner (9.99 $ / mois)"
+    ]
   },
   {
     id: 'semester',
     title: 'Abonnement 6 Mois',
-    priceFormatted: '47.95 $',
-    amountUSD: 47.95,
+    amountXOF: 25000,
     periodLabel: '/ 6 mois',
-    subtitle: 'Soit ~7.99 $ / mois • Économisez 20% sur votre abonnement',
+    subtitle: 'Économisez 20% sur votre abonnement complet',
     tag: '💎 Forfait 6 Mois (-20%)',
     colorScheme: 'indigo',
     features: [
@@ -140,16 +131,14 @@ const PRICING_PLANS: PricingPlan[] = [
       'Boutique vendeur, Factures & Devis illimités',
       'Gestion Clientèle & Gestion des Stocks avancée',
       'Mises à jour prioritaires & support prioritaire'
-    ],
-    ctaLabel: 'Activer les 6 Mois (47.95 $)'
+    ]
   },
   {
     id: 'annual',
     title: 'Abonnement Annuel',
-    priceFormatted: '71.90 $',
-    amountUSD: 71.90,
+    amountXOF: 45000,
     periodLabel: '/ an',
-    subtitle: 'Soit ~5.99 $ / mois • Économisez 40% sur toute l\'année',
+    subtitle: 'Économisez 40% sur toute l\'année',
     tag: '👑 Meilleure Offre (-40%)',
     colorScheme: 'emerald',
     features: [
@@ -158,8 +147,7 @@ const PRICING_PLANS: PricingPlan[] = [
       'Boutique vendeur complète + Gestion de Stock & Clients',
       'Relecture experte & support dédié 7j/7 sur WhatsApp',
       'Nouveaux modèles et fonctionnalités en avant-première'
-    ],
-    ctaLabel: 'Activer le Pass 1 An (71.90 $)'
+    ]
   }
 ];
 
@@ -176,6 +164,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   
   const currentUser = auth.currentUser;
   const { publishedPromo, calculateDiscountedPrice } = usePricing();
+  const { formatPrice, userCurrency } = useLocale();
 
   const handlePlanClick = (_plan: PricingPlan) => {
     if (currentUser) {
@@ -863,7 +852,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="text-center space-y-3 max-w-2xl mx-auto">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-xs font-bold uppercase tracking-wider">
               <Zap className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Tarification Officielle Dokya (USD $)</span>
+              <span>Tarification Officielle Dokya ({userCurrency})</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
               Des tarifs simples, transparents &amp; sans surprise
@@ -886,7 +875,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       Code promo public actif : <span className="font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/40 font-bold">{publishedPromo.code}</span>
                     </span>
                     <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 text-xs font-black shadow-xs">
-                      {publishedPromo.discountType === 'percentage' ? `-${publishedPromo.discountValue}%` : `-${publishedPromo.discountValue}$`} de Réduction
+                      {publishedPromo.discountType === 'percentage' ? `-${publishedPromo.discountValue}%` : `-${formatPrice(publishedPromo.discountValue)}`} de Réduction
                     </span>
                   </div>
                   <p className="text-xs text-emerald-200/90 mt-0.5">
@@ -908,14 +897,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
             
             {PRICING_PLANS.map((plan) => {
-              const isFree = plan.amountUSD === 0;
-              const discount = !isFree ? calculateDiscountedPrice(plan.amountUSD) : null;
+              const isFree = plan.amountXOF === 0;
+              const discount = !isFree ? calculateDiscountedPrice(plan.amountXOF) : null;
               const hasDiscount = Boolean(discount?.hasDiscount);
               const finalPriceDisplay = isFree 
-                ? '0 $' 
+                ? formatPrice(0) 
                 : hasDiscount 
-                  ? `${discount?.finalPrice.toFixed(2)} $` 
-                  : `${plan.amountUSD.toFixed(2)} $`;
+                  ? formatPrice(discount?.finalPrice || plan.amountXOF) 
+                  : formatPrice(plan.amountXOF);
 
               return (
                 <Landing3DCard key={plan.id} depth={8} className="h-full">
@@ -959,7 +948,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         <div className="flex items-baseline gap-2 mt-3 p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                           {hasDiscount && (
                             <span className="text-lg sm:text-xl font-bold text-slate-500 line-through">
-                              {plan.amountUSD.toFixed(2)} $
+                              {formatPrice(plan.amountXOF)}
                             </span>
                           )}
                           <span className={`text-3xl sm:text-4xl font-black font-mono ${hasDiscount ? 'text-emerald-400' : 'text-white'}`}>
@@ -997,7 +986,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         <CreditCard className="w-4 h-4" />
                         <span>
                           {isFree
-                            ? 'Commencer Gratuitement (0 $)'
+                            ? `Commencer Gratuitement (${formatPrice(0)})`
                             : currentUser
                               ? `Souscrire (${finalPriceDisplay})`
                               : `Choisir cette offre (${finalPriceDisplay})`}

@@ -14,6 +14,7 @@ import {
 } from '../lib/firebase';
 import { TransactionRecord } from '../types';
 import { usePricing } from '../contexts/PricingContext';
+import { useLocale } from '../contexts/LocaleContext';
 
 export interface PaywallModalProps {
   isOpen: boolean;
@@ -55,6 +56,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   contentData
 }) => {
   const { validatePromoCode, appliedGlobalPromo, setAppliedGlobalPromo, pricing, publishedPromo } = usePricing();
+  const { formatPrice } = useLocale();
 
   // Resolve base price for the document
   const resolveBasePrice = () => {
@@ -257,7 +259,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   // Execute unlock with wallet balance via /api/wallet/pay
   const handlePayWithWallet = async () => {
     if (!hasSufficientBalance) {
-      setErrorMessage(`Votre solde (${userBalance.toLocaleString('fr-FR')} FCFA) est insuffisant pour débloquer ce document (Requis : ${payablePrice.toLocaleString('fr-FR')} FCFA).`);
+      setErrorMessage(`Votre solde (${formatPrice(userBalance)}) est insuffisant pour débloquer ce document (Requis : ${formatPrice(payablePrice)}).`);
       return;
     }
 
@@ -454,7 +456,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                 )}
               </div>
               <div className="text-lg sm:text-xl font-black text-white">
-                {userBalance.toLocaleString('fr-FR')} <span className="text-xs text-slate-400 font-bold">FCFA</span>
+                {formatPrice(userBalance)}
               </div>
             </div>
 
@@ -472,11 +474,11 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
               <div className="flex items-baseline gap-1.5">
                 {appliedPromo && promoDiscount > 0 && (
                   <span className="text-xs font-semibold text-slate-500 line-through">
-                    {basePrice.toLocaleString('fr-FR')}
+                    {formatPrice(basePrice)}
                   </span>
                 )}
                 <span className="text-lg sm:text-xl font-black text-white">
-                  {payablePrice === 0 ? '0' : payablePrice.toLocaleString('fr-FR')} <span className="text-xs text-slate-400 font-bold">FCFA</span>
+                  {payablePrice === 0 ? '0 FCFA' : formatPrice(payablePrice)}
                 </span>
               </div>
             </div>
@@ -560,7 +562,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                 ) : (
                   <>
                     <Unlock className="w-4 h-4 text-amber-300" />
-                    <span>Débloquer avec mon solde ({payablePrice === 0 ? 'Gratuit' : `${payablePrice.toLocaleString('fr-FR')} FCFA`})</span>
+                    <span>Débloquer avec mon solde ({payablePrice === 0 ? 'Gratuit' : formatPrice(payablePrice)})</span>
                   </>
                 )}
               </button>
@@ -570,7 +572,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex items-center justify-between">
                   <span>Montant manquant pour ce document :</span>
                   <strong className="text-amber-300 font-black">
-                    {(payablePrice - userBalance).toLocaleString('fr-FR')} FCFA
+                    {formatPrice(payablePrice - userBalance)}
                   </strong>
                 </div>
 

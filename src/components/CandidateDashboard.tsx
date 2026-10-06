@@ -47,7 +47,6 @@ import { DokyaAffiliateView } from './DokyaAffiliateView';
 import { DokyaSupportChat } from './DokyaSupportChat';
 import { NotificationBell } from './NotificationBell';
 import { DokyaSellerStoreView } from './store/DokyaSellerStoreView';
-import { DokyaTelemarketerMarketplaceView } from './DokyaTelemarketerMarketplaceView';
 import { SettingsView } from './SettingsView';
 
 interface CandidateDashboardProps {
@@ -964,12 +963,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                         <span className="hidden sm:inline">Ma Boutique & Liens de Vente</span>
                       </>
                     )
-                    : activeSidebarTab === 'marketplace' || activeSidebarTab === 'telemarketer' ? (
-                      <>
-                        <span className="sm:hidden">Marketplace Offres</span>
-                        <span className="hidden sm:inline">Marketplace Télévendeurs & Offres Certifiées</span>
-                      </>
-                    )
                     : activeSidebarTab === 'settings' || activeSidebarTab === 'parametres' ? (
                       <>
                         <span className="sm:hidden">Paramètres</span>
@@ -1067,8 +1060,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   }
                   if (onSwitchToTelemarketer) {
                     onSwitchToTelemarketer();
-                  } else {
-                    setActiveSidebarTab('marketplace');
                   }
                 }}
                 className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
@@ -1977,22 +1968,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* TAB: MARKETPLACE DES OFFRES DE VENTE (RÉSERVÉ TÉLÉVENDEURS CERTIFIÉS)     */}
-          {/* ========================================================================= */}
-          {(activeSidebarTab === 'marketplace' || activeSidebarTab === 'telemarketer') && (
-            <div className="space-y-6 animate-in fade-in">
-              <DokyaTelemarketerMarketplaceView
-                profile={profile}
-                onUpdateProfile={(updated) => {
-                  setProfile(prev => ({ ...prev, ...updated }));
-                }}
-                onOpenRecharge={() => setIsRechargeModalOpen(true)}
-                userBalance={profile.balance ?? 0}
-              />
-            </div>
-          )}
-
-          {/* ========================================================================= */}
           {/* TAB: AFFILIATION & PARRAINAGE (20% COMMISSION DIRECTE)                   */}
           {/* ========================================================================= */}
           {activeSidebarTab === 'affiliation' && (
@@ -2609,7 +2584,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     title="Payer et débloquer pour télécharger"
                   >
                     <CreditCard className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Payer (1 000 FCFA)</span>
+                    <span>Payer ({formatPrice(1000)})</span>
                   </button>
                 )}
 
