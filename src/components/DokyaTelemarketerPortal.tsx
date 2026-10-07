@@ -121,10 +121,13 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewSellerId, setReviewSellerId] = useState('');
   const [reviewSellerName, setReviewSellerName] = useState('');
+  const [reviewSellerUsername, setReviewSellerUsername] = useState('');
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
+  const [reviewTag, setReviewTag] = useState('Paiement rapide');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewSuccessMessage, setReviewSuccessMessage] = useState<string | null>(null);
+  const [reviewErrorMessage, setReviewErrorMessage] = useState<string | null>(null);
 
   // Rechargement du solde de compte Dokya
   const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
@@ -514,29 +517,69 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
   // Handle Submit Seller Review
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reviewSellerId) return;
-    if (!reviewComment.trim()) return;
+    setReviewErrorMessage(null);
+
+    // Résolution robuste de l'identifiant du vendeur
+    let effectiveSellerId = reviewSellerId;
+    let effectiveSellerName = reviewSellerName;
+    let effectiveSellerUsername = reviewSellerUsername;
+
+    if (!effectiveSellerId && offers.length > 0) {
+      const match = offers.find(o => 
+        (o.sellerId && o.sellerId === reviewSellerId) ||
+        (o.userId && o.userId === reviewSellerId) ||
+        (reviewSellerName && o.sellerName === reviewSellerName)
+      ) || offers[0];
+
+      if (match) {
+        effectiveSellerId = match.sellerId || match.userId || '';
+        effectiveSellerName = match.sellerName || 'Vendeur';
+        effectiveSellerUsername = match.sellerUsername || match.sellerName || 'vendeur';
+      }
+    }
+
+    if (!effectiveSellerId) {
+      setReviewErrorMessage("Veuillez sélectionner le vendeur partenaire à évaluer.");
+      return;
+    }
+    if (!reviewComment.trim()) {
+      setReviewErrorMessage("Veuillez renseigner un commentaire sur votre expérience.");
+      return;
+    }
 
     setIsSubmittingReview(true);
     try {
-      await saveSellerReview({
-        sellerId: reviewSellerId,
-        sellerName: reviewSellerName,
+      const reviewerName = profile.displayName || 
+                           [profile.personalInfo?.firstName, profile.personalInfo?.lastName].filter(Boolean).join(' ') || 
+                           'Télévendeur Dokya';
+
+      const savedRev = await saveSellerReview({
+        sellerId: effectiveSellerId,
+        sellerName: effectiveSellerName || 'Vendeur Dokya',
+        sellerUsername: effectiveSellerUsername || 'vendeur',
         telemarketerId: currentUid,
-        telemarketerName: profile.displayName || profile.personalInfo?.firstName || 'Télévendeur Dokya',
+        telemarketerName: reviewerName,
         rating: reviewRating,
-        comment: reviewComment.trim()
+        comment: reviewComment.trim(),
+        tags: reviewTag ? [reviewTag] : ['Produit conforme']
       });
 
-      setReviewSuccessMessage('Votre avis public a été publié avec succès.');
+      // Mettre à jour immédiatement la liste dans l'état local
+      setReviews(prev => [savedRev, ...prev.filter(r => r.id !== savedRev.id)]);
+      setReviewSuccessMessage('Votre avis public a été publié avec succès !');
       setReviewComment('');
-      await loadData();
+      
+      // Rechargement en tâche de fond
+      loadData().catch(() => {});
+
       setTimeout(() => {
         setIsReviewModalOpen(false);
         setReviewSuccessMessage(null);
+        setReviewErrorMessage(null);
       }, 1500);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error saving review:', e);
+      setReviewErrorMessage(e?.message || "Erreur lors de la publication de l'avis.");
     } finally {
       setIsSubmittingReview(false);
     }
@@ -1284,36 +1327,54 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {offers.slice(0, 3).map(prod => (
-                      <div key={prod.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-emerald-700/60 transition-all flex flex-col justify-between space-y-3">
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                              {prod.category}
-                            </span>
-                            <span className="text-xs font-black text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-lg">
-                              +{prod.commissionType === 'percent' ? `${prod.commissionValue || 20}%` : formatPrice(prod.commissionValue || 2000)}
-                            </span>
+                    {offers.slice(0, 3).map(prod => {
+                      const cardImg = (prod.images && prod.images.length > 0 && prod.images[0]) || 
+                                      prod.imageUrl || 
+                                      (prod as any).image || 
+                                      'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80';
+                      return (
+                        <div key={prod.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-emerald-700/60 transition-all flex flex-col justify-between space-y-3 overflow-hidden group">
+                          <div>
+                            {/* Product preview thumbnail */}
+                            <div className="h-28 w-full rounded-xl overflow-hidden bg-slate-950 mb-3 relative">
+                              <img 
+                                src={cardImg} 
+                                alt={prod.title} 
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80';
+                                }}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                              />
+                              <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-emerald-950/90 border border-emerald-500/50 text-[10px] font-black text-emerald-300 backdrop-blur-sm">
+                                +{prod.commissionType === 'percent' ? `${prod.commissionValue || 20}%` : formatPrice(prod.commissionValue || 2000)}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                                {prod.category}
+                              </span>
+                            </div>
+                            <h4 className="text-sm font-bold text-white line-clamp-1">{prod.title}</h4>
+                            <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">{prod.description}</p>
+                            <div className="mt-2 text-sm font-black text-white">
+                              Prix client : <span className="text-emerald-400">{formatPrice(prod.price)}</span>
+                            </div>
                           </div>
-                          <h4 className="text-sm font-bold text-white line-clamp-1">{prod.title}</h4>
-                          <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">{prod.description}</p>
-                          <div className="mt-2 text-sm font-black text-white">
-                            Prix client : <span className="text-emerald-400">{formatPrice(prod.price)}</span>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedProductForOrder(prod);
+                              setIsOrderModalOpen(true);
+                            }}
+                            className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                          >
+                            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>Enregistrer une vente</span>
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedProductForOrder(prod);
-                            setIsOrderModalOpen(true);
-                          }}
-                          className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                        >
-                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>Enregistrer une vente</span>
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1446,13 +1507,26 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                         key={prod.id} 
                         className="rounded-3xl bg-slate-900 border border-slate-800/90 overflow-hidden flex flex-col justify-between hover:border-emerald-600/60 transition-all shadow-xl group"
                       >
-                        {/* Top banner / Image placeholder */}
-                        <div className="h-36 bg-gradient-to-br from-slate-800 via-slate-900 to-emerald-950/40 relative overflow-hidden flex items-center justify-center p-4">
-                          {prod.imageUrl ? (
-                            <img src={prod.imageUrl} alt={prod.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                          ) : (
-                            <Package className="w-12 h-12 text-slate-700" />
-                          )}
+                        {/* Top banner / Image du produit plein format garanti */}
+                        <div className="h-44 sm:h-48 bg-slate-950 relative overflow-hidden flex items-center justify-center">
+                          {(() => {
+                            const imgSrc = (prod.images && prod.images.length > 0 && prod.images[0]) || 
+                                           prod.imageUrl || 
+                                           (prod as any).image || 
+                                           (prod as any).productImage ||
+                                           'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80';
+                            return (
+                              <img 
+                                src={imgSrc} 
+                                alt={prod.title} 
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80';
+                                }}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                              />
+                            );
+                          })()}
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-black/30 pointer-events-none" />
                           
                           {/* Commission Tag */}
                           <div className="absolute top-3 right-3 px-2.5 py-1 rounded-xl bg-emerald-900/90 border border-emerald-500/50 backdrop-blur-md text-emerald-200 text-xs font-black shadow-lg">
@@ -1462,12 +1536,12 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                           {/* Country Badges */}
                           <div className="absolute bottom-2 left-3 flex items-center gap-1">
                             {prod.targetCountries?.includes('ALL') ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-950/80 text-slate-200 border border-white/10">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-950/80 text-slate-200 border border-white/10 backdrop-blur-md">
                                 🌍 Tous pays
                               </span>
                             ) : (
                               prod.targetCountries?.slice(0, 3).map(c => (
-                                <span key={c} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950/80 text-emerald-300 border border-white/10">
+                                <span key={c} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950/80 text-emerald-300 border border-white/10 backdrop-blur-md">
                                   {c}
                                 </span>
                               ))
@@ -1507,19 +1581,23 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                           <div className="space-y-2 pt-2">
                             <div className="flex items-center justify-between text-[11px] text-slate-400">
                               <span className="flex items-center gap-1 truncate max-w-[150px]">
-                                <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                                <span>{prod.sellerName || 'Vendeur Dokya'}</span>
+                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="truncate">{prod.sellerName || 'Vendeur Dokya'}</span>
                               </span>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setReviewSellerId(prod.sellerId);
+                                  const sId = prod.sellerId || prod.userId || (prod as any).id;
+                                  setReviewSellerId(sId);
                                   setReviewSellerName(prod.sellerName || 'Vendeur');
+                                  setReviewSellerUsername(prod.sellerUsername || prod.sellerName || 'vendeur');
+                                  setReviewErrorMessage(null);
+                                  setReviewSuccessMessage(null);
                                   setIsReviewModalOpen(true);
                                 }}
-                                className="text-amber-400 hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                                className="text-amber-400 hover:text-amber-300 flex items-center gap-1 font-bold cursor-pointer transition-colors"
                               >
-                                <Star className="w-3 h-3 fill-amber-400" />
+                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                                 <span>Noter ce Vendeur</span>
                               </button>
                             </div>
@@ -1764,7 +1842,14 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
 
                 <button
                   type="button"
-                  onClick={() => setIsReviewModalOpen(true)}
+                  onClick={() => {
+                    setReviewSellerId('');
+                    setReviewSellerName('');
+                    setReviewSellerUsername('');
+                    setReviewErrorMessage(null);
+                    setReviewSuccessMessage(null);
+                    setIsReviewModalOpen(true);
+                  }}
                   className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer"
                 >
                   <Star className="w-3.5 h-3.5" />
@@ -2318,49 +2403,138 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
             
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-white">Évaluer le Vendeur</h3>
-                <p className="text-[11px] text-slate-400">{reviewSellerName || 'Commerçant Dokya'}</p>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                  <span>Évaluer le Vendeur Partenaire</span>
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {reviewSellerName ? `Avis pour ${reviewSellerName}` : 'Sélectionnez un vendeur et publiez votre avis public'}
+                </p>
               </div>
               <button 
                 type="button" 
-                onClick={() => setIsReviewModalOpen(false)}
-                className="text-slate-400 hover:text-white"
+                onClick={() => {
+                  setIsReviewModalOpen(false);
+                  setReviewErrorMessage(null);
+                  setReviewSuccessMessage(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-xl"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {reviewSuccessMessage ? (
-              <div className="p-3 rounded-2xl bg-emerald-950 border border-emerald-800 text-emerald-200 text-xs text-center font-bold">
-                {reviewSuccessMessage}
+              <div className="p-4 rounded-2xl bg-emerald-950/80 border border-emerald-800 text-emerald-200 text-xs text-center font-bold animate-in fade-in space-y-1">
+                <Check className="w-6 h-6 text-emerald-400 mx-auto" />
+                <p>{reviewSuccessMessage}</p>
               </div>
             ) : (
-              <form onSubmit={handleSubmitReview} className="space-y-3">
+              <form onSubmit={handleSubmitReview} className="space-y-3.5">
+                {reviewErrorMessage && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-semibold">
+                    {reviewErrorMessage}
+                  </div>
+                )}
+
+                {/* Sélecteur de vendeur si non pré-sélectionné */}
+                {!reviewSellerId && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      Sélectionner le Vendeur *
+                    </label>
+                    <select
+                      value={reviewSellerId}
+                      onChange={(e) => {
+                        const targetId = e.target.value;
+                        setReviewSellerId(targetId);
+                        const found = offers.find(o => (o.sellerId || o.userId) === targetId);
+                        if (found) {
+                          setReviewSellerName(found.sellerName || 'Vendeur');
+                          setReviewSellerUsername(found.sellerUsername || 'vendeur');
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-amber-500 cursor-pointer"
+                      required
+                    >
+                      <option value="">Sélectionnez un vendeur de votre catalogue...</option>
+                      {Array.from(new Map(offers.map(o => [o.sellerId || o.userId, o])).values()).map(o => (
+                        <option key={o.sellerId || o.userId} value={o.sellerId || o.userId}>
+                          {o.sellerName} ({o.title})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Vendeur ciblé */}
+                {reviewSellerId && (
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-emerald-400" />
+                      <span className="font-bold text-white">{reviewSellerName || 'Vendeur Dokya'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewSellerId('');
+                        setReviewSellerName('');
+                        setReviewSellerUsername('');
+                      }}
+                      className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                    >
+                      Changer
+                    </button>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1.5">Note de Fiabilité (1 à 5)</label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 bg-slate-950 p-2 rounded-xl border border-slate-800">
                     {[1, 2, 3, 4, 5].map(star => (
                       <button
                         key={star}
                         type="button"
                         onClick={() => setReviewRating(star)}
-                        className="p-1 cursor-pointer transition-transform hover:scale-110"
+                        className="p-1 cursor-pointer transition-transform hover:scale-125"
                       >
-                        <Star className={`w-6 h-6 ${star <= reviewRating ? 'fill-amber-400 text-amber-400' : 'text-slate-600'}`} />
+                        <Star className={`w-6 h-6 ${star <= reviewRating ? 'fill-amber-400 text-amber-400' : 'text-slate-700'}`} />
+                      </button>
+                    ))}
+                    <span className="ml-2 text-xs font-black text-amber-400">{reviewRating} / 5</span>
+                  </div>
+                </div>
+
+                {/* Badge de confiance */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5">Point fort constaté</label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {['Paiement rapide', 'Produit conforme', 'Support réactif', 'Excellente communication'].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setReviewTag(t)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors ${
+                          reviewTag === t 
+                            ? 'bg-amber-500 text-slate-950 font-black shadow' 
+                            : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        {t}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">Votre Avis Public</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Votre Avis Public *</label>
                   <textarea
                     required
                     rows={3}
                     placeholder="Qualité des produits, rapidité de validation et paiement des commissions..."
                     value={reviewComment}
                     onChange={(e) => setReviewComment(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-amber-500 placeholder-slate-500"
                   />
                 </div>
 
@@ -2369,7 +2543,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                   disabled={isSubmittingReview}
                   className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md cursor-pointer transition-all disabled:opacity-50"
                 >
-                  {isSubmittingReview ? 'Publication...' : 'Publier mon Avis'}
+                  {isSubmittingReview ? 'Publication en cours...' : 'Publier mon Avis Vendeur'}
                 </button>
               </form>
             )}

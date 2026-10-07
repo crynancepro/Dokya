@@ -395,6 +395,7 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
 
       await saveSellerReview({
         sellerId: selectedSellerForReviews.id,
+        sellerName: selectedSellerForReviews.name,
         sellerUsername: selectedSellerForReviews.name,
         telemarketerId: currentUid,
         telemarketerName: reviewerName,
@@ -844,11 +845,23 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                         {/* Top: Image & Country Badges */}
                         <div>
                           <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-950">
-                            <img 
-                              src={product.images?.[0] || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80'} 
-                              alt={product.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
+                            {(() => {
+                              const prodImg = (product.images && product.images.length > 0 && product.images[0]) || 
+                                              product.imageUrl || 
+                                              (product as any).image || 
+                                              (product as any).productImage ||
+                                              'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80';
+                              return (
+                                <img 
+                                  src={prodImg} 
+                                  alt={product.title}
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80';
+                                  }}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                              );
+                            })()}
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-black/30 pointer-events-none" />
 
                             {/* Catégorie */}
@@ -883,13 +896,13 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
 
                               <button
                                 type="button"
-                                onClick={() => handleOpenSellerReviews(product.userId, product.sellerName)}
-                                className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold shrink-0 cursor-pointer"
-                                title="Voir les avis des télévendeurs"
+                                onClick={() => handleOpenSellerReviews(product.sellerId || product.userId, product.sellerName)}
+                                className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold shrink-0 cursor-pointer transition-colors"
+                                title="Noter ce vendeur ou consulter ses avis"
                               >
-                                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                                 <span>{product.sellerRating || 4.9}</span>
-                                <span className="text-slate-500 text-[10px]">({product.sellerReviewsCount || 12})</span>
+                                <span className="text-amber-400 underline ml-0.5 text-[10px]">Noter</span>
                               </button>
                             </div>
 

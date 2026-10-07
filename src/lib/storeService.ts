@@ -61,9 +61,15 @@ export async function saveProduct(product: Partial<ProductItem> & { userId: stri
   
   const slug = product.slug ? slugify(product.slug) : generateProductSlug(product.title || 'produit');
   
+  const rawImage = (Array.isArray(product.images) && product.images.length > 0 && product.images[0]) || 
+                   product.imageUrl || 
+                   (product as any).image || 
+                   'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80';
+
   const completeProduct: ProductItem = {
     id,
     userId: product.userId,
+    sellerId: product.userId,
     sellerUsername: slugify(product.sellerUsername || product.sellerName || 'vendeur'),
     sellerName: product.sellerName || 'Vendeur Dokya',
     sellerPhone: product.sellerPhone || '',
@@ -77,11 +83,15 @@ export async function saveProduct(product: Partial<ProductItem> & { userId: stri
     category: product.category || 'Services & Formations',
     images: Array.isArray(product.images) && product.images.length > 0 
       ? product.images 
-      : ['https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80'],
+      : [rawImage],
+    imageUrl: rawImage,
     saleType: product.saleType || 'direct_order',
     redirectUrl: product.redirectUrl || '',
     enableDirectOrder: product.saleType === 'direct_order' ? true : (product.enableDirectOrder ?? false),
     status: product.status || 'active',
+    product_type: product.product_type || (product as any).productType || (product.category === 'Produits Physiques' ? 'physical' : 'digital'),
+    productType: product.product_type || (product as any).productType || (product.category === 'Produits Physiques' ? 'physical' : 'digital'),
+    digitalFiles: product.digitalFiles || [],
     viewsCount: product.viewsCount || 0,
     ordersCount: product.ordersCount || 0,
     commissionType: product.commissionType || 'percent',
@@ -688,8 +698,6 @@ export function purgeLocalMockProducts(): void {
       const key = localStorage.key(i);
       if (
         key && (
-          key.startsWith('dokya_seller_products_') ||
-          key.startsWith('dokya_products_') ||
           key === 'dokya_marketplace_offers' ||
           key.startsWith('mock_') ||
           key.includes('fake_offers')
@@ -704,7 +712,7 @@ export function purgeLocalMockProducts(): void {
 
 /**
  * Récupère toutes les offres marketplace disponibles pour les télévendeurs
- * Strictement vierge par défaut : uniquement les produits réels actifs publiés dans Firestore
+ * Strictement vierge par défaut : uniquement les produits réels actifs publiés dans Firestore ou en cache local
  */
 export async function fetchAllMarketplaceOffers(options?: {
   country?: string;
@@ -714,7 +722,22 @@ export async function fetchAllMarketplaceOffers(options?: {
 }): Promise<ProductItem[]> {
   const offersMap = new Map<string, ProductItem>();
 
-  // 1. Récupérer uniquement les produits réels actifs depuis Firestore (catalogue vierge si aucun produit réel)
+  const normalizeOffer = (p: ProductItem): ProductItem => {
+    const effectiveSellerId = p.sellerId || p.userId || '';
+    const rawImage = (Array.isArray(p.images) && p.images.length > 0 && p.images[0]) || 
+                     p.imageUrl || 
+                     (p as any).image || 
+                     (p as any).productImage ||
+                     'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80';
+    return {
+      ...p,
+      sellerId: effectiveSellerId,
+      imageUrl: rawImage,
+      images: Array.isArray(p.images) && p.images.length > 0 ? p.images : [rawImage]
+    };
+  };
+
+  // 1. Récupérer uniquement les produits réels actifs depuis Firestore
   try {
     const q = query(
       collection(db, PRODUCTS_COLLECTION),
@@ -724,12 +747,36 @@ export async function fetchAllMarketplaceOffers(options?: {
     snap.forEach(d => {
       const p = d.data() as ProductItem;
       if (p && p.id && p.isAffiliationEnabled !== false) {
-        offersMap.set(p.id, p);
+        offersMap.set(p.id, normalizeOffer(p));
       }
     });
   } catch (err) {
     console.warn('[StoreService] Erreur fetchAllMarketplaceOffers Firestore:', err);
   }
+
+  // 2. Récupérer également les produits réels actifs créés localement
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(LOCAL_PRODUCTS_PREFIX) || key.startsWith('dokya_seller_products_'))) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const list: ProductItem[] = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              list.forEach(p => {
+                if (p && p.id && p.status === 'active' && p.isAffiliationEnabled !== false) {
+                  if (!offersMap.has(p.id)) {
+                    offersMap.set(p.id, normalizeOffer(p));
+                  }
+                }
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (_e) {}
 
   let list = Array.from(offersMap.values());
 
@@ -978,9 +1025,16 @@ export async function saveSellerReview(review: Omit<SellerReview, 'id' | 'create
   const id = `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const now = new Date().toISOString();
 
+  const effectiveSellerId = review.sellerId || (review as any).userId || 'seller_default';
+  const effectiveSellerName = review.sellerName || review.sellerUsername || 'Vendeur';
+  const effectiveSellerUsername = review.sellerUsername || slugify(effectiveSellerName);
+
   const newReview: SellerReview = {
     ...review,
     id,
+    sellerId: effectiveSellerId,
+    sellerName: effectiveSellerName,
+    sellerUsername: effectiveSellerUsername,
     createdAt: now
   };
 
@@ -992,11 +1046,21 @@ export async function saveSellerReview(review: Omit<SellerReview, 'id' | 'create
   }
 
   try {
-    const localKey = `${LOCAL_REVIEWS_PREFIX}${review.sellerId}`;
-    const raw = localStorage.getItem(localKey);
-    const existing: SellerReview[] = raw ? JSON.parse(raw) : [];
-    existing.unshift(newReview);
-    localStorage.setItem(localKey, JSON.stringify(existing));
+    if (typeof localStorage !== 'undefined') {
+      // 1. Sauvegarde par sellerId
+      const localKey = `${LOCAL_REVIEWS_PREFIX}${effectiveSellerId}`;
+      const raw = localStorage.getItem(localKey);
+      const existing: SellerReview[] = raw ? JSON.parse(raw) : [];
+      existing.unshift(newReview);
+      localStorage.setItem(localKey, JSON.stringify(existing));
+
+      // 2. Sauvegarde globale pour affichage instantané dans tous les onglets
+      const globalKey = 'dokya_all_seller_reviews';
+      const globalRaw = localStorage.getItem(globalKey);
+      const globalExisting: SellerReview[] = globalRaw ? JSON.parse(globalRaw) : [];
+      globalExisting.unshift(newReview);
+      localStorage.setItem(globalKey, JSON.stringify(globalExisting));
+    }
   } catch (_e) {}
 
   return newReview;
@@ -1006,7 +1070,7 @@ export async function saveSellerReview(review: Omit<SellerReview, 'id' | 'create
  * Récupère les avis publics sur un vendeur (ou tous les avis si aucun sellerId n'est fourni)
  */
 export async function fetchSellerReviews(sellerId?: string): Promise<SellerReview[]> {
-  let reviews: SellerReview[] = [];
+  const reviewsMap = new Map<string, SellerReview>();
 
   try {
     let q;
@@ -1020,33 +1084,60 @@ export async function fetchSellerReviews(sellerId?: string): Promise<SellerRevie
     }
     const snap = await getDocs(q);
     snap.forEach(d => {
-      reviews.push(d.data() as SellerReview);
+      const r = d.data() as SellerReview;
+      if (r && r.id) {
+        reviewsMap.set(r.id, r);
+      }
     });
   } catch (err) {
     console.warn('[StoreService] Erreur fetchSellerReviews Firestore:', err);
   }
 
-  if (reviews.length === 0) {
-    try {
+  // Fusion proactive avec les avis sauvegardés en local
+  try {
+    if (typeof localStorage !== 'undefined') {
       if (sellerId) {
         const localKey = `${LOCAL_REVIEWS_PREFIX}${sellerId}`;
         const raw = localStorage.getItem(localKey);
-        if (raw) reviews = JSON.parse(raw);
+        if (raw) {
+          const list: SellerReview[] = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            list.forEach(r => {
+              if (r && r.id && !reviewsMap.has(r.id)) reviewsMap.set(r.id, r);
+            });
+          }
+        }
       } else {
+        const globalKey = 'dokya_all_seller_reviews';
+        const globalRaw = localStorage.getItem(globalKey);
+        if (globalRaw) {
+          const globalList: SellerReview[] = JSON.parse(globalRaw);
+          if (Array.isArray(globalList)) {
+            globalList.forEach(r => {
+              if (r && r.id && !reviewsMap.has(r.id)) reviewsMap.set(r.id, r);
+            });
+          }
+        }
+
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
           if (k && k.startsWith(LOCAL_REVIEWS_PREFIX)) {
             const raw = localStorage.getItem(k);
             if (raw) {
               const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) reviews.push(...parsed);
+              if (Array.isArray(parsed)) {
+                parsed.forEach(r => {
+                  if (r && r.id && !reviewsMap.has(r.id)) reviewsMap.set(r.id, r);
+                });
+              }
             }
           }
         }
       }
-    } catch (_e) {}
-  }
+    }
+  } catch (_e) {}
 
+  const reviews = Array.from(reviewsMap.values());
   return reviews.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 

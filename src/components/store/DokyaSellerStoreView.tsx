@@ -163,7 +163,8 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
   const [productTitle, setProductTitle] = useState('');
   const [productDescription, setProductDescription] = useState('');
   const [productPrice, setProductPrice] = useState<number | string>(5000);
-  const [productCategory, setProductCategory] = useState('Services & Formations');
+  const [productType, setProductType] = useState<'physical' | 'digital'>('physical');
+  const [productCategory, setProductCategory] = useState('Produits Physiques');
   const [productImages, setProductImages] = useState<string>('https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80');
   const [imageInputMode, setImageInputMode] = useState<'upload' | 'url'>('upload');
   const [imageUploadLoading, setImageUploadLoading] = useState(false);
@@ -287,7 +288,8 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     setProductTitle('');
     setProductDescription('');
     setProductPrice(5000);
-    setProductCategory('Services & Formations');
+    setProductType('physical');
+    setProductCategory('Produits Physiques');
     setProductImages('https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80');
     setImageInputMode('upload');
     setImageUploadError(null);
@@ -306,7 +308,9 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     setProductTitle(prod.title);
     setProductDescription(prod.description);
     setProductPrice(prod.price);
-    setProductCategory(prod.category || 'Services & Formations');
+    const pType = prod.product_type || (prod as any).productType || (prod.category === 'Produits Physiques' ? 'physical' : 'digital');
+    setProductType(pType);
+    setProductCategory(prod.category || (pType === 'physical' ? 'Produits Physiques' : 'Services & Formations'));
     const existingImg = prod.images?.[0] || '';
     setProductImages(existingImg);
     setImageInputMode(existingImg.startsWith('data:') ? 'upload' : 'url');
@@ -360,6 +364,8 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
         price: Number(productPrice) || 0,
         currency: 'FCFA',
         category: productCategory,
+        product_type: productType,
+        productType: productType,
         images: imagesArray,
         saleType: productSaleType,
         redirectUrl: productSaleType === 'redirect' ? productRedirectUrl.trim() : '',
@@ -1322,6 +1328,51 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                   placeholder="Ex: Guide RH Réussir ses Entretiens, Pack 3 Modèles CV..."
                   className="w-full px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-indigo-500"
                 />
+              </div>
+
+              {/* TYPE DE PRODUIT (PHYSIQUE VS DIGITAL) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Format du Produit (Style Chariow)
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-950 border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductType('physical');
+                      setProductCategory('Produits Physiques');
+                      setProductSaleType('direct_order');
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                      productType === 'physical'
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Package className="w-4 h-4" />
+                    <span>Produit Physique</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductType('digital');
+                      if (productCategory === 'Produits Physiques') setProductCategory('E-books & Guides');
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                      productType === 'digital'
+                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Produit Digital</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {productType === 'physical' 
+                    ? '📦 Physique : Formulaire de livraison en 30s & paiement à la livraison.' 
+                    : '⚡ Digital : Fichiers inclus (PDF, templates, e-books) avec téléchargement & accès direct.'}
+                </p>
               </div>
 
               {/* Prix en FCFA & Catégorie */}

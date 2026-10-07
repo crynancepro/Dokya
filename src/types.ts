@@ -1093,6 +1093,19 @@ export interface ProductItem {
   status: ProductStatus;
   viewsCount?: number;
   ordersCount?: number;
+  // Type de produit (Physique vs Digital / Chariow Style)
+  product_type?: 'physical' | 'digital';
+  productType?: 'physical' | 'digital';
+  digitalFiles?: Array<{
+    id: string;
+    name: string;
+    size?: string;
+    type?: string;
+    downloadUrl?: string;
+    previewUrl?: string;
+    pagesCount?: number;
+    description?: string;
+  }>;
   // Télévendeurs / Marketplace d'Affiliation
   commissionType?: 'fixed' | 'percent'; // Type de commission
   commissionValue?: number; // Valeur (ex: 2000 FCFA ou 15%)
