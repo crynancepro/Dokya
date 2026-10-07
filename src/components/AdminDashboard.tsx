@@ -2154,10 +2154,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
 
-              {/* Filtres Temporels Dynamiques sur le Chiffre d'Affaires (Requirement 4) */}
+              {/* Filtres Temporels Dynamiques sur le Chiffre d'Affaires (Requirement 4 - Mobile Scrollable) */}
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1 shrink-0">
                     <Calendar className="w-3 h-3 text-emerald-400" /> Période :
                   </span>
 
@@ -2176,7 +2176,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         key={p.id}
                         type="button"
                         onClick={() => setCaPeriodFilter(p.id as CATimeFilter)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                           isActive
                             ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
                             : 'text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800'
@@ -2244,8 +2244,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* Répartition Recharges vs Ventes directes vs Consommation Solde */}
-                <div className="flex flex-wrap items-center gap-2 border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-5">
+                {/* Répartition Recharges vs Ventes directes vs Consommation Solde (Responsive Grid) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full md:w-auto border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-5">
                   <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20">
                     <div className="text-[10px] uppercase font-bold text-purple-400">Recharges Portefeuille (CA)</div>
                     <div className="text-sm font-black text-purple-200 mt-0.5">
@@ -3037,9 +3037,125 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* Subscriptions Table */}
+            {/* Subscriptions Table / Cards */}
             <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
+              {/* 1. Mobile Cards View (< 768px) */}
+              <div className="md:hidden divide-y divide-slate-800/80 p-3 space-y-3">
+                {filteredSubUsers.length === 0 ? (
+                  <div className="py-12 text-center text-slate-500 text-xs">
+                    Aucun utilisateur ne correspond aux critères de recherche.
+                  </div>
+                ) : (
+                  filteredSubUsers.map((user) => {
+                    const isVip = isUserVipActive(user.subscription) || user.subscriptionStatus === 'unlimited';
+                    const status = user.subscription?.status || (isVip ? 'ACTIVE' : 'INACTIVE');
+                    const expMillis = getTimestampMillis(user.subscription?.expiresAt);
+                    const isLifetime = expMillis && expMillis > 4000000000000;
+                    const daysLeft = expMillis ? Math.ceil((expMillis - Date.now()) / 86400000) : null;
+
+                    return (
+                      <div key={`mob-sub-${user.uid}`} className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-3.5 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                              isVip ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                            }`}>
+                              {user.firstName?.[0] || user.email[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-white text-xs truncate flex items-center gap-1">
+                                <span>{user.firstName} {user.lastName}</span>
+                                {isVip && <Crown className="w-3 h-3 text-amber-400 shrink-0" />}
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate">{user.email}</div>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {isVip ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                VIP ACTIF
+                              </span>
+                            ) : status === 'EXPIRED' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                EXPIRÉ
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                                INACTIF
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Plan & Dates */}
+                        <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80">
+                          <div>
+                            <span className="text-slate-500 font-bold uppercase text-[9px] block">Formule</span>
+                            <span className="font-semibold text-slate-200 truncate block mt-0.5">
+                              {isLifetime ? '👑 VIP À Vie' : isVip ? user.subscription?.planName || 'Pass VIP' : 'Gratuit'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 font-bold uppercase text-[9px] block">Expiration</span>
+                            <span className="font-semibold text-slate-200 block mt-0.5">
+                              {isLifetime ? 'Permanent' : expMillis ? (
+                                <span className={daysLeft && daysLeft <= 3 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>
+                                  {daysLeft && daysLeft > 0 ? `${daysLeft}j restant(s)` : 'Échu'}
+                                </span>
+                              ) : '-'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {user.subscription?.adminNote && (
+                          <div className="text-[10px] text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800/80 italic truncate">
+                            Note : {user.subscription.adminNote}
+                          </div>
+                        )}
+
+                        {/* Control Actions */}
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSubscriptionModal(user, isVip ? 'extend' : 'activate')}
+                            className="flex-1 py-1.5 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Crown className="w-3.5 h-3.5 shrink-0" />
+                            <span>{isVip ? 'Gérer / Prolonger' : 'Activer VIP'}</span>
+                          </button>
+                          {isVip && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickSubAction(user, 'extend', 30)}
+                              disabled={isLoadingSubs}
+                              className="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-emerald-950 text-emerald-300 font-bold text-xs border border-slate-700 cursor-pointer"
+                              title="+30 jours"
+                            >
+                              +30j
+                            </button>
+                          )}
+                          {isVip && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSubscriptionModal(user, 'suspend')}
+                              className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-rose-400 font-bold text-xs border border-slate-700 cursor-pointer"
+                              title="Suspendre"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* 2. Desktop Table View (>= 768px) with Smooth Horizontal Scroll */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-950/80 border-b border-slate-800/80 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                     <tr>
@@ -3529,9 +3645,115 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
-            {/* Promo Codes Table */}
+            {/* Promo Codes Table / Cards */}
             <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
+              {/* 1. Mobile Cards View (< 768px) */}
+              <div className="md:hidden divide-y divide-slate-800/80 p-3 space-y-3">
+                {promoCodesList.length === 0 ? (
+                  <div className="py-12 text-center text-slate-500 text-xs">
+                    Aucun code promo créé pour le moment.
+                  </div>
+                ) : (
+                  promoCodesList.map((promo) => (
+                    <div key={`mob-promo-${promo.id}`} className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-3.5 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono font-bold text-xs border border-emerald-500/30">
+                            {promo.code}
+                          </span>
+                          {promo.isPublished && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 text-[10px] font-black border border-emerald-400/40 flex items-center gap-1 shadow-xs">
+                              <Sparkles className="w-2.5 h-2.5 text-emerald-300 fill-emerald-300" />
+                              <span>En Ligne</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <span className="text-sm font-black text-white">
+                          {promo.discountType === 'percentage' ? `-${promo.discountValue}%` : `-${Number(promo.discountValue) || 0} $`}
+                        </span>
+                      </div>
+
+                      {promo.description && (
+                        <p className="text-[11px] text-slate-400">{promo.description}</p>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80">
+                        <div>
+                          <span className="text-slate-500 font-bold uppercase text-[9px] block">Min. Commande</span>
+                          <span className="font-semibold text-slate-200 block mt-0.5">
+                            {promo.minOrderAmount ? `${Number(promo.minOrderAmount) || 0} $` : 'Sans minimum'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 font-bold uppercase text-[9px] block">Utilisations</span>
+                          <span className="font-semibold text-slate-200 block mt-0.5">
+                            {promo.currentUsageCount || 0} / {promo.maxUsageLimit || '∞'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Publication and actions */}
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-850">
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePublishPromoCode(promo.id, promo.code, Boolean(promo.isPublished))}
+                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                            promo.isPublished
+                              ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-400 text-slate-950 font-black shadow-emerald-500/30'
+                              : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700'
+                          }`}
+                        >
+                          {promo.isPublished ? (
+                            <>
+                              <Sparkles className="w-3 h-3 fill-slate-950 text-slate-950" />
+                              <span>Publié ✨</span>
+                            </>
+                          ) : (
+                            <>
+                              <Globe className="w-3 h-3 text-slate-400" />
+                              <span>Publier</span>
+                            </>
+                          )}
+                        </button>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleTogglePromoCode(promo.id, promo.code, promo.active)}
+                            type="button"
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              promo.active
+                                ? 'bg-slate-800 text-amber-400 hover:bg-slate-700'
+                                : 'bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900'
+                            }`}
+                          >
+                            {promo.active ? 'Désactiver' : 'Activer'}
+                          </button>
+                          <button
+                            onClick={() => openCreatePromoModal(promo)}
+                            type="button"
+                            className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+                            title="Modifier"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePromoCode(promo)}
+                            type="button"
+                            className="p-1.5 rounded-lg bg-rose-950/40 text-rose-400 hover:text-white cursor-pointer"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* 2. Desktop Table View (>= 768px) with Smooth Horizontal Scroll */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-950/80 border-b border-slate-800/80 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
                     <tr>

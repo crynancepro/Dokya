@@ -1158,23 +1158,23 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
             <div className="space-y-6 animate-in fade-in">
               
               {/* Banner with role greeting */}
-              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 border border-emerald-800/50 p-6 sm:p-8 shadow-2xl">
+              <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 border border-emerald-800/50 p-4 sm:p-8 shadow-2xl">
                 <div className="relative z-10 max-w-2xl space-y-2">
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-black uppercase tracking-wider">
                     <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                     <span>Espace Télévendeurs Dokya</span>
                   </div>
-                  <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+                  <h1 className="text-xl sm:text-4xl font-black text-white tracking-tight">
                     Vos Offres, Vos Ventes, Vos Commissions
                   </h1>
                   <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                     Vendez des produits physiques et digitaux de commerçants certifiés sans stock ni logistique. Enregistrez vos commandes clients et touchez vos commissions immédiatement.
                   </p>
-                  <div className="pt-3 flex items-center gap-3 flex-wrap">
+                  <div className="pt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
                     <button
                       type="button"
                       onClick={() => setIsOrderModalOpen(true)}
-                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black shadow-lg shadow-emerald-900/40 flex items-center gap-2 cursor-pointer transition-all"
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 cursor-pointer transition-all"
                     >
                       <Plus className="w-4 h-4 stroke-[3]" />
                       <span>Enregistrer une Vente Client</span>
@@ -1182,10 +1182,10 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                     <button
                       type="button"
                       onClick={() => setActiveTab('marketplace')}
-                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 cursor-pointer transition-all"
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
                     >
                       <Package className="w-4 h-4 text-emerald-400" />
-                      <span>Explorer les {offers.length} Offres Disponibles</span>
+                      <span>Explorer les {offers.length} Offres</span>
                     </button>
                   </div>
                 </div>
@@ -1661,10 +1661,12 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                       </div>
 
                       {/* Financial info */}
-                      <div className="flex md:flex-col items-end justify-between md:justify-center border-t md:border-t-0 pt-2 md:pt-0 border-slate-800">
-                        <span className="text-xs text-slate-400">Commission Nette :</span>
-                        <div className="text-lg font-black text-emerald-400">
-                          {formatPrice(order.commissionNet || 0)}
+                      <div className="flex flex-col sm:flex-row md:flex-col items-start sm:items-center md:items-end justify-between md:justify-center border-t md:border-t-0 pt-2.5 md:pt-0 border-slate-800 gap-1 w-full md:w-auto">
+                        <div className="flex sm:flex-col items-baseline justify-between sm:justify-start w-full sm:w-auto gap-2">
+                          <span className="text-xs text-slate-400">Commission Nette :</span>
+                          <div className="text-base sm:text-lg font-black text-emerald-400">
+                            {formatPrice(order.commissionNet || 0)}
+                          </div>
                         </div>
                         <span className="text-[10px] text-slate-500">
                           Montant total : {formatPrice(order.totalAmount)}
@@ -1683,14 +1685,14 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
           {/* ========================================================================= */}
           {activeTab === 'wallet' && (
             <div className="space-y-6 animate-in fade-in">
-              <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-800/60 space-y-6 shadow-2xl">
+              <div className="p-4 sm:p-8 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-800/60 space-y-5 sm:space-y-6 shadow-2xl">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <span className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
-                      <Wallet className="w-4 h-4 text-emerald-400" />
+                      <Wallet className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span>Portefeuille Commissions Télévendeur</span>
                     </span>
-                    <h3 className="text-2xl sm:text-4xl font-black text-white">
+                    <h3 className="text-xl sm:text-4xl font-black text-white">
                       Solde Retirable : <span className="text-emerald-400">{formatPrice(availableWithdrawBalance)}</span>
                     </h3>
                     <p className="text-xs text-slate-300">
@@ -1701,7 +1703,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
                   <button
                     type="button"
                     onClick={() => setIsWithdrawModalOpen(true)}
-                    className="px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black shadow-xl shadow-emerald-900/50 flex items-center gap-2 cursor-pointer transition-all shrink-0"
+                    className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black shadow-xl shadow-emerald-900/50 flex items-center justify-center gap-2 cursor-pointer transition-all shrink-0"
                   >
                     <ArrowUpRight className="w-4 h-4 stroke-[3]" />
                     <span>Demander un Retrait</span>

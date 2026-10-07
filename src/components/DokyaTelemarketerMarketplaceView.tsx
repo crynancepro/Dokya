@@ -1145,11 +1145,11 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
               </ul>
             </div>
 
-            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+            <div className="pt-2 flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-2 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => setIsBadgeModalOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer text-center"
               >
                 Annuler
               </button>
@@ -1157,13 +1157,13 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                 type="button"
                 onClick={handlePurchaseBadge}
                 disabled={isActivatingBadge}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isActivatingBadge ? (
                   <span>Activation en cours...</span>
                 ) : (
                   <>
-                    <ShieldCheck className="w-4 h-4" />
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
                     <span>Confirmer et Activer ({formatPrice(effectiveBadgePrice)})</span>
                   </>
                 )}
@@ -1177,12 +1177,12 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
       {/* MODAL: MODE VIP (ABONNEMENT MENSUEL POUR CONSERVER 100% DES COMMISSIONS)   */}
       {/* ========================================================================= */}
       {isVipModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl p-5 sm:p-8 max-w-lg w-full shadow-2xl space-y-4 sm:space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 sm:pb-4">
               <div className="flex items-center gap-2">
-                <Crown className="w-6 h-6 text-amber-400" />
-                <h3 className="text-lg font-black text-white">Mode Télévendeur VIP (100% Gains)</h3>
+                <Crown className="w-5 sm:w-6 h-5 sm:h-6 text-amber-400 shrink-0" />
+                <h3 className="text-base sm:text-lg font-black text-white">Mode Télévendeur VIP (100% Gains)</h3>
               </div>
               <button 
                 type="button" 
@@ -1199,14 +1199,14 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                 Avec le <strong>Mode VIP</strong>, vous conservez <strong>100% de vos commissions</strong> !
               </p>
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div className={`p-4 rounded-2xl border ${gainMode === 'standard' ? 'bg-slate-950 border-indigo-500' : 'bg-slate-950/60 border-slate-800'}`}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 pt-1">
+                <div className={`p-3.5 sm:p-4 rounded-2xl border ${gainMode === 'standard' ? 'bg-slate-950 border-indigo-500' : 'bg-slate-950/60 border-slate-800'}`}>
                   <p className="font-bold text-white text-xs">Mode Standard</p>
                   <p className="text-sm font-black text-slate-300 mt-1">20% Dokya</p>
                   <p className="text-[11px] text-slate-400 mt-1">Vous touchez 80% net de chaque commission.</p>
                 </div>
 
-                <div className={`p-4 rounded-2xl border ${gainMode === 'vip' ? 'bg-purple-950/50 border-purple-500' : 'bg-slate-950/60 border-slate-800'}`}>
+                <div className={`p-3.5 sm:p-4 rounded-2xl border ${gainMode === 'vip' ? 'bg-purple-950/50 border-purple-500' : 'bg-slate-950/60 border-slate-800'}`}>
                   <div className="flex items-center justify-between">
                     <p className="font-bold text-purple-300 text-xs">Mode VIP</p>
                     <Crown className="w-3.5 h-3.5 text-amber-400" />
@@ -1216,9 +1216,9 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-500/30 text-xs flex items-center justify-between">
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-purple-950/30 border border-purple-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span>Abonnement Télévendeur VIP :</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {vipDiscount.hasDiscount && (
                     <span className="text-xs font-bold text-slate-500 line-through">
                       {formatPrice(BASE_VIP_PRICE)}
@@ -1236,11 +1236,11 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
               </div>
             </div>
 
-            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+            <div className="pt-2 flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-2 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => setIsVipModalOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer text-center"
               >
                 Fermer
               </button>
@@ -1248,13 +1248,13 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                 type="button"
                 onClick={handleToggleVipMode}
                 disabled={isUpgradingVip}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg shadow-purple-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isUpgradingVip ? (
                   <span>Mise à jour...</span>
                 ) : (
                   <>
-                    <Crown className="w-4 h-4 text-amber-300" />
+                    <Crown className="w-4 h-4 text-amber-300 shrink-0" />
                     <span>{gainMode === 'vip' ? 'Repasser en Standard' : `Activer Mode VIP (${formatPrice(effectiveVipPrice)}/mois)`}</span>
                   </>
                 )}
@@ -1268,12 +1268,12 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
       {/* MODAL: ENREGISTRER UNE COMMANDE CLIENT (FLUX HORS-SITE & ANTI-FRAUDE)       */}
       {/* ========================================================================= */}
       {isOrderModalOpen && selectedProductForOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-8 max-w-xl w-full shadow-2xl space-y-4 sm:space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 sm:pb-4">
               <div>
-                <h3 className="text-lg font-black text-white flex items-center gap-2">
-                  <Package className="w-5 h-5 text-indigo-400" />
+                <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                  <Package className="w-5 h-5 text-indigo-400 shrink-0" />
                   <span>Enregistrer une Commande Client</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
@@ -1404,7 +1404,7 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                 const netComm = gainMode === 'vip' ? grossComm : Math.round(grossComm * 0.8);
 
                 return (
-                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                     <div>
                       <span className="text-slate-400">Total client à payer :</span>
                       <strong className="text-white ml-1.5">{formatPrice(totalClient)}</strong>
@@ -1417,24 +1417,24 @@ export const DokyaTelemarketerMarketplaceView: React.FC<DokyaTelemarketerMarketp
                 );
               })()}
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+              <div className="pt-2 flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-2 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsOrderModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer text-center"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingOrder}
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmittingOrder ? (
                     <span>Transmission au vendeur...</span>
                   ) : (
                     <>
-                      <Package className="w-4 h-4" />
+                      <Package className="w-4 h-4 shrink-0" />
                       <span>Transmettre la commande au Vendeur</span>
                     </>
                   )}

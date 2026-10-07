@@ -1008,24 +1008,23 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* VIP Status Badge - Compact on Mobile */}
+          {/* DESKTOP ACTIONS (>= 640px) */}
+          <div className="hidden sm:flex items-center gap-2 lg:gap-2.5 shrink-0">
+            {/* VIP Status Badge */}
             {isSubscriptionActive && (
               <button
                 type="button"
                 onClick={() => handleSelectTab('subscription')}
-                className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/10 border border-amber-400/50 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl flex items-center gap-1 shadow-xs hover:border-amber-400 transition-all cursor-pointer shrink-0"
+                className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/10 border border-amber-400/50 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-xs hover:border-amber-400 transition-all cursor-pointer shrink-0"
                 title="Pass VIP Actif"
               >
-                <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 fill-amber-400 shrink-0" />
-                <span className="text-[10px] sm:text-xs font-black text-amber-300 whitespace-nowrap">
-                  <span className="hidden xs:inline">👑 </span>VIP
-                </span>
+                <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                <span className="text-xs font-black text-amber-300 whitespace-nowrap">VIP</span>
               </button>
             )}
 
-            {/* RÔLE UTILISATEUR : [Vendeur / Commerçant] vs [Télévendeur / Affilié] */}
-            <div className="inline-flex items-center rounded-xl bg-slate-900 border border-slate-800 p-0.5 text-[11px] font-bold">
+            {/* RÔLE UTILISATEUR : [Vendeur] vs [Télévendeur] */}
+            <div className="inline-flex items-center rounded-xl bg-slate-900 border border-slate-800 p-0.5 text-xs font-bold">
               <button
                 type="button"
                 onClick={async () => {
@@ -1038,14 +1037,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   }
                   setActiveSidebarTab('store');
                 }}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                   profile.userRole !== 'telemarketer'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Mode Vendeur / Commerçant"
               >
-                <ShoppingBag className="w-3 h-3" />
+                <ShoppingBag className="w-3.5 h-3.5" />
                 <span>Vendeur</span>
               </button>
               <button
@@ -1062,14 +1061,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                     onSwitchToTelemarketer();
                   }
                 }}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                   profile.userRole === 'telemarketer'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Accéder à l'Espace Dédié Télévendeur"
               >
-                <Briefcase className="w-3 h-3" />
+                <Briefcase className="w-3.5 h-3.5" />
                 <span>Télévendeur</span>
               </button>
             </div>
@@ -1122,11 +1121,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             {/* Quick Balance indicator */}
             <div 
               onClick={() => setIsRechargeModalOpen(true)}
-              className="bg-slate-900 hover:bg-slate-850 border border-slate-800 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl flex items-center gap-1 sm:gap-1.5 shadow-inner cursor-pointer transition-colors shrink-0"
+              className="bg-slate-900 hover:bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-inner cursor-pointer transition-colors shrink-0"
               title="Cliquez pour recharger votre solde"
             >
               <Wallet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="text-[11px] sm:text-xs font-black text-emerald-400 whitespace-nowrap">
+              <span className="text-xs font-black text-emerald-400 whitespace-nowrap">
                 {formatPrice(profile.balance ?? 0)}
               </span>
               <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded-md hidden lg:inline">
@@ -1146,11 +1145,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               onClick={onSignOut ? onSignOut : async () => {
                 await signOut(auth);
               }}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-800/60 text-slate-400 hover:text-rose-300 text-xs font-medium transition-all flex items-center gap-1 cursor-pointer shadow-xs shrink-0"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-800/60 text-slate-400 hover:text-rose-300 text-xs font-medium transition-all flex items-center gap-1 cursor-pointer shadow-xs shrink-0"
               title="Se déconnecter"
             >
               <LogOut className="w-3.5 h-3.5 text-rose-400" />
-              <span className="hidden sm:inline">Déconnexion</span>
+              <span>Déconnexion</span>
             </button>
 
             {onClose && (
@@ -1164,7 +1163,160 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               </button>
             )}
           </div>
+
+          {/* MOBILE ACTIONS (< 640px): Compact & Overflow-Free */}
+          <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+            {/* Quick Balance indicator */}
+            <div 
+              onClick={() => setIsRechargeModalOpen(true)}
+              className="bg-slate-900 hover:bg-slate-850 border border-slate-800 px-2 py-1 rounded-xl flex items-center gap-1 shadow-inner cursor-pointer transition-colors shrink-0"
+              title="Cliquez pour recharger votre solde"
+            >
+              <Wallet className="w-3 h-3 text-emerald-400 shrink-0" />
+              <span className="text-[11px] font-black text-emerald-400 whitespace-nowrap">
+                {formatPrice(profile.balance ?? 0)}
+              </span>
+            </div>
+
+            {/* Notification Bell */}
+            <NotificationBell 
+              userId={profile.uid || user?.uid} 
+              onNavigateTab={(tab) => handleSelectTab(tab as SidebarTab)} 
+            />
+
+            {/* Logout button */}
+            <button
+              type="button"
+              onClick={onSignOut ? onSignOut : async () => {
+                await signOut(auth);
+              }}
+              className="p-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 border border-slate-800 text-slate-400 hover:text-rose-300 transition-all flex items-center justify-center cursor-pointer shrink-0"
+              title="Se déconnecter"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+            </button>
+
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                title="Fermer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </header>
+
+        {/* MOBILE SUB-BAR (< 640px): Role Switcher & Currency & VIP */}
+        <div className="sm:hidden bg-[#0A0D14] border-b border-slate-800/80 px-3 py-1.5 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar shadow-xs">
+          {/* RÔLE UTILISATEUR : [Vendeur] vs [Télévendeur] */}
+          <div className="inline-flex items-center rounded-xl bg-slate-900 border border-slate-800 p-0.5 text-[10px] font-bold shrink-0">
+            <button
+              type="button"
+              onClick={async () => {
+                setProfile(prev => ({ ...prev, userRole: 'seller' }));
+                try {
+                  if (user?.uid) await saveCandidateProfile({ ...profile, userRole: 'seller' });
+                } catch (_e) {}
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('dokya_user_role', 'seller');
+                }
+                setActiveSidebarTab('store');
+              }}
+              className={`px-2 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                profile.userRole !== 'telemarketer'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShoppingBag className="w-3 h-3" />
+              <span>Vendeur</span>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setProfile(prev => ({ ...prev, userRole: 'telemarketer' }));
+                try {
+                  if (user?.uid) await saveCandidateProfile({ ...profile, userRole: 'telemarketer' });
+                } catch (_e) {}
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('dokya_user_role', 'telemarketer');
+                }
+                if (onSwitchToTelemarketer) {
+                  onSwitchToTelemarketer();
+                }
+              }}
+              className={`px-2 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                profile.userRole === 'telemarketer'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Briefcase className="w-3 h-3" />
+              <span>Télévendeur</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* VIP Status Badge on Mobile */}
+            {isSubscriptionActive && (
+              <button
+                type="button"
+                onClick={() => handleSelectTab('subscription')}
+                className="bg-amber-500/20 border border-amber-400/50 px-2 py-1 rounded-xl flex items-center gap-1 cursor-pointer shrink-0"
+              >
+                <Crown className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                <span className="text-[10px] font-black text-amber-300">VIP</span>
+              </button>
+            )}
+
+            {/* Currency Selector on Mobile */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-xl bg-slate-900 text-slate-300 border border-slate-800 cursor-pointer"
+              >
+                <Globe className="w-3 h-3 text-indigo-400" />
+                <span className="font-mono">{userCurrency}</span>
+                <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+              </button>
+
+              {isCurrencyDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                  {[
+                    { code: 'XOF' as SupportedCurrency, label: 'FCFA XOF', flag: '🇸🇳' },
+                    { code: 'XAF' as SupportedCurrency, label: 'FCFA XAF', flag: '🇨🇲' },
+                    { code: 'EUR' as SupportedCurrency, label: 'Euro (€)', flag: '🇪🇺' },
+                    { code: 'USD' as SupportedCurrency, label: 'Dollar ($)', flag: '🇺🇸' }
+                  ].map((curr) => (
+                    <button
+                      key={curr.code}
+                      type="button"
+                      onClick={() => {
+                        setUserCurrency(curr.code);
+                        setIsCurrencyDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-2 py-1 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                        userCurrency === curr.code
+                          ? 'bg-indigo-600 text-white font-bold'
+                          : 'text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1 text-[11px]">
+                        <span>{curr.flag}</span>
+                        <span>{curr.label}</span>
+                      </span>
+                      {userCurrency === curr.code && <Check className="w-3 h-3" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Workspace Body */}
         <main className="flex-1 p-3.5 sm:p-8 max-w-6xl w-full mx-auto space-y-5 sm:space-y-8 min-w-0">
