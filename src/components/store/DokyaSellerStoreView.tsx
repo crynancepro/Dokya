@@ -159,6 +159,12 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
   const [isProductModalOpen, setIsProductModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
 
+  // Delete Confirmation States (In-App Modals - avoiding blocked window.confirm)
+  const [productToDelete, setProductToDelete] = useState<ProductItem | null>(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState<boolean>(false);
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState<boolean>(false);
+  const [isDeletingAll, setIsDeletingAll] = useState<boolean>(false);
+
   // Form State for Product
   const [productTitle, setProductTitle] = useState('');
   const [productDescription, setProductDescription] = useState('');
@@ -401,30 +407,51 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     }
   };
 
-  // Delete Product
-  const handleDeleteProduct = async (prodId: string) => {
-    if (!window.confirm('Voulez-vous vraiment supprimer cette fiche produit ?')) return;
+  // Delete Product Trigger & Confirm
+  const handleDeleteProduct = (prod: ProductItem) => {
+    setProductToDelete(prod);
+  };
+
+  const handleConfirmDeleteProduct = async () => {
+    if (!productToDelete) return;
+    setIsDeletingProduct(true);
     try {
-      await deleteProduct(prodId, currentUid);
-      showToast('Produit supprimé.');
+      await deleteProduct(productToDelete.id, currentUid);
+      showToast(`Produit "${productToDelete.title}" supprimé avec succès.`);
+      if (editingProduct?.id === productToDelete.id) {
+        setIsProductModalOpen(false);
+        setEditingProduct(null);
+      }
+      setProductToDelete(null);
       loadData();
     } catch (err) {
+      console.error('Erreur suppression produit:', err);
       showToast('Erreur lors de la suppression.');
+    } finally {
+      setIsDeletingProduct(false);
     }
   };
 
-  // Delete All Products (Vider le catalogue)
-  const handleDeleteAllProducts = async () => {
-    if (!window.confirm('Voulez-vous vraiment supprimer TOUS les produits de votre catalogue vendeur ? Cette action est irréversible.')) return;
+  // Delete All Products Trigger & Confirm
+  const handleDeleteAllProducts = () => {
+    setIsDeleteAllModalOpen(true);
+  };
+
+  const handleConfirmDeleteAllProducts = async () => {
+    setIsDeletingAll(true);
     try {
       for (const prod of products) {
         await deleteProduct(prod.id, currentUid);
       }
       setProducts([]);
       showToast('Tous les produits du catalogue ont été supprimés.');
+      setIsDeleteAllModalOpen(false);
       loadData();
     } catch (err) {
+      console.error('Erreur suppression catalogue:', err);
       showToast('Erreur lors de la suppression des produits.');
+    } finally {
+      setIsDeletingAll(false);
     }
   };
 
@@ -1010,9 +1037,9 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => handleDeleteProduct(prod.id)}
+                          onClick={() => handleDeleteProduct(prod)}
                           className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/30 text-rose-400 text-xs font-semibold transition-all cursor-pointer"
-                          title="Supprimer"
+                          title="Supprimer ce produit"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1818,23 +1845,172 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
               </div>
 
               {/* Submit Buttons */}
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsProductModalOpen(false)}
-                  className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingProduct}
-                  className="px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-lg transition-all cursor-pointer disabled:opacity-50"
-                >
-                  {isSubmittingProduct ? 'Enregistrement...' : editingProduct ? 'Enregistrer les modifications' : 'Publier le produit'}
-                </button>
+              <div className="pt-3 flex items-center justify-between gap-2 border-t border-slate-800">
+                {editingProduct ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductToDelete(editingProduct);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition-all cursor-pointer"
+                    title="Supprimer définitivement cette fiche produit"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Supprimer ce produit</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsProductModalOpen(false)}
+                    className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingProduct}
+                    className="px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-lg transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingProduct ? 'Enregistrement...' : editingProduct ? 'Enregistrer les modifications' : 'Publier le produit'}
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 1: CONFIRMATION SUPPRESSION D'UN PRODUIT                       */}
+      {/* ===================================================================== */}
+      {productToDelete && (
+        <div 
+          className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !isDeletingProduct && setProductToDelete(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && !isDeletingProduct) setProductToDelete(null);
+            if (e.key === 'Enter' && !isDeletingProduct) handleConfirmDeleteProduct();
+          }}
+          tabIndex={0}
+        >
+          <div 
+            className="w-full max-w-md rounded-3xl bg-slate-900 border border-rose-500/30 p-6 shadow-2xl shadow-rose-950/40 text-center animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto mb-4 text-rose-400">
+              <Trash2 className="w-7 h-7" />
+            </div>
+
+            <h3 className="text-lg font-black text-white mb-2">
+              Supprimer cette fiche produit ?
+            </h3>
+
+            <p className="text-xs text-slate-400 leading-relaxed mb-4">
+              Êtes-vous sûr de vouloir supprimer définitivement le produit <strong className="text-white">« {productToDelete.title} »</strong> ({Number(productToDelete.price).toLocaleString('fr-FR')} FCFA) ?
+            </p>
+
+            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 text-[11px] text-slate-400 text-left mb-6 flex items-start gap-2.5">
+              <span className="text-rose-400 font-bold shrink-0">⚠️</span>
+              <span>Cette action est immédiate et irréversible. Le lien public et l'accès affilié seront désactivés.</span>
+            </div>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                disabled={isDeletingProduct}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteProduct}
+                disabled={isDeletingProduct}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeletingProduct ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Suppression...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Supprimer</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 2: CONFIRMATION VIDER TOUT LE CATALOGUE                        */}
+      {/* ===================================================================== */}
+      {isDeleteAllModalOpen && (
+        <div 
+          className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !isDeletingAll && setIsDeleteAllModalOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && !isDeletingAll) setIsDeleteAllModalOpen(false);
+            if (e.key === 'Enter' && !isDeletingAll) handleConfirmDeleteAllProducts();
+          }}
+          tabIndex={0}
+        >
+          <div 
+            className="w-full max-w-md rounded-3xl bg-slate-900 border border-rose-500/30 p-6 shadow-2xl shadow-rose-950/40 text-center animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto mb-4 text-rose-400">
+              <Trash2 className="w-7 h-7" />
+            </div>
+
+            <h3 className="text-lg font-black text-white mb-2">
+              Vider tout le catalogue vendeur ?
+            </h3>
+
+            <p className="text-xs text-slate-400 leading-relaxed mb-4">
+              Voulez-vous vraiment supprimer les <strong className="text-rose-400 font-bold">{products.length}</strong> produits de votre boutique ?
+            </p>
+
+            <div className="p-3 rounded-2xl bg-rose-950/30 border border-rose-500/20 text-[11px] text-rose-300 text-left mb-6">
+              ⚠️ Attention : Toutes vos fiches produits seront supprimées de façon irréversible.
+            </div>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsDeleteAllModalOpen(false)}
+                disabled={isDeletingAll}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteAllProducts}
+                disabled={isDeletingAll}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeletingAll ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Suppression...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Vider le catalogue</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

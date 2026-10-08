@@ -266,12 +266,30 @@ export async function deleteProduct(productId: string, userId: string): Promise<
   }
 
   try {
-    const localKey = `${LOCAL_PRODUCTS_PREFIX}${userId}`;
-    const raw = localStorage.getItem(localKey);
-    if (raw) {
-      const list: ProductItem[] = JSON.parse(raw);
-      const filtered = list.filter(p => p.id !== productId);
-      localStorage.setItem(localKey, JSON.stringify(filtered));
+    if (userId) {
+      const localKey = `${LOCAL_PRODUCTS_PREFIX}${userId}`;
+      const raw = localStorage.getItem(localKey);
+      if (raw) {
+        const list: ProductItem[] = JSON.parse(raw);
+        const filtered = list.filter(p => p.id !== productId);
+        localStorage.setItem(localKey, JSON.stringify(filtered));
+      }
+    }
+    // Also sweep any other local storage keys matching LOCAL_PRODUCTS_PREFIX
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(LOCAL_PRODUCTS_PREFIX)) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const list: ProductItem[] = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              const filtered = list.filter(p => p.id !== productId);
+              localStorage.setItem(key, JSON.stringify(filtered));
+            }
+          } catch (_e) {}
+        }
+      }
     }
   } catch (_e) {}
 
