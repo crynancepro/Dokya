@@ -489,12 +489,142 @@ function generateFallbackInterviewPrep(formData: any): any {
   };
 }
 
+// =========================================================================
+// MIDDLEWARE / GUARDS DE SÉCURITÉ : VÉRIFICATION D'ABONNEMENT ET RÔLES (API)
+// =========================================================================
+function checkUserSubscriptionPlan(req: any): {
+  isAllowed: boolean;
+  role: string;
+  plan: string;
+  status: string;
+  isVipOrPro: boolean;
+  reason?: string;
+} {
+  const planHeader = (req.headers['x-user-plan'] || req.headers['x-subscription-plan'] || '').toString().toLowerCase();
+  const statusHeader = (req.headers['x-user-status'] || req.headers['x-subscription-status'] || '').toString().toLowerCase();
+  const roleHeader = (req.headers['x-user-role'] || '').toString().toLowerCase();
+  const creditsHeader = Number(req.headers['x-user-credits'] || 0);
+
+  const body = req.body || {};
+  const userRole = (body.userRole || body.role || roleHeader || 'user').toLowerCase();
+  const subPlan = (body.subscriptionPlan || body.plan || planHeader || 'free').toLowerCase();
+  const subStatus = (body.subscriptionStatus || body.status || statusHeader || 'free').toLowerCase();
+  const credits = typeof body.credits === 'number' ? body.credits : creditsHeader;
+
+  // Admin bypass
+  if (userRole === 'admin') {
+    return { isAllowed: true, role: 'admin', plan: subPlan, status: 'active', isVipOrPro: true };
+  }
+
+  // Active paid subscriber (monthly, six_months, yearly, unlimited or status active/unlimited/pro)
+  const isSubscriber = (
+    (subStatus === 'active' || subStatus === 'unlimited' || subStatus === 'pro') &&
+    (subPlan === 'monthly' || subPlan === 'six_months' || subPlan === 'yearly' || subPlan === 'pro' || subPlan === 'vip' || subPlan === 'unlimited')
+  );
+
+  return {
+    isAllowed: isSubscriber || credits > 0,
+    role: userRole,
+    plan: subPlan,
+    status: subStatus,
+    isVipOrPro: isSubscriber,
+    reason: isSubscriber ? undefined : 'Un abonnement actif (Mensuel / Annuel) ou des crédits sont requis.'
+  };
+}
+
+// Guard Route for AI Writing Assistant
+app.post(['/api/ai-writer', '/api/ai-assistant'], async (req, res) => {
+  const check = checkUserSubscriptionPlan(req);
+  if (!check.isVipOrPro && check.role !== 'admin') {
+    return res.status(403).json({
+      error: "Accès restreint. L'assistant de rédaction IA est réservé aux abonnés payants Dokya.",
+      code: "SUBSCRIPTION_REQUIRED",
+      reason: "ai_assistant",
+      upgradeUrl: "/tarifs"
+    });
+  }
+
+  try {
+    const { prompt, context, targetJob } = req.body || {};
+    if (!prompt && !context) {
+      return res.status(400).json({ error: "Prompt ou contexte manquant." });
+    }
+
+    let ai: GoogleGenAI | null = null;
+    try {
+      ai = getGenAIClient();
+    } catch {
+      return res.json({
+        success: true,
+        text: `Texte optimisé professionnellement pour le poste de ${targetJob || 'professionnel'} :\n${prompt || context}`
+      });
+    }
+
+    const response = await generateContentWithRetry(ai, {
+      model: 'gemini-flash-latest',
+      contents: `Tu es un expert RH et rédacteur professionnel Dokya. Rédige ou améliore ce texte pour un profil ${targetJob || 'professionnel'} :\n${prompt || context}`,
+    });
+
+    return res.json({
+      success: true,
+      text: response.text || ''
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Erreur de rédaction IA" });
+  }
+});
+
+// Guard Route for Server-side Document Export Validation
+app.post('/api/export', async (req, res) => {
+  const { format, docId, isDocPurchased } = req.body || {};
+  const requestedFormat = (format || 'pdf').toLowerCase();
+  const check = checkUserSubscriptionPlan(req);
+
+  // If user requests Word (.docx) export
+  if (requestedFormat === 'docx' || requestedFormat === 'word') {
+    const isDocxUnlocked = check.isVipOrPro || check.role === 'admin' || Boolean(isDocPurchased);
+    if (!isDocxUnlocked) {
+      return res.status(403).json({
+        error: "L'exportation au format Word (.docx) nécessite l'achat à l'acte de ce document ou un abonnement actif.",
+        code: "DOCX_RESTRICTED",
+        reason: "docx_export",
+        upgradeUrl: "/tarifs"
+      });
+    }
+  }
+
+  // Watermark determination
+  const applyWatermark = !(check.isVipOrPro || check.role === 'admin' || Boolean(isDocPurchased));
+
+  return res.json({
+    allowed: true,
+    watermark: applyWatermark,
+    watermarkText: applyWatermark ? "⚡ Créé avec Dokya (dokya.sn) — Formule Gratuite" : null,
+    format: requestedFormat,
+    docId: docId || null
+  });
+});
+
 // Main AI Generator Route for CV & Letter
 app.post(['/api/generate', '/api/gemini/generate-cv'], async (req, res) => {
   try {
     const formData = req.body;
     if (!formData || !formData.personalInfo) {
       return res.status(400).json({ error: 'Données de formulaire invalides ou manquantes.' });
+    }
+
+    // Server-side Guard: Free user limit check (1 document gratuit par mois)
+    const check = checkUserSubscriptionPlan(req);
+    const generationCount = Number(req.body.generationCount || req.headers['x-user-generation-count'] || 0);
+    const isFreeOrExpired = !check.isVipOrPro && check.role !== 'admin';
+
+    if (isFreeOrExpired && generationCount >= 1) {
+      return res.status(403).json({
+        error: "Limite mensuelle de document gratuit atteinte (1 document / mois). Veuillez souscrire à un abonnement ou débloquer à l'acte.",
+        code: "MONTHLY_LIMIT_EXCEEDED",
+        reason: "limit_reached",
+        upgradeUrl: "/tarifs"
+      });
     }
 
     const cleanData = sanitizeForPrompt(formData);

@@ -250,6 +250,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   const [paymentDocTitle, setPaymentDocTitle] = useState<string>('');
   const [paymentDocTypeLabel, setPaymentDocTypeLabel] = useState<string>('CV Pro ATS');
   const [paymentPrice, setPaymentPrice] = useState<number>(1.99);
+  const [paywallRestrictionReason, setPaywallRestrictionReason] = useState<any>('compare');
   const [isRechargeModalOpen, setIsRechargeModalOpen] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'signup'>('login');
@@ -1155,6 +1156,26 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
 
   // Main Submit Call using Gemini SDK
   const handleGenerate = async () => {
+    // 1. Restriction IA pour utilisateurs gratuits : bloquer l'assistant de rédaction/optimisation automatique
+    const isSubscriber = isVip || (userProfile?.subscriptionStatus === 'active' || userProfile?.subscriptionStatus === 'unlimited');
+    const isAdmin = currentUser?.email ? isAdminEmail(currentUser.email) : false;
+    
+    if (!isSubscriber && !isAdmin) {
+      setPaywallRestrictionReason('ai_assistant');
+      setPaymentDocTitle('Assistant IA & Optimisation Automatique');
+      setIsPaymentModalOpen(true);
+      return;
+    }
+
+    // 2. Limite d'utilisation mensuelle gratuite (1 document / mois)
+    const genCount = Number(userProfile?.generationCount || 0);
+    if (!isSubscriber && !isAdmin && genCount >= 1) {
+      setPaywallRestrictionReason('limit_reached');
+      setPaymentDocTitle('Quota Mensuel Atteint (1 doc gratuit)');
+      setIsPaymentModalOpen(true);
+      return;
+    }
+
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -1166,6 +1187,13 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
       }
 
       setAiData(result.data);
+
+      // Incrémentation du compteur de générations
+      setUserProfile(prev => ({
+        ...prev,
+        generationCount: (prev.generationCount || 0) + 1
+      }));
+
       setSuccessMessage("Document généré et optimisé avec succès par l'IA Gemini !");
       setTimeout(() => setSuccessMessage(null), 3500);
 
@@ -1291,14 +1319,18 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // PDF Downloads
+  // PDF Downloads (avec filigrane automatique pour les gratuits, sans filigrane si abonné ou débloqué)
   const downloadCVPDF = async () => {
     setIsGeneratingPDF(true);
     setErrorMessage(null);
     try {
+      const isUnlocked = isVip || isCurrentDocPaid;
       const fullName = `${formData?.personalInfo?.firstName || ''}_${formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat';
       const fileName = `CV_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
-      const success = await downloadElementAsPDF('cv-preview', fileName);
+      const success = await downloadElementAsPDF('cv-preview', fileName, {
+        watermark: !isUnlocked,
+        watermarkText: '⚡ Créé avec Dokya (dokya.sn)'
+      });
       if (success) {
         handlePostDownloadArchival('PDF');
       }
@@ -1314,9 +1346,13 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     setIsGeneratingPDF(true);
     setErrorMessage(null);
     try {
+      const isUnlocked = isVip || isCurrentDocPaid;
       const fullName = `${formData?.personalInfo?.firstName || ''}_${formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat';
       const fileName = `Lettre_Motivation_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
-      const success = await downloadElementAsPDF('letter-preview', fileName);
+      const success = await downloadElementAsPDF('letter-preview', fileName, {
+        watermark: !isUnlocked,
+        watermarkText: '⚡ Créé avec Dokya (dokya.sn)'
+      });
       if (success) {
         handlePostDownloadArchival('PDF');
       }
@@ -1331,8 +1367,12 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   const downloadBusinessDocPDF = async () => {
     setIsGeneratingPDF(true);
     try {
+      const isUnlocked = isVip || isCurrentDocPaid;
       const fileName = `${businessDocData.type === 'devis' ? 'Devis' : 'Facture'}_${businessDocData.docNumber || 'Pro'}.pdf`;
-      await downloadElementAsPDF('business-doc-preview', fileName);
+      await downloadElementAsPDF('business-doc-preview', fileName, {
+        watermark: !isUnlocked,
+        watermarkText: '⚡ Créé avec Dokya (dokya.sn)'
+      });
       handlePostDownloadArchival('PDF');
     } catch (err) {
       console.error('Error generating Business Doc PDF:', err);
@@ -1342,21 +1382,34 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     }
   };
 
-  // Export as Word (.docx)
+  // Export as Word (.docx) - Bloqué pour les comptes gratuits si la formule à l'acte n'a pas été payée
   const handleExportDOCX = async () => {
+    const isUnlocked = isVip || isCurrentDocPaid;
+    if (!isUnlocked) {
+      setPaywallRestrictionReason('docx_export');
+      setPaymentDocTitle(
+        activeTab.startsWith('letter') ? 'Lettre de Motivation (Word .docx)' :
+        activeTab.startsWith('devis') ? 'Devis Professionnel (Word .docx)' :
+        activeTab.startsWith('facture') ? 'Facture Client (Word .docx)' :
+        'CV Professionnel (Word .docx)'
+      );
+      setIsPaymentModalOpen(true);
+      return;
+    }
+
     setIsGeneratingDocx(true);
     setErrorMessage(null);
     try {
       if (activeTab === 'letter' || activeTab === 'letter_preview') {
-        await exportLetterToDocx(formData, aiData);
+        await exportLetterToDocx(formData, aiData, { watermark: !isUnlocked });
       } else if (
         activeTab === 'devis' || activeTab === 'devis_preview' ||
         activeTab === 'facture' || activeTab === 'facture_preview' ||
         activeTab === 'pack_business' || activeTab === 'pack_business_preview'
       ) {
-        await exportBusinessDocToDocx(businessDocData);
+        await exportBusinessDocToDocx(businessDocData, { watermark: !isUnlocked });
       } else {
-        await exportCVToDocx(formData, aiData);
+        await exportCVToDocx(formData, aiData, { watermark: !isUnlocked });
       }
       handlePostDownloadArchival('DOCX');
     } catch (err: any) {
@@ -1690,6 +1743,12 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
               selectedColor={formData.themeColor}
               onSelectTemplate={handleSelectCVTemplate}
               onGoServices={() => navigateToView('dashboard')}
+              isVipActive={isVip || userProfile?.subscriptionStatus === 'active'}
+              onOpenPaywall={(tpl) => {
+                setPaywallRestrictionReason('template_pro');
+                setPaymentDocTitle(`Modèle Pro : ${tpl.label}`);
+                setIsPaymentModalOpen(true);
+              }}
             />
           </div>
         )}
@@ -2112,6 +2171,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
         documentTypeLabel={paymentDocTypeLabel}
         targetDocId={currentDocId}
         documentPrice={paymentPrice}
+        restrictionReason={paywallRestrictionReason}
         userBalance={userBalance}
         userId={currentUser?.uid}
         userEmail={currentUser?.email || undefined}

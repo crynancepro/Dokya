@@ -228,6 +228,7 @@ export interface BusinessDocTemplateOption {
   name: string;
   description: string;
   badge?: string;
+  isFree?: boolean; // true = Gratuit (formule free), false = PRO
 }
 
 export interface BusinessDocData {
@@ -649,6 +650,10 @@ export function formatRemainingSubscriptionTime(sub?: UserSubscription | any): s
   return 'Expire dans moins d\'une heure';
 }
 
+export type UserRole = 'user' | 'seller' | 'admin' | 'candidate' | 'telemarketer';
+export type SubscriptionPlan = 'free' | 'monthly' | 'six_months' | 'yearly';
+export type SubscriptionStatus = 'active' | 'inactive' | 'expired' | 'free' | 'pro' | 'unlimited' | 'pending';
+
 export interface CandidateProfile {
   uid: string;
   email: string;
@@ -663,7 +668,16 @@ export interface CandidateProfile {
   balance: number; // Solde utilisateur en FCFA (ex: 3 000 FCFA)
   walletBalance?: number;
   purchasedDocIds?: string[];
-  subscriptionStatus: 'free' | 'pro' | 'unlimited' | 'pending';
+
+  // Modèle d'Abonnement, Rôles & Restrictions
+  role?: UserRole; // 'user' | 'seller' | 'admin'
+  userRole?: 'seller' | 'telemarketer' | 'candidate'; // Compatibilité rôle actif
+  subscriptionPlan?: SubscriptionPlan; // 'free' | 'monthly' | 'six_months' | 'yearly'
+  subscriptionStatus: SubscriptionStatus; // 'active' | 'inactive' | 'expired' | 'free' | 'pro' | 'unlimited' | 'pending'
+  subscriptionExpiresAt?: any; // Timestamp / Date / string / number
+  teleSellerBadge?: boolean; // Badge Télévendeur Certifié (alias telemarketerBadge)
+  generationCount?: number; // Nombre de documents générés ce mois-ci
+
   subscription?: UserSubscription;
   referralCode?: string; // Code unique de parrainage (ex: "PETER25")
   referredBy?: string; // UID du parrain si inscrit via affiliation
@@ -673,7 +687,6 @@ export interface CandidateProfile {
   affiliateBalance?: number; // Solde d'affiliation disponible pour retrait en FCFA
   totalAffiliateEarnings?: number; // Cumul historique des commissions approuvées en FCFA
   totalReferred?: number; // Nombre de filleuls apportés
-  userRole?: 'seller' | 'telemarketer' | 'candidate'; // Rôle utilisateur Dokya actif (Vendeur / Télévendeur / Candidat)
   telemarketerBadge?: boolean; // Badge Télévendeur Certifié acheté
   telemarketerBadgeDate?: string;
   isTelemarketerCertified?: boolean;
@@ -685,6 +698,77 @@ export interface CandidateProfile {
   languagePreference?: 'fr' | 'en';
   preferredCurrency?: string; // XOF, XAF, EUR, USD
   updatedAt: string;
+}
+
+/**
+ * Helper : Vérifie si un utilisateur dispose d'un abonnement actif (Payant : mensuel, 6 mois, annuel ou VIP)
+ */
+export function isSubscriptionActive(userOrProfileOrSub?: any): boolean {
+  if (!userOrProfileOrSub) return false;
+  // Vérifie si le statut est 'active' ou 'unlimited'
+  const status = (userOrProfileOrSub.subscriptionStatus || userOrProfileOrSub.status || '').toLowerCase();
+  if (status === 'active' || status === 'unlimited') {
+    const expires = userOrProfileOrSub.subscriptionExpiresAt || userOrProfileOrSub.expiresAt || userOrProfileOrSub.subscription?.expiresAt;
+    if (!expires) return true;
+    const expiresMillis = getTimestampMillis(expires);
+    if (expiresMillis === null) return true;
+    return expiresMillis > Date.now();
+  }
+  return isUserVipActive(userOrProfileOrSub);
+}
+
+/**
+ * Helper : Vérifie si l'utilisateur peut utiliser l'assistant IA de rédaction
+ * (Réservé aux abonnés payants ou admin)
+ */
+export function canUseAiAssistant(userOrProfileOrSub?: any): boolean {
+  if (!userOrProfileOrSub) return false;
+  const role = userOrProfileOrSub.role || userOrProfileOrSub.userRole;
+  if (role === 'admin') return true;
+  return isSubscriptionActive(userOrProfileOrSub);
+}
+
+/**
+ * Helper : Vérifie si l'export Word (.docx) est débloqué pour ce document
+ * (Débloqué si abonné actif OU si le document précis a été acheté à l'acte)
+ */
+export function canExportDocx(userOrProfile: any, docId?: string, isCurrentDocPaid: boolean = false): boolean {
+  if (!userOrProfile) return isCurrentDocPaid;
+  const role = userOrProfile.role || userOrProfile.userRole;
+  if (role === 'admin') return true;
+  if (isSubscriptionActive(userOrProfile)) return true;
+  if (isCurrentDocPaid) return true;
+  if (docId && Array.isArray(userOrProfile.purchasedDocIds) && userOrProfile.purchasedDocIds.includes(docId)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Helper : Indique si le document doit comporter le filigrane "Créé avec Dokya"
+ * (Sans filigrane pour les abonnés et documents achetés à l'acte ; avec filigrane pour les gratuits)
+ */
+export function shouldApplyWatermark(userOrProfile: any, docId?: string, isCurrentDocPaid: boolean = false): boolean {
+  return !canExportDocx(userOrProfile, docId, isCurrentDocPaid);
+}
+
+/**
+ * Helper : Vérifie si l'utilisateur gratuit a droit à la génération de son document mensuel (1 max/mois)
+ */
+export function getMonthlyFreeDocumentLimit(): number {
+  return 1;
+}
+
+export function canGenerateFreeDocument(userOrProfile: any, currentMonthDocCount: number = 0): { allowed: boolean; remaining: number } {
+  if (isSubscriptionActive(userOrProfile)) {
+    return { allowed: true, remaining: 999999 };
+  }
+  const count = typeof userOrProfile?.generationCount === 'number' ? userOrProfile.generationCount : currentMonthDocCount;
+  const remaining = Math.max(0, 1 - count);
+  return {
+    allowed: remaining > 0,
+    remaining
+  };
 }
 
 export interface DokyaNotification {
@@ -813,9 +897,13 @@ export interface AdminUserRecord {
   targetJob?: string;
   balance: number;
   credits: number;
-  role: 'admin' | 'candidate';
-  subscriptionStatus: 'free' | 'pro' | 'unlimited';
+  role: 'admin' | 'candidate' | 'user' | 'seller';
+  subscriptionPlan?: SubscriptionPlan;
+  subscriptionStatus: 'free' | 'pro' | 'unlimited' | 'active' | 'inactive' | 'expired';
+  subscriptionExpiresAt?: any;
   subscription?: UserSubscription;
+  teleSellerBadge?: boolean;
+  generationCount?: number;
   status?: 'active' | 'suspended';
   suspendedReason?: string;
   documentsCount: number;

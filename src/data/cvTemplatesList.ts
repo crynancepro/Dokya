@@ -10,6 +10,7 @@ export interface CVTemplateMeta {
   accentColor: string;
   badgeTag?: string;
   popular?: boolean;
+  isFree?: boolean; // true = Gratuit (formule free), false = PRO (Abonnés & VIP)
 }
 
 export const ALL_CV_TEMPLATES: CVTemplateMeta[] = [
@@ -26,6 +27,7 @@ export const ALL_CV_TEMPLATES: CVTemplateMeta[] = [
     accentColor: '#4f46e5',
     badgeTag: 'Populaire',
     popular: true,
+    isFree: true,
   },
   {
     id: 'classique',
@@ -36,6 +38,7 @@ export const ALL_CV_TEMPLATES: CVTemplateMeta[] = [
     hasPhoto: false,
     accentColor: '#1e293b',
     badgeTag: 'Standard',
+    isFree: true,
   },
   {
     id: 'elegant',
@@ -139,6 +142,7 @@ export const ALL_CV_TEMPLATES: CVTemplateMeta[] = [
     hasPhoto: false,
     accentColor: '#0f766e',
     badgeTag: 'Zen ATS',
+    isFree: true,
   },
   {
     id: 'monaco_banking',
@@ -345,6 +349,7 @@ export const ALL_CV_TEMPLATES: CVTemplateMeta[] = [
     accentColor: '#4f46e5',
     badgeTag: 'Bestseller',
     popular: true,
+    isFree: true,
   },
   {
     id: 'photo_creative',

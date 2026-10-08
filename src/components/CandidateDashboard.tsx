@@ -138,7 +138,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     languages: [{ name: 'Français', level: 'Bilingue / Maternelle' }],
     credits: 0,
     balance: 0,
+    walletBalance: 0,
+    role: 'user',
+    userRole: 'candidate',
+    subscriptionPlan: 'free',
     subscriptionStatus: 'free',
+    teleSellerBadge: false,
+    generationCount: 0,
+    purchasedDocIds: [],
     updatedAt: new Date().toISOString()
   });
 

@@ -170,7 +170,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
 
   // Certified badge & VIP status with local reactive state and fallback storage
   const [localBadge, setLocalBadge] = useState<boolean>(() => {
-    if (profile.isTelemarketerCertified || profile.certifiedBadgePurchased || profile.telemarketerBadge) return true;
+    if (profile.teleSellerBadge || profile.isTelemarketerCertified || profile.certifiedBadgePurchased || profile.telemarketerBadge) return true;
     if (typeof window !== 'undefined') {
       return localStorage.getItem(`dokya_badge_${currentUid}`) === 'true' || 
              localStorage.getItem(`dokya_tel_badge_${currentUid}`) === 'true';
@@ -187,7 +187,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
     return 'standard';
   });
 
-  const hasCertifiedBadge = Boolean(localBadge || profile.isTelemarketerCertified || profile.certifiedBadgePurchased || profile.telemarketerBadge);
+  const hasCertifiedBadge = Boolean(localBadge || profile.teleSellerBadge || profile.isTelemarketerCertified || profile.certifiedBadgePurchased || profile.telemarketerBadge);
   const isVipMode = localPlan === 'vip' || profile.telemarketerPlan === 'vip' || profile.telemarketerMode === 'vip' || profile.subscriptionStatus === 'unlimited';
 
   // Copied link toast feedback

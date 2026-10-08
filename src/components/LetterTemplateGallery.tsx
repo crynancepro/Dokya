@@ -5,7 +5,7 @@ import { CoverLetterTemplate } from './CoverLetterTemplate';
 import { 
   Sparkles, CheckCircle2, ArrowRight, Eye, 
   ArrowLeft, Check, X, Maximize2, ZoomIn, ZoomOut,
-  Briefcase, Send, Users, UserCheck, Square, LayoutGrid
+  Briefcase, Send, Users, UserCheck, Square, LayoutGrid, Lock
 } from 'lucide-react';
 
 interface LetterTemplateGalleryProps {
@@ -13,6 +13,8 @@ interface LetterTemplateGalleryProps {
   selectedStyleId?: CoverLetterStyle;
   selectedLetterType?: CoverLetterType;
   onGoServices?: () => void;
+  isVipActive?: boolean;
+  onOpenPaywall?: () => void;
 }
 
 const LETTER_TEMPLATES: {
@@ -21,13 +23,15 @@ const LETTER_TEMPLATES: {
   badge: string;
   desc: string;
   accentColor: string;
+  isFree?: boolean;
 }[] = [
   {
     id: 'moderne_epuree',
     title: 'Moderne Épurée',
     badge: 'Standard International',
     desc: 'Structure aérée, alignement soigné et typographie nette pour tout profil.',
-    accentColor: '#2563eb'
+    accentColor: '#2563eb',
+    isFree: true
   },
   {
     id: 'executive_classique',
@@ -104,15 +108,29 @@ const FluidLetterThumbnail: React.FC<{
   isSelected: boolean;
   onSelect: () => void;
   onOpenPreview: () => void;
+  isVipActive?: boolean;
+  onOpenPaywall?: () => void;
 }> = ({
   template,
   sampleData,
   isSelected,
   onSelect,
-  onOpenPreview
+  onOpenPreview,
+  isVipActive = false,
+  onOpenPaywall
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState<number>(0.32);
+
+  const isLocked = !isVipActive && !template.isFree;
+
+  const handleAction = () => {
+    if (isLocked) {
+      if (onOpenPaywall) onOpenPaywall();
+      return;
+    }
+    onSelect();
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -174,13 +192,24 @@ const FluidLetterThumbnail: React.FC<{
           <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
 
-        {/* Selected Indicator Badge (Top-Right) */}
-        {isSelected && (
-          <div className="absolute top-2 right-2 z-20 px-2.5 py-1 rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-blue-950/60">
-            <Check className="w-3 h-3 stroke-[3]" />
-            <span>Actif</span>
-          </div>
-        )}
+        {/* Status Indicator Badge (Top-Right): Actif vs PRO vs GRATUIT */}
+        <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
+          {isSelected ? (
+            <div className="px-2.5 py-1 rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-blue-950/60">
+              <Check className="w-3 h-3 stroke-[3]" />
+              <span>Actif</span>
+            </div>
+          ) : isLocked ? (
+            <div className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black tracking-wider flex items-center gap-1 shadow-md border border-amber-400">
+              <Lock className="w-2.5 h-2.5" />
+              <span>PRO</span>
+            </div>
+          ) : (
+            <div className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black tracking-wider shadow-md border border-emerald-400/40">
+              <span>GRATUIT</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 2. DEDICATED MOBILE ACTION BAR (ALWAYS VISIBLE & 100% TOUCH-CLICKABLE) */}
@@ -208,11 +237,13 @@ const FluidLetterThumbnail: React.FC<{
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onSelect();
+              handleAction();
             }}
             className={`flex-1 py-2 px-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md ${
               isSelected
                 ? 'bg-emerald-600 text-white'
+                : isLocked
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
                 : 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white'
             }`}
           >
@@ -221,9 +252,14 @@ const FluidLetterThumbnail: React.FC<{
                 <Check className="w-3.5 h-3.5 stroke-[3]" />
                 <span>Sélectionnée</span>
               </>
+            ) : isLocked ? (
+              <>
+                <Lock className="w-3.5 h-3.5 text-slate-950" />
+                <span>Débloquer Pro</span>
+              </>
             ) : (
               <>
-                <span>Choisir ce modèle</span>
+                <span>Choisir</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </>
             )}
@@ -251,11 +287,21 @@ const FluidLetterThumbnail: React.FC<{
         <div className="flex items-center justify-between gap-1.5">
           <div className="flex items-center gap-1.5">
             <span 
-              className="px-2 py-0.5 rounded-full text-[10px] font-black text-white shadow-xs"
+              className="px-2.5 py-0.5 rounded-full text-[11px] font-black text-white shadow-xs"
               style={{ backgroundColor: template.accentColor }}
             >
               {template.badge}
             </span>
+            {isLocked ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 backdrop-blur-md flex items-center gap-1 border border-amber-400 shadow-xs">
+                <Lock className="w-3 h-3" />
+                <span>PRO</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-600/90 text-white backdrop-blur-md shadow-xs">
+                <span>GRATUIT</span>
+              </span>
+            )}
           </div>
 
           <button
@@ -277,12 +323,29 @@ const FluidLetterThumbnail: React.FC<{
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onSelect();
+              handleAction();
             }}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-black text-xs sm:text-sm shadow-xl shadow-blue-600/50 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              isSelected
+                ? 'bg-emerald-600 text-white'
+                : isLocked
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/40'
+                : 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-blue-600/50'
+            }`}
           >
-            <span>{isSelected ? '✓ Modèle sélectionné' : 'Sélectionner ce modèle'}</span>
-            {!isSelected && <ArrowRight className="w-4 h-4" />}
+            {isSelected ? (
+              <span>✓ Modèle sélectionné</span>
+            ) : isLocked ? (
+              <>
+                <Lock className="w-4 h-4 text-slate-950" />
+                <span>Débloquer ce modèle Pro</span>
+              </>
+            ) : (
+              <>
+                <span>Sélectionner ce modèle</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
 
           <button

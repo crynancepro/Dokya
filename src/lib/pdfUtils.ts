@@ -583,11 +583,53 @@ export async function preloadAllImages(element: HTMLElement): Promise<void> {
 }
 
 /**
+ * Applique un filigrane Dokya semi-transparent officiel sur un canevas de document
+ */
+export function applyWatermarkToCanvas(canvas: HTMLCanvasElement, watermarkText = 'Créé avec Dokya • dokya.sn'): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // 1. Filigrane diagonal central semi-transparent
+  ctx.save();
+  ctx.globalAlpha = 0.12;
+  ctx.font = 'bold 38px sans-serif';
+  ctx.fillStyle = '#0f172a';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(-Math.PI / 4);
+  ctx.fillText(watermarkText, 0, 0);
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText('dokya.sn • Version Gratuite', 0, 50);
+  ctx.restore();
+
+  // 2. Bandeau discret en bas de page
+  ctx.save();
+  ctx.globalAlpha = 0.90;
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, canvas.height - 38, canvas.width, 38);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fillRect(0, canvas.height - 39, canvas.width, 1); // border top
+
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillStyle = '#475569';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⚡ Créé avec Dokya (dokya.sn) — Formule Gratuite • Débloquez Dokya Pro pour retirer ce filigrane', canvas.width / 2, canvas.height - 19);
+  ctx.restore();
+}
+
+/**
  * Downloads an HTML element as a PDF file directly.
  * Employs strict inline print styling (white background #ffffff, dark text #1a1a1a),
  * image preloading with useCORS/allowTaint, and page-by-page rendering to prevent blank pages.
  */
-export async function downloadElementAsPDF(elementId: string, fileName: string): Promise<boolean> {
+export async function downloadElementAsPDF(
+  elementId: string, 
+  fileName: string,
+  options?: { watermark?: boolean; watermarkText?: string }
+): Promise<boolean> {
   const element = document.getElementById(elementId);
   if (!element) {
     throw new Error(`L'élément #${elementId} est introuvable pour l'export PDF.`);
@@ -718,6 +760,10 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
           }
         });
 
+        if (options?.watermark && !isCoverPage) {
+          applyWatermarkToCanvas(canvas, options.watermarkText);
+        }
+
         // Restore styles
         styleRestorers.forEach(({ el, color, bg, border, opacity }) => {
           el.style.color = color;
@@ -841,6 +887,10 @@ export async function downloadElementAsPDF(elementId: string, fileName: string):
           sanitizeClonedDocumentForHtml2Canvas(clonedDoc, elementId);
         }
       });
+
+      if (options?.watermark) {
+        applyWatermarkToCanvas(canvas, options.watermarkText);
+      }
 
       // Restore original inline styles
       styleRestorers.forEach(({ el, color, bg, border, opacity }) => {

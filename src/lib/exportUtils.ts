@@ -4,7 +4,11 @@ import { CVFormData, AIOptimizedData, BusinessDocData, EbookData } from '../type
 /**
  * Exports the CV as a formatted DOCX document using the docx library.
  */
-export async function exportCVToDocx(formData: CVFormData, aiData?: AIOptimizedData | null) {
+export async function exportCVToDocx(
+  formData: CVFormData, 
+  aiData?: AIOptimizedData | null,
+  options?: { watermark?: boolean }
+) {
   const personalInfo = formData?.personalInfo || ({} as any);
   const experiences = formData?.experiences || [];
   const education = formData?.education || [];
@@ -16,6 +20,25 @@ export async function exportCVToDocx(formData: CVFormData, aiData?: AIOptimizedD
   const fullName = `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() || 'Candidat';
 
   const docChildren: any[] = [];
+
+  // Watermark Header
+  if (options?.watermark) {
+    docChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 150 },
+        children: [
+          new TextRun({
+            text: '⚡ CRÉÉ AVEC DOKYA (DOKYA.SN) — VERSION GRATUITE',
+            bold: true,
+            size: 16,
+            color: '64748B',
+            italics: true,
+          }),
+        ],
+      })
+    );
+  }
 
   // Header - Name
   docChildren.push(
@@ -471,7 +494,11 @@ export async function exportCVToDocx(formData: CVFormData, aiData?: AIOptimizedD
 /**
  * Exports the Cover Letter as a formatted DOCX document using the docx library.
  */
-export async function exportLetterToDocx(formData: CVFormData, aiData?: AIOptimizedData | null) {
+export async function exportLetterToDocx(
+  formData: CVFormData, 
+  aiData?: AIOptimizedData | null,
+  options?: { watermark?: boolean }
+) {
   const personalInfo = formData?.personalInfo || ({} as any);
   const fullName = `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() || 'Candidat';
   const todayDate = new Date().toLocaleDateString('fr-FR', {
@@ -493,6 +520,25 @@ export async function exportLetterToDocx(formData: CVFormData, aiData?: AIOptimi
   };
 
   const docChildren: any[] = [];
+
+  // Watermark Header
+  if (options?.watermark) {
+    docChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 150 },
+        children: [
+          new TextRun({
+            text: '⚡ CRÉÉ AVEC DOKYA (DOKYA.SN) — VERSION GRATUITE',
+            bold: true,
+            size: 16,
+            color: '64748B',
+            italics: true,
+          }),
+        ],
+      })
+    );
+  }
 
   // Header - Candidate Info
   docChildren.push(
@@ -636,7 +682,10 @@ export async function exportLetterToDocx(formData: CVFormData, aiData?: AIOptimi
 /**
  * Exports a Devis or Facture as a professional DOCX document.
  */
-export async function exportBusinessDocToDocx(data: BusinessDocData) {
+export async function exportBusinessDocToDocx(
+  data: BusinessDocData,
+  options?: { watermark?: boolean }
+) {
   const isQuote = data.type === 'devis';
   const currency = data.currency || 'FCFA';
 
@@ -654,6 +703,25 @@ export async function exportBusinessDocToDocx(data: BusinessDocData) {
   const totalTTC = netHT + vatAmount;
 
   const docChildren: any[] = [];
+
+  // Watermark Header
+  if (options?.watermark) {
+    docChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 150 },
+        children: [
+          new TextRun({
+            text: '⚡ CRÉÉ AVEC DOKYA (DOKYA.SN) — VERSION GRATUITE',
+            bold: true,
+            size: 16,
+            color: '64748B',
+            italics: true,
+          }),
+        ],
+      })
+    );
+  }
 
   // Title: DEVIS or FACTURE
   docChildren.push(

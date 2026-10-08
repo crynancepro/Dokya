@@ -5,19 +5,22 @@ export const BUSINESS_DOC_TEMPLATES: BusinessDocTemplateOption[] = [
     id: 'classique_ohada',
     name: 'Classique OHADA',
     description: 'Alignement traditionnel conforme normes UEMOA/OHADA, tableau standard et mentions légales.',
-    badge: 'Standard UEMOA'
+    badge: 'Standard UEMOA',
+    isFree: true
   },
   {
     id: 'minimaliste_pro',
     name: 'Minimaliste Pro',
     description: 'Polices fines, très épuré, lignes légères et aérées, mise en valeur des chiffres essentiels.',
-    badge: 'Ultra Épuré'
+    badge: 'Ultra Épuré',
+    isFree: false
   },
   {
     id: 'corporate_executif',
     name: 'Corporate / Exécutif',
     description: 'En-tête imposante avec typographie forte, structure pour grands comptes et PME.',
-    badge: 'Corporate'
+    badge: 'Corporate',
+    isFree: false
   },
   {
     id: 'modern_clean',

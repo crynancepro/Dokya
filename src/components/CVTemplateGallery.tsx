@@ -6,7 +6,7 @@ import { CVTemplate } from './CVTemplate';
 import { 
   Sparkles, Search, CheckCircle2, ArrowRight, Eye, 
   ArrowLeft, Camera, FileText, Check, X, Maximize2, ZoomIn, ZoomOut,
-  LayoutGrid, Square, RefreshCw
+  LayoutGrid, Square, RefreshCw, Lock
 } from 'lucide-react';
 
 interface CVTemplateGalleryProps {
@@ -14,6 +14,8 @@ interface CVTemplateGalleryProps {
   selectedTemplateId?: TemplateStyle;
   selectedColor?: string;
   onGoServices?: () => void;
+  isVipActive?: boolean;
+  onOpenPaywall?: (template: CVTemplateMeta) => void;
 }
 
 interface FilterTab {
@@ -47,15 +49,31 @@ const FluidCVThumbnail: React.FC<{
   isSelected: boolean;
   onSelect: () => void;
   onOpenPreview: () => void;
+  isVipActive?: boolean;
+  onOpenPaywall?: (template: CVTemplateMeta) => void;
 }> = ({
   template,
   sampleData,
   isSelected,
   onSelect,
-  onOpenPreview
+  onOpenPreview,
+  isVipActive = false,
+  onOpenPaywall
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState<number>(0.32);
+
+  const isLocked = !isVipActive && !template.isFree;
+
+  const handleAction = () => {
+    if (isLocked) {
+      if (onOpenPaywall) {
+        onOpenPaywall(template);
+      }
+      return;
+    }
+    onSelect();
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -77,11 +95,11 @@ const FluidCVThumbnail: React.FC<{
     <div
       role="button"
       tabIndex={0}
-      onClick={onSelect}
+      onClick={handleAction}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onSelect();
+          handleAction();
         }
       }}
       aria-label={`Sélectionner le modèle de CV ${template.label}`}
@@ -122,13 +140,24 @@ const FluidCVThumbnail: React.FC<{
           <Maximize2 className="w-3 h-3 sm:w-4 sm:h-4" />
         </button>
 
-        {/* Selected Indicator Badge (Top-Right) */}
-        {isSelected && (
-          <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-20 px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] sm:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-indigo-950/60">
-            <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[3]" />
-            <span>Actif</span>
-          </div>
-        )}
+        {/* Selected / Pro / Free Indicator Badge (Top-Right) */}
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-20 flex items-center gap-1">
+          {isSelected ? (
+            <div className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] sm:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-indigo-950/60">
+              <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[3]" />
+              <span>Actif</span>
+            </div>
+          ) : isLocked ? (
+            <div className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] sm:text-[10px] font-black tracking-wider flex items-center gap-1 shadow-md border border-amber-400">
+              <Lock className="w-2.5 h-2.5" />
+              <span>PRO</span>
+            </div>
+          ) : (
+            <div className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] sm:text-[10px] font-black tracking-wider shadow-md border border-emerald-400/40">
+              <span>GRATUIT</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 2. DEDICATED MOBILE ACTION BAR (ALWAYS VISIBLE & 100% TOUCH-CLICKABLE SUR 2 COLONNES) */}
@@ -156,11 +185,13 @@ const FluidCVThumbnail: React.FC<{
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onSelect();
+              handleAction();
             }}
             className={`flex-1 py-1.5 px-2 rounded-lg font-black text-[11px] flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer shadow-xs ${
               isSelected
                 ? 'bg-emerald-600 text-white'
+                : isLocked
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
                 : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
             }`}
           >
@@ -168,6 +199,11 @@ const FluidCVThumbnail: React.FC<{
               <>
                 <Check className="w-3 h-3 stroke-[3]" />
                 <span>Actif</span>
+              </>
+            ) : isLocked ? (
+              <>
+                <Lock className="w-3 h-3" />
+                <span>Débloquer</span>
               </>
             ) : (
               <>
@@ -215,6 +251,16 @@ const FluidCVThumbnail: React.FC<{
                 <span>100% ATS</span>
               </span>
             )}
+            {isLocked ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 backdrop-blur-md flex items-center gap-1 border border-amber-400 shadow-xs">
+                <Lock className="w-3 h-3" />
+                <span>PRO</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 backdrop-blur-md flex items-center gap-1 border border-emerald-400/30 shadow-xs">
+                <span>GRATUIT</span>
+              </span>
+            )}
           </div>
 
           <button
@@ -236,12 +282,29 @@ const FluidCVThumbnail: React.FC<{
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onSelect();
+              handleAction();
             }}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-black text-xs sm:text-sm shadow-xl shadow-indigo-600/50 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              isSelected
+                ? 'bg-emerald-600 text-white'
+                : isLocked
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/40'
+                : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-indigo-600/50'
+            }`}
           >
-            <span>{isSelected ? '✓ Modèle sélectionné' : 'Sélectionner ce modèle'}</span>
-            {!isSelected && <ArrowRight className="w-4 h-4" />}
+            {isSelected ? (
+              <span>✓ Modèle sélectionné</span>
+            ) : isLocked ? (
+              <>
+                <Lock className="w-4 h-4" />
+                <span>Débloquer ce modèle Pro</span>
+              </>
+            ) : (
+              <>
+                <span>Sélectionner ce modèle</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
 
           <button
@@ -280,7 +343,9 @@ const FluidCVThumbnail: React.FC<{
 export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
   onSelectTemplate,
   selectedTemplateId = 'moderne',
-  onGoServices
+  onGoServices,
+  isVipActive = false,
+  onOpenPaywall
 }) => {
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -467,6 +532,8 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
                 template={template}
                 sampleData={sampleData}
                 isSelected={isSelected}
+                isVipActive={isVipActive}
+                onOpenPaywall={onOpenPaywall}
                 onSelect={() => onSelectTemplate(template.id, template.accentColor)}
                 onOpenPreview={() => handleOpenFullPreview(template)}
               />
@@ -579,13 +646,31 @@ export const CVTemplateGallery: React.FC<CVTemplateGalleryProps> = ({
                   type="button"
                   onClick={() => {
                     const tpl = fullPreviewTemplate;
+                    if (!isVipActive && !tpl.isFree) {
+                      setFullPreviewTemplate(null);
+                      if (onOpenPaywall) onOpenPaywall(tpl);
+                      return;
+                    }
                     setFullPreviewTemplate(null);
                     onSelectTemplate(tpl.id, tpl.accentColor);
                   }}
-                  className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                  className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95 ${
+                    !isVipActive && !fullPreviewTemplate.isFree
+                      ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/30'
+                      : 'bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white shadow-indigo-600/30'
+                  }`}
                 >
-                  <span>Sélectionner ce modèle</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  {!isVipActive && !fullPreviewTemplate.isFree ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-slate-950" />
+                      <span>Débloquer ce modèle Pro</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Sélectionner ce modèle</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
                 </button>
               </div>
             </div>

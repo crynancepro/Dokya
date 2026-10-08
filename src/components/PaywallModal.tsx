@@ -16,6 +16,8 @@ import { TransactionRecord } from '../types';
 import { usePricing } from '../contexts/PricingContext';
 import { useLocale } from '../contexts/LocaleContext';
 
+export type PaywallReason = 'watermark' | 'docx_export' | 'ai_assistant' | 'template_pro' | 'limit_reached' | 'compare';
+
 export interface PaywallModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -30,10 +32,13 @@ export interface PaywallModalProps {
   userName?: string;
   onUnlocked: () => void;
   onOpenRechargeModal?: () => void;
+  onOpenSubscriptionModal?: () => void;
   onDownloadAction?: (format: 'pdf' | 'docx') => void;
   onBalanceUpdated?: (newBalance: number) => void;
   documentData?: any;
   contentData?: any;
+  restrictionReason?: PaywallReason;
+  customMessage?: string;
 }
 
 export const PaywallModal: React.FC<PaywallModalProps> = ({
@@ -50,10 +55,13 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
   userName,
   onUnlocked,
   onOpenRechargeModal,
+  onOpenSubscriptionModal,
   onDownloadAction,
   onBalanceUpdated,
   documentData,
-  contentData
+  contentData,
+  restrictionReason = 'compare',
+  customMessage
 }) => {
   const { validatePromoCode, appliedGlobalPromo, setAppliedGlobalPromo, pricing, publishedPromo } = usePricing();
   const { formatPrice } = useLocale();
@@ -413,25 +421,164 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 sm:p-6 space-y-5">
+        <div className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           
+          {/* Specific Restriction Banner */}
+          {restrictionReason !== 'compare' && (
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+              <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <h4 className="font-black text-amber-300">
+                  {restrictionReason === 'ai_assistant' && "Assistant IA réservé aux Abonnés Dokya"}
+                  {restrictionReason === 'template_pro' && "Modèle Premium réservé aux Abonnés"}
+                  {restrictionReason === 'docx_export' && "Export Word (.docx) restreint"}
+                  {restrictionReason === 'watermark' && "Téléchargement sans filigrane"}
+                  {restrictionReason === 'limit_reached' && "Limite mensuelle gratuite atteinte (1 doc/mois)"}
+                </h4>
+                <p className="text-amber-200/90 mt-0.5 leading-relaxed">
+                  {customMessage || (
+                    restrictionReason === 'ai_assistant' 
+                      ? "La rédaction automatique et l'enrichissement par IA sont débloqués pour les membres abonnés au Pass Pro ou Pass VIP."
+                      : restrictionReason === 'template_pro'
+                      ? "Ce modèle ATS de haute facture fait partie de notre collection Pro. Les comptes gratuits ont accès aux modèles étiquetés 'GRATUIT'."
+                      : restrictionReason === 'docx_export'
+                      ? "Le téléchargement au format Word modifiable (.docx) nécessite l'achat à l'acte de ce document ou un abonnement actif."
+                      : restrictionReason === 'limit_reached'
+                      ? "La formule gratuite offre 1 document par mois. Pour créer d'autres documents, optez pour l'achat à l'acte ou l'abonnement illimité."
+                      : "Passez au paiement à l'acte ou à l'abonnement pour obtenir un document haute définition sans filigrane."
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Grille Comparative : Gratuit vs Achat à l'acte vs Abonné Pro */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+            
+            {/* Colonne 1 : Gratuit */}
+            <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-1 mb-1.5">
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Gratuit</span>
+                  <span className="text-[10px] font-bold text-slate-400">0 FCFA</span>
+                </div>
+                <ul className="text-[11px] text-slate-300 space-y-1.5">
+                  <li className="flex items-center gap-1.5 text-slate-400">
+                    <span className="text-slate-500">•</span>
+                    <span>1 document / mois</span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-slate-400">
+                    <span className="text-slate-500">•</span>
+                    <span>Filigrane Dokya apposé</span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-slate-400">
+                    <span className="text-slate-500">•</span>
+                    <span>PDF standard uniquement</span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-slate-500 line-through">
+                    <span>×</span>
+                    <span>Modèles Pro & IA</span>
+                  </li>
+                </ul>
+              </div>
+              <div className="mt-3 text-[10px] text-slate-500 italic text-center">
+                Formule de base
+              </div>
+            </div>
+
+            {/* Colonne 2 : Achat à l'acte (Sélectionné) */}
+            <div className="p-3 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 flex flex-col justify-between ring-1 ring-indigo-500/30">
+              <div>
+                <div className="flex items-center justify-between gap-1 mb-1.5">
+                  <span className="text-[10px] font-black uppercase text-indigo-300 tracking-wider">À l'acte</span>
+                  <span className="text-[10px] font-black text-indigo-300">1 000 FCFA</span>
+                </div>
+                <ul className="text-[11px] text-indigo-100 space-y-1.5">
+                  <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <span>✓</span>
+                    <span>Ce document à vie</span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <span>✓</span>
+                    <span><strong>Zéro filigrane</strong></span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <span>✓</span>
+                    <span>Exports PDF + Word (.docx)</span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-indigo-200">
+                    <span>✓</span>
+                    <span>Pack Duo à 1 500 FCFA</span>
+                  </li>
+                </ul>
+              </div>
+              <div className="mt-3 text-[10px] text-indigo-300 font-bold text-center">
+                Paiement unique
+              </div>
+            </div>
+
+            {/* Colonne 3 : Abonné Pro (Le plus avantageux) */}
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-950/40 via-purple-950/30 to-indigo-950/40 border border-amber-500/40 flex flex-col justify-between ring-1 ring-amber-500/30">
+              <div>
+                <div className="flex items-center justify-between gap-1 mb-1.5">
+                  <span className="text-[10px] font-black uppercase text-amber-300 tracking-wider flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>Abonné Pro</span>
+                  </span>
+                  <span className="text-[10px] font-black text-amber-300">5 000 FCFA</span>
+                </div>
+                <ul className="text-[11px] text-amber-100 space-y-1.5">
+                  <li className="flex items-center gap-1.5 text-amber-300 font-bold">
+                    <span>★</span>
+                    <span><strong>Documents ILLIMITÉS</strong></span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <span>✓</span>
+                    <span>Tous les 50+ templates Pro</span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <span>✓</span>
+                    <span><strong>Assistant IA débloqué</strong></span>
+                  </li>
+                  <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <span>✓</span>
+                    <span>Facturation & Boutique Vendeur</span>
+                  </li>
+                </ul>
+              </div>
+              {onOpenSubscriptionModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenSubscriptionModal();
+                  }}
+                  className="mt-3 py-1 px-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] transition-all cursor-pointer shadow-xs text-center block w-full"
+                >
+                  Choisir l'Abonnement
+                </button>
+              )}
+            </div>
+
+          </div>
+
           {/* Document Summary Card */}
-          <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 flex items-center justify-between gap-3">
+          <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
-                <FileText className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                <FileText className="w-4 h-4" />
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-200">
-                  Export PDF & Word (.docx) Haute Définition
+                  Déblocage à l'acte : {documentTitle}
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Sans filigrane, prêt à l'emploi et conservé à vie
+                  Export PDF & Word (.docx) sans aucun filigrane
                 </p>
               </div>
             </div>
             <span className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-800 text-slate-300 border border-slate-700 shrink-0">
-              HD Vectoriel
+              HD & Word
             </span>
           </div>
 
@@ -590,6 +737,21 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                   <span>Solde insuffisant : Recharger mon solde</span>
                 </button>
               </div>
+            )}
+
+            {/* Bouton d'Abonnement Illimité Direct */}
+            {onOpenSubscriptionModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenSubscriptionModal();
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 border border-amber-500/30 transition-all cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Ou souscrire au Pass Pro Illimité (5 000 FCFA/mois) — 100% Tout inclus</span>
+              </button>
             )}
 
             {/* Note de sécurité */}
