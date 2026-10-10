@@ -15,6 +15,69 @@ export interface CurrencyConfig {
   decimals: number;
 }
 
+/**
+ * Dictionnaire centralisé des tarifs Dokya (Price Map) selon la devise sélectionnée :
+ * - FCFA (XOF / XAF) :
+ *   * Mensuel : 5 000 FCFA
+ *   * 6 Mois : 25 000 FCFA
+ *   * Annuel : 40 000 FCFA
+ *   * Badge Télévendeur : 10 000 FCFA
+ *   * Acte (CV / Lettre / Facture) : 1 000 FCFA / Pack : 1 500 FCFA
+ * - USD ($) :
+ *   * Mensuel : 8.50 $
+ *   * 6 Mois : 42 $
+ *   * Annuel : 67 $
+ *   * Badge Télévendeur : 17 $
+ *   * Acte : 1.70 $ / Pack : 2.50 $
+ * - EUR (€) :
+ *   * Mensuel : 7.60 €
+ *   * 6 Mois : 38 €
+ *   * Annuel : 61 €
+ *   * Badge Télévendeur : 15.20 €
+ *   * Acte : 1.50 € / Pack : 2.30 €
+ */
+export const CENTRALIZED_PRICE_MAP: Record<SupportedCurrency, {
+  monthly: { value: number; formatted: string };
+  semester: { value: number; formatted: string };
+  annual: { value: number; formatted: string };
+  teleSellerBadge: { value: number; formatted: string };
+  singleDoc: { value: number; formatted: string };
+  packDuo: { value: number; formatted: string };
+}> = {
+  XOF: {
+    monthly: { value: 5000, formatted: '5 000 FCFA' },
+    semester: { value: 25000, formatted: '25 000 FCFA' },
+    annual: { value: 40000, formatted: '40 000 FCFA' },
+    teleSellerBadge: { value: 10000, formatted: '10 000 FCFA' },
+    singleDoc: { value: 1000, formatted: '1 000 FCFA' },
+    packDuo: { value: 1500, formatted: '1 500 FCFA' }
+  },
+  XAF: {
+    monthly: { value: 5000, formatted: '5 000 FCFA' },
+    semester: { value: 25000, formatted: '25 000 FCFA' },
+    annual: { value: 40000, formatted: '40 000 FCFA' },
+    teleSellerBadge: { value: 10000, formatted: '10 000 FCFA' },
+    singleDoc: { value: 1000, formatted: '1 000 FCFA' },
+    packDuo: { value: 1500, formatted: '1 500 FCFA' }
+  },
+  USD: {
+    monthly: { value: 8.50, formatted: '8.50 $' },
+    semester: { value: 42, formatted: '42 $' },
+    annual: { value: 67, formatted: '67 $' },
+    teleSellerBadge: { value: 17, formatted: '17 $' },
+    singleDoc: { value: 1.70, formatted: '1.70 $' },
+    packDuo: { value: 2.50, formatted: '2.50 $' }
+  },
+  EUR: {
+    monthly: { value: 7.60, formatted: '7.60 €' },
+    semester: { value: 38, formatted: '38 €' },
+    annual: { value: 61, formatted: '61 €' },
+    teleSellerBadge: { value: 15.20, formatted: '15.20 €' },
+    singleDoc: { value: 1.50, formatted: '1.50 €' },
+    packDuo: { value: 2.30, formatted: '2.30 €' }
+  }
+};
+
 export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
   XOF: {
     code: 'XOF',
@@ -51,6 +114,59 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
     decimals: 2
   }
 };
+
+/**
+ * Fonction helper universelle : convertit dynamiquement le montant et applique le bon symbole
+ * (FCFA, $, €) sans décimales inutiles pour le FCFA.
+ */
+export function formatPrice(
+  amountInXOF: number, 
+  targetCurrency: SupportedCurrency = 'XOF',
+  options: { showEquivalent?: boolean } = {}
+): string {
+  const raw = Number(amountInXOF) || 0;
+  const curr = (targetCurrency || 'XOF').toUpperCase() as SupportedCurrency;
+
+  // Si le montant correspond à un forfait standard du dictionnaire centralisé
+  const priceMap = CENTRALIZED_PRICE_MAP[curr] || CENTRALIZED_PRICE_MAP.XOF;
+  if (Math.abs(raw - 5000) < 1) return priceMap.monthly.formatted;
+  if (Math.abs(raw - 25000) < 1) return priceMap.semester.formatted;
+  if (Math.abs(raw - 40000) < 1) return priceMap.annual.formatted;
+  if (Math.abs(raw - 10000) < 1) return priceMap.teleSellerBadge.formatted;
+  if (Math.abs(raw - 1000) < 1) return priceMap.singleDoc.formatted;
+  if (Math.abs(raw - 1500) < 1) return priceMap.packDuo.formatted;
+  if (raw === 0) {
+    if (curr === 'USD') return '0 $';
+    if (curr === 'EUR') return '0 €';
+    return '0 FCFA';
+  }
+
+  // Conversion dynamique proportionnelle
+  if (curr === 'EUR') {
+    const converted = raw / 655.95;
+    const isRound = converted % 1 === 0;
+    const formattedNum = isRound ? converted.toFixed(0) : converted.toFixed(2).replace('.', ',');
+    const formatted = `${formattedNum} €`;
+    return options.showEquivalent ? `${formatted} (~${Math.round(raw).toLocaleString('fr-FR')} FCFA)` : formatted;
+  }
+
+  if (curr === 'USD') {
+    const converted = raw / 600;
+    const isRound = converted % 1 === 0;
+    const formattedNum = isRound ? converted.toFixed(0) : converted.toFixed(2);
+    const formatted = `${formattedNum} $`;
+    return options.showEquivalent ? `${formatted} (~${Math.round(raw).toLocaleString('fr-FR')} FCFA)` : formatted;
+  }
+
+  // FCFA (XOF ou XAF) sans décimales
+  const formatted = `${Math.round(raw).toLocaleString('fr-FR')} FCFA`;
+  if (options.showEquivalent) {
+    const eurVal = (raw / 655.95).toFixed(2).replace('.', ',');
+    const usdVal = (raw / 600).toFixed(2);
+    return `${formatted} (≈ ${eurVal} € / ${usdVal} $)`;
+  }
+  return formatted;
+}
 
 interface LocaleContextType {
   userCountry: CountryOption;
@@ -116,45 +232,12 @@ export const LocaleProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   // Formate le montant selon la devise
-  const formatPrice = (
+  const formatPriceState = (
     amountXOF: number, 
     targetCurrency: SupportedCurrency = userCurrency,
     options: { showEquivalent?: boolean } = {}
   ): string => {
-    const raw = Number(amountXOF) || 0;
-    const curr = targetCurrency || userCurrency;
-    const config = CURRENCIES[curr] || CURRENCIES.XOF;
-    const val = convertAmount(raw, curr);
-
-    let formatted = '';
-    if (curr === 'EUR') {
-      formatted = `${val.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-      if (options.showEquivalent) {
-        formatted += ` (~${raw.toLocaleString('fr-FR')} FCFA)`;
-      }
-    } else if (curr === 'USD') {
-      formatted = `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
-      if (options.showEquivalent) {
-        formatted += ` (~${raw.toLocaleString('fr-FR')} FCFA)`;
-      }
-    } else if (curr === 'XAF') {
-      formatted = `${raw.toLocaleString('fr-FR')} FCFA`;
-      if (options.showEquivalent) {
-        const eurVal = (raw * CURRENCIES.EUR.rateFromXOF).toFixed(2).replace('.', ',');
-        const usdVal = (raw * CURRENCIES.USD.rateFromXOF).toFixed(2);
-        formatted += ` (≈ ${eurVal} € / $${usdVal})`;
-      }
-    } else {
-      // XOF par défaut
-      formatted = `${raw.toLocaleString('fr-FR')} FCFA`;
-      if (options.showEquivalent) {
-        const eurVal = (raw * CURRENCIES.EUR.rateFromXOF).toFixed(2).replace('.', ',');
-        const usdVal = (raw * CURRENCIES.USD.rateFromXOF).toFixed(2);
-        formatted += ` (≈ ${eurVal} € / $${usdVal} USD)`;
-      }
-    }
-
-    return formatted;
+    return formatPrice(amountXOF, targetCurrency, options);
   };
 
   // Ligne de conversion indicative instantanée
@@ -175,7 +258,7 @@ export const LocaleProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setUserCurrency,
         currencies: CURRENCIES,
         convertAmount,
-        formatPrice,
+        formatPrice: formatPriceState,
         getConversionRateSnippet,
         isInternational
       }}

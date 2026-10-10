@@ -516,7 +516,7 @@ export const MySubscriptionView: React.FC<MySubscriptionViewProps> = ({
       <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-          <span>Paiements sécurisés par Wave, Orange Money et Carte Bancaire. Aucun renouvellement automatique caché.</span>
+          <span>Paiements sécurisés par Mobile Money (Wave, Orange Money) et Cryptomonnaies. Aucun prélèvement automatique.</span>
         </div>
 
         <button

@@ -260,7 +260,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
     },
     {
       q: 'Quels sont les moyens de paiement acceptés ?',
-      a: 'Vous pouvez régler directement en ligne par Carte Bancaire (Visa / Mastercard), avec votre solde portefeuille Dokya, ou via Mobile Money (Wave, Orange Money) avec conversion automatique au taux officiel.'
+      a: 'Vous pouvez recharger votre solde Dokya en toute sécurité via Mobile Money Afrique (Wave, Orange Money, MTN, Moov, Free Money, Perfect Money) ou en Cryptomonnaies (USDT TRC20, USDT BEP20, USDC, Solana) gérées via Money Fusion. Tous les achats s\'effectuent directement depuis votre solde.'
     },
     {
       q: 'Puis-je modifier mes documents après achat ?',
@@ -499,10 +499,10 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
               const discount = !isFree ? calculateDiscountedPrice(plan.priceNum) : null;
               const hasDiscount = Boolean(discount?.hasDiscount);
               const displayPrice = isFree 
-                ? '0 $' 
+                ? formatLocalePrice(0) 
                 : hasDiscount 
-                  ? `${discount?.finalPrice.toFixed(2)} $` 
-                  : `${plan.priceNum.toFixed(2)} $`;
+                  ? formatLocalePrice(discount?.finalPrice ?? plan.priceNum) 
+                  : formatLocalePrice(plan.priceNum);
 
               return (
                 <div
@@ -548,7 +548,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                       <div className="mt-1 flex items-baseline gap-2">
                         {hasDiscount && (
                           <span className="text-sm font-semibold text-slate-500 line-through">
-                            {plan.priceNum.toFixed(2)} $
+                            {formatLocalePrice(plan.priceNum)}
                           </span>
                         )}
                         <span className={`text-2xl sm:text-3xl font-black ${hasDiscount ? 'text-emerald-400' : 'text-white'}`}>
@@ -591,7 +591,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                     >
                       <span>
                         {isFree
-                          ? 'Formule Gratuite Active (0 $)'
+                          ? `Formule Gratuite Active (${formatLocalePrice(0)})`
                           : isSubscriptionActive 
                             ? '👑 Pass VIP Déjà Actif' 
                             : `S'abonner (${displayPrice})`}
@@ -632,7 +632,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
               const discount = calculateDiscountedPrice(product.priceNum);
               const hasDiscount = Boolean(discount?.hasDiscount);
               const displayPrice = hasDiscount
-                ? `${discount.finalPrice.toFixed(2)} $`
+                ? formatLocalePrice(discount.finalPrice)
                 : product.price;
 
               return (
@@ -671,7 +671,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                       <div className="mt-0.5 flex items-baseline gap-2">
                         {hasDiscount && (
                           <span className="text-xs text-slate-500 line-through">
-                            {product.priceNum.toFixed(2)} $
+                            {formatLocalePrice(product.priceNum)}
                           </span>
                         )}
                         <span className={`text-lg font-black ${hasDiscount ? 'text-emerald-400' : 'text-white'}`}>

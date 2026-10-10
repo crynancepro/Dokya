@@ -12,6 +12,7 @@ import {
   deletePromoCodeFromFirestore 
 } from '../lib/firebase';
 import { safeParseJsonResponse } from '../utils/apiHelpers';
+import { formatPrice as formatLocalePrice, SupportedCurrency, CENTRALIZED_PRICE_MAP } from './LocaleContext';
 
 export interface PromoValidationResult {
   valid: boolean;
@@ -656,21 +657,7 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
   // 8. Helper to dynamically format and convert price with currency
   // Dokya base amounts are always stored in Franc CFA (XOF/FCFA)
   const formatPrice = (amountInXOF: number, currency: string = 'XOF'): string => {
-    const num = Number(amountInXOF) || 0;
-    const curr = (currency || 'XOF').toUpperCase().trim();
-
-    if (curr === 'USD' || curr === '$') {
-      const converted = num / 600; // 1 USD ≈ 600 XOF (ex: 1000 FCFA => 1.67 $)
-      return `${converted.toFixed(2)} $`;
-    }
-    if (curr === 'EUR' || curr === '€') {
-      const converted = num / 655.95; // 1 EUR ≈ 655.95 XOF (ex: 1000 FCFA => 1.52 €)
-      return `${converted.toFixed(2).replace('.', ',')} €`;
-    }
-    if (curr === 'XAF' || curr === 'CEMAC') {
-      return `${Math.round(num).toLocaleString('fr-FR')} FCFA`;
-    }
-    return `${Math.round(num).toLocaleString('fr-FR')} FCFA`;
+    return formatLocalePrice(amountInXOF, (currency || 'XOF') as SupportedCurrency);
   };
 
   // 9. Calcul dynamique de réduction pour les tarifs publics et checkout
@@ -700,21 +687,21 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
       discountPercent = pub.discountValue;
       discountAmount = pub.discountValue >= 100 
         ? basePrice 
-        : Number(((basePrice * pub.discountValue) / 100).toFixed(2));
+        : Math.round((basePrice * pub.discountValue) / 100);
     } else {
       discountAmount = Math.min(basePrice, pub.discountValue);
       discountPercent = basePrice > 0 ? Math.round((discountAmount / basePrice) * 100) : 0;
     }
 
     const rawFinal = Math.max(0, basePrice - discountAmount);
-    const finalPrice = Number(rawFinal.toFixed(2));
+    const finalPrice = Math.round(rawFinal);
 
     return {
       originalPrice: basePrice,
       finalPrice,
-      discountAmount: Number(discountAmount.toFixed(2)),
+      discountAmount,
       discountPercent,
-      discountLabel: pub.discountType === 'percentage' ? `-${pub.discountValue}%` : `-${pub.discountValue}$`,
+      discountLabel: pub.discountType === 'percentage' ? `-${pub.discountValue}%` : `-${formatLocalePrice(pub.discountValue)}`,
       hasDiscount: discountAmount > 0,
       isFree: finalPrice <= 0,
       promoCode: pub
@@ -722,7 +709,7 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   // 10. Global Promo Application & Calculation
-  const applyGlobalPromo = async (code: string, amount: number = 1.99, documentTitle?: string): Promise<PromoValidationResult> => {
+  const applyGlobalPromo = async (code: string, amount: number = 1000, documentTitle?: string): Promise<PromoValidationResult> => {
     const result = await validatePromoCode(code, amount, documentTitle);
     if (result.valid) {
       setAppliedGlobalPromo(result);

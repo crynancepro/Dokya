@@ -3107,29 +3107,46 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       documentData = null,
       description = 'Service Dokya',
       customer = {},
-      metadata = {}
+      metadata = {},
+      paymentMethodType = 'mobile_money',
+      operator = '',
+      cryptoNetwork = '',
+      cryptoNetworkLabel = '',
+      cryptoToken = ''
     } = req.body || {};
 
     const rawAmount = amount !== undefined ? amount : (totalPrice !== undefined ? totalPrice : 0);
     const numericAmount = Number(rawAmount || 0);
+
+    const isCrypto = paymentMethodType === 'crypto' || Boolean(cryptoNetwork) || Boolean(req.body.crypto);
     
-    // 1. Vérifie que numericAmount > 0
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Montant de paiement invalide. Le montant doit être supérieur à 0 FCFA.'
-      });
+    // 1. Validation du montant selon le mode de paiement
+    if (isCrypto) {
+      if (isNaN(numericAmount) || numericAmount < 10000) {
+        return res.status(400).json({
+          success: false,
+          error: 'Le montant minimum pour un rechargement en cryptomonnaie est de 10 000 FCFA.'
+        });
+      }
+    } else {
+      if (isNaN(numericAmount) || numericAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Montant de paiement invalide. Le montant doit être supérieur à 0 FCFA.'
+        });
+      }
+
+      // 2. Vérifie que phoneNumber est renseigné pour Mobile Money
+      const targetPhoneCheck = String(phoneNumber || userPhone || customer?.phone || '').trim();
+      if (!targetPhoneCheck) {
+        return res.status(400).json({
+          success: false,
+          error: 'Le numéro de téléphone (pour le paiement Mobile Money) est obligatoire.'
+        });
+      }
     }
 
-    // 2. Vérifie que phoneNumber est renseigné
-    const targetPhone = String(phoneNumber || userPhone || customer?.phone || '').trim();
-    if (!targetPhone) {
-      return res.status(400).json({
-        success: false,
-        error: 'Le numéro de téléphone (pour le paiement Mobile Money) est obligatoire.'
-      });
-    }
-
+    const targetPhone = String(phoneNumber || userPhone || customer?.phone || (isCrypto ? 'CRYPTO_BLOCKCHAIN' : '')).trim();
     const targetAmount = Math.round(numericAmount);
     const targetDocId = String(docId || metadata.targetDocId || metadata.docId || '').trim();
     const targetPlanId = String(plan || planId || metadata.planId || metadata.plan || '').trim();
@@ -3145,8 +3162,8 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       resolvedType = 'subscription';
     }
 
-    // Validation stricte du montant minimum pour la recharge du portefeuille : 300 FCFA
-    if (resolvedType === 'wallet' && targetAmount < 300) {
+    // Validation stricte du montant minimum pour la recharge du portefeuille : 300 FCFA pour mobile money
+    if (resolvedType === 'wallet' && !isCrypto && targetAmount < 300) {
       return res.status(400).json({
         success: false,
         error: 'Le montant minimal de rechargement est de 300 FCFA.'
@@ -3160,14 +3177,21 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
     const targetTitle = String(title || documentTitle || 'Document sans titre').trim();
     const targetContent = content || contentData || documentData || {};
 
+    // Résolution Crypto
+    const resolvedCryptoNetwork = isCrypto ? (cryptoNetwork || req.body.crypto || 'USDTTRC20') : null;
+    const resolvedCryptoLabel = isCrypto ? (cryptoNetworkLabel || (resolvedCryptoNetwork === 'USDTTRC20' ? 'TRC20 (USDTTRC20)' : resolvedCryptoNetwork === 'USDTBSC' ? 'BEP20 (USDTBSC)' : resolvedCryptoNetwork === 'SOL' ? 'SOLANA (SOL)' : 'USDC BEP20 (USDCBSC)')) : null;
+    const resolvedCryptoToken = isCrypto ? (cryptoToken || (resolvedCryptoNetwork?.startsWith('USDC') ? 'USDC' : resolvedCryptoNetwork === 'SOL' ? 'SOL' : 'USDT')) : null;
+    const mockHash = isCrypto ? `0x${Math.random().toString(36).substring(2, 12)}${Math.random().toString(36).substring(2, 12)}` : null;
+
     // Génération d'un ID de transaction unique et traçable
-    const transactionId = `MF-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const transactionId = isCrypto
+      ? `MF-CRYPTO-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`
+      : `MF-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     const nowIso = new Date().toISOString();
 
     const db = getServerAdminDb();
 
     // 1. SAUVEGARDE DU DOCUMENT AVANT LE PAIEMENT (Résolution NOT_FOUND)
-    // Crée impérativement le document dans la collection Firestore 'user_documents' AVANT le paiement
     if (resolvedType === 'document' && targetDocId) {
       try {
         const docRef = db.collection('user_documents').doc(targetDocId);
@@ -3204,18 +3228,27 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       userPhone: targetPhone,
       type: txType,
       resolvedType: resolvedType,
-      typeLabel: resolvedType === 'document' ? 'Achat Document' : (resolvedType === 'subscription' ? 'Abonnement VIP' : 'Recharge Solde'),
+      typeLabel: isCrypto ? `Recharge Crypto (${resolvedCryptoNetwork})` : (resolvedType === 'document' ? 'Achat Document' : (resolvedType === 'subscription' ? 'Abonnement VIP' : 'Recharge Solde Mobile Money')),
       docId: targetDocId || null,
       targetDocId: targetDocId || null,
       plan: targetPlanId || null,
       planId: targetPlanId || null,
       amount: Number(targetAmount),
       expectedAmount: Number(targetAmount),
+      nominalAmount: Number(targetAmount),
+      fee_take_over: true,
       currency: currency || 'XOF',
       promoCode: targetPromoCode || null,
-      status: 'PENDING', // Statut PENDING dès le checkout
+      status: 'PENDING',
       paymentGateway: 'Money Fusion',
-      paymentMethod: 'moneyfusion',
+      paymentMethod: isCrypto ? 'crypto' : (operator || 'mobile_money'),
+      paymentMethodType: isCrypto ? 'crypto' : 'mobile_money',
+      operator: isCrypto ? 'crypto' : (operator || 'mobile_money'),
+      cryptoNetwork: resolvedCryptoNetwork,
+      cryptoNetworkLabel: resolvedCryptoLabel,
+      cryptoToken: resolvedCryptoToken,
+      transactionHash: mockHash,
+      hash: mockHash,
       createdAt: nowIso,
       updatedAt: nowIso
     };
@@ -3243,7 +3276,9 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
 
     const articleLabel = resolvedType === 'document'
       ? `Déblocage Document Dokya (${targetDocId || 'Nouveau'})`
-      : (resolvedType === 'subscription' ? `Abonnement Dokya ${targetPlanId || 'VIP'}` : "Rechargement Wallet Dokya");
+      : (resolvedType === 'subscription' 
+        ? `Abonnement Dokya ${targetPlanId || 'VIP'}` 
+        : (isCrypto ? `Recharge Crypto (${resolvedCryptoNetwork}) Dokya` : "Rechargement Wallet Dokya"));
 
     // 3. TRANSMISSION DU MONTANT ET DES MÉTADONNÉES DANS /api/moneyfusion/checkout
     // Prise en charge des frais par le marchand (fee_take_over) : l'utilisateur reçoit le montant exact rechargé
@@ -3255,6 +3290,12 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
       frais_client: false,
       frais_marchand: true,
       fee_charge: 'merchant',
+      moyen_paiement: isCrypto ? 'crypto' : 'mobile_money',
+      payment_method: isCrypto ? 'crypto' : (operator || 'mobile_money'),
+      channel: isCrypto ? 'crypto' : 'mobile_money',
+      crypto_currency: isCrypto ? resolvedCryptoNetwork : undefined,
+      crypto: isCrypto ? resolvedCryptoNetwork : undefined,
+      network: isCrypto ? resolvedCryptoNetwork : undefined,
       article: [
         { [articleLabel]: Number(targetAmount) }
       ],
@@ -3269,7 +3310,13 @@ app.post('/api/moneyfusion/checkout', async (req, res) => {
           nominalAmount: Number(targetAmount),
           fee_take_over: true,
           userEmail: targetUserEmail,
-          transactionId: transactionId
+          transactionId: transactionId,
+          paymentMethod: isCrypto ? 'crypto' : (operator || 'mobile_money'),
+          paymentMethodType: isCrypto ? 'crypto' : 'mobile_money',
+          operator: isCrypto ? 'crypto' : (operator || 'mobile_money'),
+          cryptoNetwork: resolvedCryptoNetwork,
+          cryptoNetworkLabel: resolvedCryptoLabel,
+          cryptoToken: resolvedCryptoToken
         }
       ],
       numeroSend: targetPhone || "00000000",

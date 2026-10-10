@@ -99,42 +99,35 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
     ),
   },
   {
-    id: 'visa',
-    name: 'Visa',
-    country: 'International (Tous pays)',
-    badgeColor: 'text-sky-400 border-sky-500/30 bg-sky-950/40',
+    id: 'usdt',
+    name: 'USDT (TRC20 / BEP20)',
+    country: 'Cryptomonnaie Stablecoin',
+    badgeColor: 'text-emerald-400 border-emerald-500/30 bg-emerald-950/40',
     logo: (
       <div className="flex items-center gap-2">
-        <svg className="w-10 h-7 shrink-0" viewBox="0 0 64 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="64" height="36" rx="6" fill="#0F172A" stroke="#334155" strokeWidth="1" />
-          <path d="M21.5 8.5L16.2 26H11.5L7.2 12.3C7.0 11.4 6.8 11.0 6.0 10.6C4.6 9.8 2.2 9.1 0 8.6L0.2 7.7H9.2C10.4 7.7 11.4 8.5 11.7 9.8L13.8 20.3L19.0 8.5H21.5Z" fill="#2563EB" />
-          <path d="M27.2 17.5C27.2 14.2 32.0 14.0 32.0 12.1C32.0 11.4 31.4 10.7 30.0 10.5C29.3 10.4 27.4 10.3 25.5 11.2L24.6 7.4C26.0 6.9 28.0 6.5 30.5 6.5C35.8 6.5 39.5 9.3 39.5 13.4C39.5 20.2 30.4 20.6 30.4 23.3C30.4 24.3 31.3 25.0 33.1 25.0C34.6 25.0 36.8 24.3 38.3 23.5L39.2 27.2C37.8 27.9 35.5 28.5 32.6 28.5C27.0 28.5 27.2 24.1 27.2 17.5Z" fill="#F8FAFC" />
-          <path d="M49.8 8.5L46.2 26H41.8L45.4 8.5H49.8ZM43.3 6.5C44.7 6.5 45.8 7.3 46.1 8.5L42.2 27.2C41.9 26.0 40.8 25.2 39.4 25.2L43.3 6.5Z" fill="#F8FAFC" />
-          <path d="M60.2 8.5H56.5C55.4 8.5 54.5 9.0 54.0 10.0L46.0 26H51.0L52.0 23.2H58.2L58.8 26H63.2L60.2 8.5ZM53.4 19.5L56.0 12.4L57.5 19.5H53.4Z" fill="#F8FAFC" />
-          <path d="M7.2 12.3C7.0 11.4 6.8 11.0 6.0 10.6C4.6 9.8 2.2 9.1 0 8.6L0.2 7.7H9.2C10.4 7.7 11.4 8.5 11.7 9.8L13.8 20.3L7.2 12.3Z" fill="#F59E0B" />
-        </svg>
+        <div className="w-8 h-8 rounded-xl bg-emerald-500 flex items-center justify-center font-black text-slate-950 text-xs shadow-md">
+          ₮
+        </div>
         <div className="text-left">
-          <span className="font-black text-white text-sm tracking-wider block">VISA</span>
-          <span className="text-[9px] font-bold text-sky-400">Cartes Bancaires</span>
+          <span className="font-black text-white text-sm tracking-tight block">Tether USDT</span>
+          <span className="text-[9px] font-bold text-emerald-400">TRC20 • BEP20</span>
         </div>
       </div>
     ),
   },
   {
-    id: 'mastercard',
-    name: 'Mastercard',
-    country: 'International (Tous pays)',
-    badgeColor: 'text-red-400 border-red-500/30 bg-red-950/40',
+    id: 'solana-usdc',
+    name: 'Solana & USDC',
+    country: 'Crypto Fast Settlement',
+    badgeColor: 'text-purple-400 border-purple-500/30 bg-purple-950/40',
     logo: (
       <div className="flex items-center gap-2">
-        <svg className="w-10 h-7 shrink-0" viewBox="0 0 64 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="64" height="36" rx="6" fill="#0F172A" stroke="#334155" strokeWidth="1" />
-          <circle cx="26" cy="18" r="11" fill="#EB001B" />
-          <circle cx="38" cy="18" r="11" fill="#F79E1B" fillOpacity="0.9" />
-        </svg>
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center font-black text-white text-xs shadow-md">
+          ◎
+        </div>
         <div className="text-left">
-          <span className="font-black text-white text-xs tracking-tight block">mastercard</span>
-          <span className="text-[9px] font-bold text-amber-400">International</span>
+          <span className="font-black text-white text-xs tracking-tight block">Solana / USDC</span>
+          <span className="text-[9px] font-bold text-purple-300">Blockchain Web3</span>
         </div>
       </div>
     ),
@@ -197,8 +190,8 @@ export const LandingPaymentMarquee: React.FC = () => {
         </h3>
         
         <p className="text-xs sm:text-sm text-slate-400 max-w-2xl mx-auto">
-          Wave, Orange Money, MTN, Moov, Visa, Mastercard, Apple Pay et Stripe. 
-          Règlements instantanés avec validation automatisée en temps réel.
+          Wave, Orange Money, MTN, Moov, Free Money et Cryptomonnaies (USDT, USDC, Solana). 
+          Règlements instantanés avec validation automatisée en temps réel via Money Fusion.
         </p>
       </div>
 

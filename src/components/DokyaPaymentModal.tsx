@@ -64,6 +64,58 @@ export const WAVE_OFFICIAL_URL = 'https://pay.wave.com/m/M_sn_wXlszdyVZOIV/c/sn/
 export const BENEFICIARY_PHONE = '+221 78 961 90 88';
 export const BENEFICIARY_NAME = 'NGOUALA LAVOISIER FORTUNÉ PETER';
 
+export const RECHARGE_CRYPTO_OPTIONS = [
+  {
+    id: 'USDTTRC20' as const,
+    name: 'TRC20 (USDTTRC20)',
+    token: 'USDT',
+    network: 'TRON (TRC20)',
+    ratePerXOF: 1 / 600,
+    badge: 'Frais faibles (~1$)',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    icon: '💎'
+  },
+  {
+    id: 'USDTBSC' as const,
+    name: 'BEP20 (USDTBSC)',
+    token: 'USDT',
+    network: 'BNB Smart Chain (BEP20)',
+    ratePerXOF: 1 / 600,
+    badge: 'Rapide & Stable',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    icon: '⚡'
+  },
+  {
+    id: 'SOL' as const,
+    name: 'SOLANA (SOL)',
+    token: 'SOL',
+    network: 'Solana Network',
+    ratePerXOF: 1 / 90000,
+    badge: 'Ultra-rapide',
+    badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    icon: '🟣'
+  },
+  {
+    id: 'USDCBSC' as const,
+    name: 'USDC BEP20 (USDCBSC)',
+    token: 'USDC',
+    network: 'BNB Smart Chain (BEP20)',
+    ratePerXOF: 1 / 600,
+    badge: '100% Garanti',
+    badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    icon: '🪙'
+  }
+];
+
+export const RECHARGE_OPERATORS = [
+  { id: 'wave', name: 'Wave Mobile Money', color: 'from-cyan-500 to-blue-600', icon: '🌊', badge: 'Instantané' },
+  { id: 'orange_money', name: 'Orange Money', color: 'from-orange-500 to-amber-600', icon: '🍊', badge: 'Direct' },
+  { id: 'free_money', name: 'Free Money', color: 'from-fuchsia-600 to-pink-600', icon: '🟣', badge: 'Sénégal' },
+  { id: 'mtn', name: 'MTN Mobile Money', color: 'from-yellow-500 to-amber-600', icon: '💛', badge: 'Afrique' },
+  { id: 'moov', name: 'Moov Money', color: 'from-emerald-500 to-teal-600', icon: '🟢', badge: 'UEMOA' },
+  { id: 'perfect_money', name: 'Perfect Money', color: 'from-red-500 to-rose-600', icon: '🔴', badge: 'En ligne' }
+];
+
 export type PaymentCounterMode = 'document' | 'recharge' | 'subscription';
 
 export interface AppliedPromoInfo {
@@ -181,32 +233,25 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     }
   }, [isOpen, mode, initialRechargeAmount]);
 
-  // Compute base price for document (in USD $)
+  // Compute base price for document (in FCFA)
   const getDocumentBasePrice = () => {
     if (price && price > 0) return price;
     const labelLower = (documentTypeLabel || '').toLowerCase();
-    if (labelLower.includes('full') || labelLower.includes('pack duo') || labelLower.includes('pack emploi') || labelLower.includes('cv + lettre')) {
-      return pricing.fullPackPrice ?? 2.99;
+    if (labelLower.includes('full') || labelLower.includes('pack duo') || labelLower.includes('pack emploi') || labelLower.includes('cv + lettre') || labelLower.includes('business')) {
+      return 1500;
     }
-    if (labelLower.includes('business') || labelLower.includes('devis + facture')) {
-      return pricing.businessPackPrice ?? 2.99;
-    }
-    if (labelLower.includes('lettre')) {
-      return pricing.letterOnlyPrice ?? 1.99;
-    }
-    if (labelLower.includes('devis')) {
-      return pricing.devisPrice ?? 1.99;
-    }
-    if (labelLower.includes('facture')) {
-      return pricing.facturePrice ?? 1.99;
-    }
-    return pricing.cvOnlyPrice ?? 1.99;
+    return 1000;
   };
 
   // Stepper state: 1 = Choix du mode & Récapitulatif, 2 = Transfert & Saisie, 3 = Scanner IA & Validation
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [selectedMethod, setSelectedMethod] = useState<'moneyfusion' | 'wallet'>('moneyfusion');
   const [isPaymentLoading, setIsPaymentLoading] = useState<boolean>(false);
+
+  // Recharge state : Option A Mobile Money vs Option B Cryptomonnaies
+  const [rechargeMethod, setRechargeMethod] = useState<'mobile_money' | 'crypto'>('mobile_money');
+  const [selectedOperator, setSelectedOperator] = useState<string>('wave');
+  const [selectedCryptoNetwork, setSelectedCryptoNetwork] = useState<'USDTTRC20' | 'USDTBSC' | 'SOL' | 'USDCBSC'>('USDTTRC20');
   
   // Locale and Regional Preferences
   const { userCountry, setUserCountry, userCurrency, formatPrice, isInternational } = useLocale();
@@ -283,11 +328,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     };
   }, [previewUrl]);
 
-  // Conversion rate: 1 USD ≈ 600 FCFA
-  const USD_TO_FCFA_RATE = 600;
-  const isUSDItem = activeMode !== 'recharge';
-
-  // Base raw price calculation (in USD for documents and subscriptions, FCFA for recharge)
+  // Base raw price calculation (stored canonically in FCFA)
   const getRawPrice = () => {
     if (activeMode === 'recharge') {
       if (isCustomRecharge) {
@@ -298,9 +339,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     }
     if (activeMode === 'subscription') {
       if (planPrice && planPrice > 0) return planPrice;
-      if (planId === 'annual') return pricing.unlimitedPassAnnualPrice ?? 71.90;
-      if (planId === 'semester') return pricing.unlimitedPassSemesterPrice ?? 47.95;
-      return pricing.unlimitedPassMonthlyPrice ?? pricing.unlimitedPassPrice ?? 9.99;
+      if (planId === 'annual') return 40000;
+      if (planId === 'semester') return 25000;
+      return 5000;
     }
     return getDocumentBasePrice();
   };
@@ -381,7 +422,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
   const payablePrice = activeMode === 'recharge'
     ? effectiveRechargeAmount
     : (appliedPromo ? appliedPromo.finalAmount : rawPrice);
-  const priceInFCFA = isUSDItem ? Math.round(payablePrice * USD_TO_FCFA_RATE) : payablePrice;
+  const priceInFCFA = Math.round(payablePrice);
   const isFreeWithPromo = appliedPromo !== null && appliedPromo.isFree;
   const hasEnoughBalance = safeBalance >= priceInFCFA;
 
@@ -680,7 +721,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     }
   };
 
-  // Paiement Automatique Exclusif via Money Fusion Checkout (Uniquement pour la recharge du portefeuille)
+  // Paiement Automatique Exclusif via Money Fusion Checkout (Recharge Mobile Money ou Cryptomonnaies)
   const handlePayWithMoneyFusion = async () => {
     if (activeMode !== 'recharge') {
       return handlePayWithWallet();
@@ -688,15 +729,24 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     setErrorMessage(null);
 
     const cleanAmount = Math.round(Number(payablePrice) || 0);
-    if (cleanAmount < 300) {
-      setErrorMessage("Le montant minimal de rechargement est de 300 FCFA.");
-      return;
-    }
 
-    const rawPhoneDigits = senderPhoneNumber.replace(/\s+/g, '').replace(/\D/g, '');
-    if (!rawPhoneDigits) {
-      setErrorMessage("Le numéro de téléphone (pour le paiement Mobile Money) est obligatoire.");
-      return;
+    // Validation spécifique par méthode
+    if (rechargeMethod === 'crypto') {
+      if (cleanAmount < 10000) {
+        setErrorMessage("Le montant minimum pour un rechargement en cryptomonnaie est de 10 000 FCFA.");
+        return;
+      }
+    } else {
+      if (cleanAmount < 300) {
+        setErrorMessage("Le montant minimal de rechargement est de 300 FCFA.");
+        return;
+      }
+
+      const rawPhoneDigits = senderPhoneNumber.replace(/\s+/g, '').replace(/\D/g, '');
+      if (!rawPhoneDigits) {
+        setErrorMessage("Le numéro de téléphone (pour le paiement Mobile Money) est obligatoire.");
+        return;
+      }
     }
 
     setIsPaymentLoading(true);
@@ -705,16 +755,26 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
       const user = auth.currentUser;
       const targetUserId = user?.uid || userId || 'guest';
       const targetUserName = user?.displayName || userName || 'Client Dokya';
-      const targetPhone = `${selectedCountry.dialCode} ${senderPhoneNumber.trim()}`;
+      const isCrypto = rechargeMethod === 'crypto';
+      const targetPhone = senderPhoneNumber.trim()
+        ? `${selectedCountry.dialCode} ${senderPhoneNumber.trim()}`
+        : (isCrypto ? 'CRYPTO_BLOCKCHAIN' : '');
 
-      // Transmission obligatoire de { amount, phoneNumber, userId, userEmail, userName }
+      const selectedCryptoObj = RECHARGE_CRYPTO_OPTIONS.find(c => c.id === selectedCryptoNetwork) || RECHARGE_CRYPTO_OPTIONS[0];
+
+      // Transmission obligatoire à /api/moneyfusion/checkout
       const response = await fetch('/api/moneyfusion/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: cleanAmount,
-          phoneNumber: targetPhone,
-          userPhone: targetPhone,
+          paymentMethodType: isCrypto ? 'crypto' : 'mobile_money',
+          operator: isCrypto ? 'crypto' : selectedOperator,
+          cryptoNetwork: isCrypto ? selectedCryptoNetwork : undefined,
+          cryptoNetworkLabel: isCrypto ? selectedCryptoObj.name : undefined,
+          cryptoToken: isCrypto ? selectedCryptoObj.token : undefined,
+          phoneNumber: targetPhone || '00000000',
+          userPhone: targetPhone || '00000000',
           userId: targetUserId,
           userEmail: user?.email || userEmail || '',
           userName: targetUserName,
@@ -1151,7 +1211,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 bg-slate-900/90 px-2.5 py-0.5 rounded-full border border-slate-800">
                   <Zap className="w-3 h-3 text-emerald-400" />
-                  <span>Wave • Orange Money • Carte</span>
+                  <span>Mobile Money • Cryptomonnaies</span>
                 </div>
               </div>
             </div>
@@ -1165,9 +1225,9 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
           {currentStep === 1 && (
             <div className="space-y-4 animate-in fade-in duration-200">
               
-              {/* Mode Recharge Spécifique Ultra-Compact & Sans Scroll */}
+              {/* Mode Recharge Spécifique avec 2 Choix Principaux */}
               {activeMode === 'recharge' ? (
-                <div className="space-y-3.5">
+                <div className="space-y-4">
                   {/* Solde actuel */}
                   <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
                     <div className="flex items-center gap-2">
@@ -1179,144 +1239,389 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Sélection rapide du montant */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
-                        Montant de recharge :
-                      </label>
-                      <span className="text-[10px] font-semibold text-slate-400">Min. 300 FCFA</span>
-                    </div>
-
-                    {/* Boutons rapides : [300 F] [500 F] [1000 F] [2000 F] [5000 F] */}
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {[300, 500, 1000, 2000, 5000].map((amt) => {
-                        const isSelected = !isCustomRecharge && rechargeAmount === amt;
-                        return (
-                          <button
-                            key={amt}
-                            type="button"
-                            onClick={() => {
-                              setRechargeAmount(amt);
-                              setIsCustomRecharge(false);
-                              setCustomRechargeInput('');
-                              if (errorMessage) setErrorMessage(null);
-                            }}
-                            className={`py-2 px-1 rounded-xl text-xs font-black transition-all cursor-pointer border text-center ${
-                              isSelected
-                                ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-600/30'
-                                : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
-                            }`}
-                          >
-                            {amt >= 1000 ? `${amt / 1000}k F` : `${amt} F`}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Saisie montant personnalisé libre */}
-                    <div className="mt-2 relative">
-                      <input
-                        type="number"
-                        min={300}
-                        step={100}
-                        placeholder="Autre montant libre (min. 300 FCFA)..."
-                        value={customRechargeInput}
-                        onChange={(e) => {
-                          const rawVal = e.target.value;
-                          setCustomRechargeInput(rawVal);
-                          if (rawVal.trim() === '') {
-                            setIsCustomRecharge(false);
-                            setRechargeAmount(500);
-                            return;
-                          }
-                          setIsCustomRecharge(true);
-                          const parsed = Number(rawVal);
-                          const safeVal = isNaN(parsed) ? 0 : Math.floor(parsed);
-                          setRechargeAmount(safeVal);
-                          if (safeVal >= 300 && errorMessage) {
-                            setErrorMessage(null);
-                          }
-                        }}
-                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-950 border transition-all text-white placeholder:text-slate-500 focus:outline-hidden ${
-                          isCustomRecharge
-                            ? 'border-blue-500 ring-1 ring-blue-500'
-                            : 'border-slate-800'
-                        }`}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
-                        FCFA
-                      </span>
-                    </div>
-
-                    {/* Message de validation immédiat si < 300 FCFA */}
-                    {payablePrice < 300 && (
-                      <p className="mt-1.5 text-xs text-rose-400 font-semibold flex items-center gap-1.5 animate-in fade-in">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                        <span>Le montant minimal de rechargement est de 300 FCFA</span>
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Indicateur de pays et saisie du numéro de téléphone */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      Numéro Mobile Money (Wave, Orange, MTN, Moov) :
-                    </label>
-                    <div className="flex gap-2">
-                      <select
-                        value={selectedCountry.code}
-                        onChange={(e) => {
-                          const found = AFRICAN_COUNTRIES.find(c => c.code === e.target.value);
-                          if (found) setSelectedCountry(found);
-                        }}
-                        className="px-2.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white focus:border-blue-500 outline-hidden shrink-0 cursor-pointer"
-                      >
-                        {AFRICAN_COUNTRIES.map((c) => (
-                          <option key={c.code} value={c.code} className="bg-slate-900 text-white">
-                            {c.flag} {c.dialCode}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="tel"
-                        placeholder="Ex: 77 123 45 67"
-                        value={senderPhoneNumber}
-                        onChange={(e) => {
-                          setSenderPhoneNumber(e.target.value);
-                          if (errorMessage) setErrorMessage(null);
-                        }}
-                        className="flex-1 px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-hidden"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Bouton de validation principal */}
-                  <div className="pt-1">
+                  {/* 2 CHOIX PRINCIPAUX DU GUICHET DE RECHARGE */}
+                  <div className="grid grid-cols-2 gap-2.5 p-1 bg-slate-950/90 rounded-2xl border border-slate-800">
                     <button
                       type="button"
-                      disabled={isPaymentLoading || payablePrice < 300}
-                      onClick={handlePayWithMoneyFusion}
-                      className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-black text-sm transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                      onClick={() => {
+                        setRechargeMethod('mobile_money');
+                        if (rechargeAmount < 500) setRechargeAmount(500);
+                        setErrorMessage(null);
+                      }}
+                      className={`py-3 px-2 rounded-xl flex items-center justify-center gap-2 text-left font-black transition-all cursor-pointer ${
+                        rechargeMethod === 'mobile_money'
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30 border border-blue-400/50'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-900/50 border border-transparent'
+                      }`}
                     >
-                      {isPaymentLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Connexion Money Fusion...</span>
-                        </>
-                      ) : (
-                        <>
-                          <QrCode className="w-4 h-4" />
-                          <span>Recharger ({Math.max(0, payablePrice).toLocaleString('fr-FR')} FCFA)</span>
-                          <ArrowRight className="w-4 h-4" />
-                        </>
-                      )}
+                      <Smartphone className="w-4 h-4 text-cyan-300 shrink-0" />
+                      <div>
+                        <div className="text-xs font-black">Option A : Mobile Money</div>
+                        <div className="text-[10px] text-slate-300 font-semibold truncate">Wave, Orange, MTN, Moov...</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRechargeMethod('crypto');
+                        if (rechargeAmount < 10000) {
+                          setRechargeAmount(10000);
+                          setIsCustomRecharge(false);
+                          setCustomRechargeInput('');
+                        }
+                        setErrorMessage(null);
+                      }}
+                      className={`py-3 px-2 rounded-xl flex items-center justify-center gap-2 text-left font-black transition-all cursor-pointer ${
+                        rechargeMethod === 'crypto'
+                          ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-amber-500 text-white shadow-lg shadow-amber-600/30 border border-amber-400/50'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-900/50 border border-transparent'
+                      }`}
+                    >
+                      <Zap className="w-4 h-4 text-amber-300 shrink-0" />
+                      <div>
+                        <div className="text-xs font-black">Option B : Cryptomonnaies</div>
+                        <div className="text-[10px] text-amber-200/90 font-semibold truncate">USDT, USDC, Solana (Min 10k)</div>
+                      </div>
                     </button>
                   </div>
+
+                  {/* ========================================================================= */}
+                  {/* OPTION A : FLUX MOBILE MONEY AFRIQUE                                     */}
+                  {/* ========================================================================= */}
+                  {rechargeMethod === 'mobile_money' && (
+                    <div className="space-y-3.5 animate-in fade-in duration-200">
+                      {/* Sélection rapide du montant Mobile Money */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                            Montant de recharge Mobile Money :
+                          </label>
+                          <span className="text-[10px] font-semibold text-slate-400">Min. 300 FCFA</span>
+                        </div>
+
+                        {/* Boutons rapides : [500 F] [1000 F] [2000 F] [5000 F] [10000 F] */}
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {[500, 1000, 2000, 5000, 10000].map((amt) => {
+                            const isSelected = !isCustomRecharge && rechargeAmount === amt;
+                            return (
+                              <button
+                                key={amt}
+                                type="button"
+                                onClick={() => {
+                                  setRechargeAmount(amt);
+                                  setIsCustomRecharge(false);
+                                  setCustomRechargeInput('');
+                                  if (errorMessage) setErrorMessage(null);
+                                }}
+                                className={`py-2 px-1 rounded-xl text-xs font-black transition-all cursor-pointer border text-center ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-600/30'
+                                    : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                                }`}
+                              >
+                                {amt >= 1000 ? `${amt / 1000}k F` : `${amt} F`}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Saisie montant personnalisé libre */}
+                        <div className="mt-2 relative">
+                          <input
+                            type="number"
+                            min={300}
+                            step={100}
+                            placeholder="Autre montant libre (min. 300 FCFA)..."
+                            value={customRechargeInput}
+                            onChange={(e) => {
+                              const rawVal = e.target.value;
+                              setCustomRechargeInput(rawVal);
+                              if (rawVal.trim() === '') {
+                                setIsCustomRecharge(false);
+                                setRechargeAmount(500);
+                                return;
+                              }
+                              setIsCustomRecharge(true);
+                              const parsed = Number(rawVal);
+                              const safeVal = isNaN(parsed) ? 0 : Math.floor(parsed);
+                              setRechargeAmount(safeVal);
+                              if (safeVal >= 300 && errorMessage) {
+                                setErrorMessage(null);
+                              }
+                            }}
+                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-950 border transition-all text-white placeholder:text-slate-500 focus:outline-hidden ${
+                              isCustomRecharge
+                                ? 'border-blue-500 ring-1 ring-blue-500'
+                                : 'border-slate-800'
+                            }`}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                            FCFA
+                          </span>
+                        </div>
+
+                        {/* Message de validation immédiat si < 300 FCFA */}
+                        {payablePrice < 300 && (
+                          <p className="mt-1.5 text-xs text-rose-400 font-semibold flex items-center gap-1.5 animate-in fade-in">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>Le montant minimal de rechargement est de 300 FCFA</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Sélection de l'opérateur Mobile Money */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                          Opérateur Mobile Money :
+                        </label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {RECHARGE_OPERATORS.map((op) => {
+                            const isSelected = selectedOperator === op.id;
+                            return (
+                              <button
+                                key={op.id}
+                                type="button"
+                                onClick={() => setSelectedOperator(op.id)}
+                                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-blue-600/20 border-blue-500 text-white shadow-sm ring-1 ring-blue-500'
+                                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-base">{op.icon}</span>
+                                  <span className="text-[11px] font-bold truncate">{op.name}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Indicateur de pays et saisie du numéro de téléphone */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                          Numéro Mobile Money pour validation :
+                        </label>
+                        <div className="flex gap-2">
+                          <select
+                            value={selectedCountry.code}
+                            onChange={(e) => {
+                              const found = AFRICAN_COUNTRIES.find(c => c.code === e.target.value);
+                              if (found) setSelectedCountry(found);
+                            }}
+                            className="px-2.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white focus:border-blue-500 outline-hidden shrink-0 cursor-pointer"
+                          >
+                            {AFRICAN_COUNTRIES.map((c) => (
+                              <option key={c.code} value={c.code} className="bg-slate-900 text-white">
+                                {c.flag} {c.dialCode}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="tel"
+                            placeholder="Ex: 77 123 45 67"
+                            value={senderPhoneNumber}
+                            onChange={(e) => {
+                              setSenderPhoneNumber(e.target.value);
+                              if (errorMessage) setErrorMessage(null);
+                            }}
+                            className="flex-1 px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-hidden"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Bouton de validation Mobile Money */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          disabled={isPaymentLoading || payablePrice < 300}
+                          onClick={handlePayWithMoneyFusion}
+                          className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-black text-sm transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          {isPaymentLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Redirection vers Money Fusion...</span>
+                            </>
+                          ) : (
+                            <>
+                              <QrCode className="w-4 h-4" />
+                              <span>Payer via Mobile Money ({Math.max(0, payablePrice).toLocaleString('fr-FR')} FCFA)</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ========================================================================= */}
+                  {/* OPTION B : FLUX CRYPTOMONNAIES (USDT TRC20/BEP20, SOLANA, USDC)          */}
+                  {/* ========================================================================= */}
+                  {rechargeMethod === 'crypto' && (
+                    <div className="space-y-3.5 animate-in fade-in duration-200">
+                      {/* Notice Règle obligatoire : Minimum 10 000 FCFA */}
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
+                        <div className="flex items-center gap-1.5 text-amber-300 font-black">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>Règle Crypto Money Fusion</span>
+                        </div>
+                        <p className="text-amber-200/90 text-[11px] mt-0.5">
+                          Montant minimum obligatoire : <strong>10 000 FCFA</strong>. Crédit automatique en FCFA sur votre compte après confirmation blockchain.
+                        </p>
+                      </div>
+
+                      {/* Sélection rapide du montant Crypto */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                            Montant de recharge Crypto :
+                          </label>
+                          <span className="text-[10px] font-semibold text-amber-400">Min. 10 000 FCFA</span>
+                        </div>
+
+                        {/* Boutons rapides : [10 000 F] [20 000 F] [50 000 F] [100 000 F] */}
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {[10000, 20000, 50000, 100000].map((amt) => {
+                            const isSelected = !isCustomRecharge && rechargeAmount === amt;
+                            return (
+                              <button
+                                key={amt}
+                                type="button"
+                                onClick={() => {
+                                  setRechargeAmount(amt);
+                                  setIsCustomRecharge(false);
+                                  setCustomRechargeInput('');
+                                  if (errorMessage) setErrorMessage(null);
+                                }}
+                                className={`py-2 px-1 rounded-xl text-xs font-black transition-all cursor-pointer border text-center ${
+                                  isSelected
+                                    ? 'bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-600/30'
+                                    : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                                }`}
+                              >
+                                {amt >= 1000 ? `${amt / 1000}k F` : `${amt} F`}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Saisie montant personnalisé libre Crypto */}
+                        <div className="mt-2 relative">
+                          <input
+                            type="number"
+                            min={10000}
+                            step={1000}
+                            placeholder="Montant personnalisé (min. 10 000 FCFA)..."
+                            value={customRechargeInput}
+                            onChange={(e) => {
+                              const rawVal = e.target.value;
+                              setCustomRechargeInput(rawVal);
+                              if (rawVal.trim() === '') {
+                                setIsCustomRecharge(false);
+                                setRechargeAmount(10000);
+                                return;
+                              }
+                              setIsCustomRecharge(true);
+                              const parsed = Number(rawVal);
+                              const safeVal = isNaN(parsed) ? 0 : Math.floor(parsed);
+                              setRechargeAmount(safeVal);
+                              if (safeVal >= 10000 && errorMessage) {
+                                setErrorMessage(null);
+                              }
+                            }}
+                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-950 border transition-all text-white placeholder:text-slate-500 focus:outline-hidden ${
+                              isCustomRecharge
+                                ? (payablePrice < 10000 ? 'border-rose-500 ring-1 ring-rose-500' : 'border-amber-500 ring-1 ring-amber-500')
+                                : 'border-slate-800'
+                            }`}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                            FCFA
+                          </span>
+                        </div>
+
+                        {/* RÈGLE ABSOLUE : Message d'erreur instantané si < 10 000 FCFA */}
+                        {payablePrice < 10000 && (
+                          <div className="mt-2 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                            <span>Le montant minimum pour un rechargement en cryptomonnaie est de 10 000 FCFA.</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Sélection du réseau / crypto : TRC20, BEP20, SOLANA, USDC BEP20 */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                          Sélectionnez la Cryptomonnaie & Réseau :
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {RECHARGE_CRYPTO_OPTIONS.map((crypto) => {
+                            const isSelected = selectedCryptoNetwork === crypto.id;
+                            const estCryptoAmount = crypto.id === 'SOL'
+                              ? (payablePrice / 90000).toFixed(4)
+                              : (payablePrice / 600).toFixed(2);
+
+                            return (
+                              <button
+                                key={crypto.id}
+                                type="button"
+                                onClick={() => setSelectedCryptoNetwork(crypto.id)}
+                                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                                  isSelected
+                                    ? 'bg-amber-600/20 border-amber-500 text-white shadow-sm ring-1 ring-amber-500'
+                                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="text-lg">{crypto.icon}</span>
+                                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full border ${crypto.badgeColor}`}>
+                                    {crypto.badge}
+                                  </span>
+                                </div>
+                                <div className="mt-1">
+                                  <div className="text-xs font-black text-white">{crypto.name}</div>
+                                  <div className="text-[10px] text-slate-400">{crypto.network}</div>
+                                </div>
+                                <div className="mt-1 text-[11px] font-mono font-bold text-emerald-400">
+                                  ≈ {estCryptoAmount} {crypto.token}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Bouton de validation Crypto */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          disabled={isPaymentLoading || payablePrice < 10000}
+                          onClick={handlePayWithMoneyFusion}
+                          className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-500 hover:from-amber-500 hover:to-orange-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-black text-sm transition-all shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          {isPaymentLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Génération du guichet Crypto Money Fusion...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-4 h-4 text-amber-200" />
+                              <span>Payer en Crypto ({Math.max(0, payablePrice).toLocaleString('fr-FR')} FCFA)</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
-                  {/* Dynamic Service Card */}
+                  {/* Dynamic Service Card pour Abonnements et Documents */}
                   {activeMode === 'subscription' ? (
                 <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-950 border border-amber-500/30">
                   <div className="flex items-start justify-between gap-3">
@@ -1336,20 +1641,22 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       {appliedPromo ? (
                         <div>
                           <span className="text-xs text-slate-400 line-through font-mono mr-1.5">
-                            {rawPrice.toFixed(2)} $
+                            {formatPrice(rawPrice, userCurrency)}
                           </span>
                           <span className="text-base font-black text-emerald-400 font-mono">
-                            {payablePrice === 0 ? 'GRATUIT' : `${payablePrice.toFixed(2)} $`}
+                            {payablePrice === 0 ? 'GRATUIT' : formatPrice(payablePrice, userCurrency)}
                           </span>
                         </div>
                       ) : (
                         <div className="text-base font-black text-amber-400 font-mono">
-                          {payablePrice.toFixed(2)} $
+                          {formatPrice(payablePrice, userCurrency)}
                         </div>
                       )}
-                      <div className="text-xs font-bold text-amber-300/90 font-sans">
-                        ≈ {priceInFCFA.toLocaleString('fr-FR')} FCFA
-                      </div>
+                      {userCurrency !== 'XOF' && userCurrency !== 'XAF' && (
+                        <div className="text-xs font-bold text-amber-300/90 font-sans">
+                          ≈ {formatPrice(payablePrice, 'XOF')}
+                        </div>
+                      )}
                       <div className="text-[10px] text-slate-400">
                         {planId === 'annual' ? '/ an' : planId === 'semester' ? '/ 6 mois' : '/ mois'}
                       </div>
@@ -1372,20 +1679,22 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                       {appliedPromo ? (
                         <div>
                           <span className="text-xs text-slate-400 line-through font-mono mr-1.5">
-                            {rawPrice.toFixed(2)} $
+                            {formatPrice(rawPrice, userCurrency)}
                           </span>
                           <span className="text-base font-black text-emerald-400 font-mono">
-                            {payablePrice === 0 ? 'GRATUIT' : `${payablePrice.toFixed(2)} $`}
+                            {payablePrice === 0 ? 'GRATUIT' : formatPrice(payablePrice, userCurrency)}
                           </span>
                         </div>
                       ) : (
                         <div className="text-base font-black text-emerald-400 font-mono">
-                          {payablePrice.toFixed(2)} $
+                          {formatPrice(payablePrice, userCurrency)}
                         </div>
                       )}
-                      <div className="text-xs font-bold text-emerald-300/90 font-sans">
-                        ≈ {priceInFCFA.toLocaleString('fr-FR')} FCFA
-                      </div>
+                      {userCurrency !== 'XOF' && userCurrency !== 'XAF' && (
+                        <div className="text-xs font-bold text-emerald-300/90 font-sans">
+                          ≈ {formatPrice(payablePrice, 'XOF')}
+                        </div>
+                      )}
                       <div className="text-[10px] text-slate-400">Paiement à l'acte</div>
                     </div>
                   </div>

@@ -4,18 +4,18 @@ import { PlatformPricingConfig, PromoCode } from '../types';
  * Grille tarifaire officielle par défaut de la plateforme DOKYA
  */
 export const DEFAULT_PLATFORM_PRICING: PlatformPricingConfig = {
-  cvOnlyPrice: 1.99,
-  letterOnlyPrice: 1.99,
-  fullPackPrice: 2.99,
-  devisPrice: 1.99,
-  facturePrice: 1.99,
-  businessPackPrice: 2.99,
-  unlimitedPassPrice: 9.99,
-  unlimitedPassMonthlyPrice: 9.99,
-  unlimitedPassSemesterPrice: 47.95,
-  unlimitedPassAnnualPrice: 71.90,
-  recruiterSearchPrice: 15.00,
-  currency: 'USD',
+  cvOnlyPrice: 1000,
+  letterOnlyPrice: 1000,
+  fullPackPrice: 1500,
+  devisPrice: 1000,
+  facturePrice: 1000,
+  businessPackPrice: 1500,
+  unlimitedPassPrice: 5000,
+  unlimitedPassMonthlyPrice: 5000,
+  unlimitedPassSemesterPrice: 25000,
+  unlimitedPassAnnualPrice: 40000,
+  recruiterSearchPrice: 10000,
+  currency: 'XOF',
   updatedAt: '2026-01-01T00:00:00.000Z',
   updatedBy: 'system'
 };

@@ -309,6 +309,8 @@ export async function executeAtomicPaymentCredit({
     let userDocRef = null;
     let profileSnap = null;
     let profileDocRef = null;
+    let candidateSnap = null;
+    let candidateDocRef = null;
 
     if (effectiveUserId && effectiveUserId !== 'guest') {
       userDocRef = doc(rawFirestore, 'users', effectiveUserId);
@@ -316,6 +318,9 @@ export async function executeAtomicPaymentCredit({
 
       profileDocRef = doc(rawFirestore, 'user_profiles', effectiveUserId);
       profileSnap = await transaction.get(profileDocRef);
+
+      candidateDocRef = doc(rawFirestore, 'candidates', effectiveUserId);
+      candidateSnap = await transaction.get(candidateDocRef);
     }
 
     // ECRITURES
@@ -337,6 +342,10 @@ export async function executeAtomicPaymentCredit({
       transaction.set(lockTxIdRef, lockPayload);
     }
 
+    const existingTxData = txSnap.exists() ? txSnap.data() : (foundTxData || {});
+    const resolvedMethod = existingTxData.paymentMethod || existingTxData.paymentMethodType || 'moneyfusion';
+    const isTxCrypto = resolvedMethod === 'crypto' || Boolean(existingTxData.cryptoNetwork);
+
     // B) Mettre à jour la transaction principale à SUCCESS
     const mainTxRecord = {
       id: targetDocId,
@@ -344,11 +353,12 @@ export async function executeAtomicPaymentCredit({
       token: primaryToken || null,
       tokenPay: primaryToken || null,
       userId: effectiveUserId || 'anonymous',
-      userEmail: userEmail || (txSnap.exists() ? txSnap.data()?.userEmail : '') || '',
-      userName: userName || (txSnap.exists() ? txSnap.data()?.userName : '') || 'Utilisateur',
-      phoneNumber: phoneNumber || (txSnap.exists() ? txSnap.data()?.phoneNumber : '') || '',
+      userEmail: userEmail || existingTxData?.userEmail || '',
+      userName: userName || existingTxData?.userName || 'Utilisateur',
+      phoneNumber: phoneNumber || existingTxData?.phoneNumber || '',
       type: 'wallet_recharge',
       resolvedType: 'wallet',
+      typeLabel: isTxCrypto ? `Recharge Crypto (${existingTxData.cryptoNetwork || 'USDT'})` : 'Recharge Solde Mobile Money',
       amount: numericAmount,
       expectedAmount: numericAmount,
       currency: 'XOF',
@@ -360,7 +370,14 @@ export async function executeAtomicPaymentCredit({
       createdAt: resolvedCreatedAt,
       updatedAt: nowIso,
       paymentGateway: 'Money Fusion',
-      paymentMethod: 'moneyfusion'
+      paymentMethod: resolvedMethod,
+      paymentMethodType: isTxCrypto ? 'crypto' : 'mobile_money',
+      operator: existingTxData.operator || (isTxCrypto ? 'crypto' : 'mobile_money'),
+      cryptoNetwork: existingTxData.cryptoNetwork || null,
+      cryptoNetworkLabel: existingTxData.cryptoNetworkLabel || null,
+      cryptoToken: existingTxData.cryptoToken || null,
+      transactionHash: existingTxData.transactionHash || existingTxData.hash || null,
+      hash: existingTxData.hash || existingTxData.transactionHash || null
     };
     transaction.set(txDocRef, mainTxRecord, { merge: true });
 
@@ -391,6 +408,14 @@ export async function executeAtomicPaymentCredit({
 
       if (profileDocRef && profileSnap && profileSnap.exists()) {
         transaction.set(profileDocRef, {
+          balance: newBal,
+          walletBalance: newBal,
+          updatedAt: nowIso
+        }, { merge: true });
+      }
+
+      if (candidateDocRef && candidateSnap && candidateSnap.exists()) {
+        transaction.set(candidateDocRef, {
           balance: newBal,
           walletBalance: newBal,
           updatedAt: nowIso
