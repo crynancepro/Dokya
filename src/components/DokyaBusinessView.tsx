@@ -27,14 +27,20 @@ interface DokyaBusinessViewProps {
   onOpenInvoiceGenerator?: (customer?: Customer, type?: 'devis' | 'facture', business?: UserBusiness) => void;
   onLoadInvoiceToEditor?: (data: BusinessDocData) => void;
   initialActiveTab?: 'clients' | 'invoices' | 'businesses' | 'inventory';
+  isVip?: boolean;
+  onOpenPricing?: () => void;
 }
 
 export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
   onOpenInvoiceGenerator,
   onLoadInvoiceToEditor,
-  initialActiveTab
+  initialActiveTab,
+  isVip = false,
+  onOpenPricing
 }) => {
   const currentUid = auth.currentUser?.uid || 'guest';
+  const [isClientQuotaAlertOpen, setIsClientQuotaAlertOpen] = useState(false);
+  const [isBusinessQuotaAlertOpen, setIsBusinessQuotaAlertOpen] = useState(false);
 
   // Subscriptions & Data State
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -220,6 +226,12 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
   // HANDLERS: CLIENT SAVE / EDIT / DELETE
   // ============================================================================
   const handleOpenAddClient = () => {
+    // Règle du Plan Gratuit : Limiter à 2 clients maximum dans le CRM
+    if (!isVip && customers.length >= 2) {
+      setIsClientQuotaAlertOpen(true);
+      return;
+    }
+
     setFormData({
       name: '',
       phone: '',
@@ -249,6 +261,12 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
     }
     if (!formData.phone?.trim()) {
       setFormError('Le numéro de téléphone WhatsApp est obligatoire.');
+      return;
+    }
+
+    if (!editingCustomer && !isVip && customers.length >= 2) {
+      setFormError('Limite du plan gratuit atteinte : 2 clients maximum dans le CRM.');
+      setIsClientQuotaAlertOpen(true);
       return;
     }
 
@@ -1675,7 +1693,133 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
         }}
         businesses={businesses}
         initialEditingBusiness={editingBusinessForModal}
+        isVip={isVip}
+        onOpenPricing={onOpenPricing}
       />
+
+      {/* MODAL ALERTE QUOTA CLIENTS (2 MAX GRATUIT) */}
+      {isClientQuotaAlertOpen && (
+        <div 
+          className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setIsClientQuotaAlertOpen(false)}
+        >
+          <div 
+            className="w-full max-w-md rounded-3xl bg-slate-900 border border-amber-500/40 p-6 shadow-2xl shadow-amber-950/40 text-center animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto mb-4 text-amber-400">
+              <Users className="w-7 h-7" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black uppercase tracking-wider mb-2">
+              <span>👑 Quota Plan Gratuit : 2/2 Clients</span>
+            </div>
+
+            <h3 className="text-lg font-black text-white mb-2">
+              Limite du carnet client atteinte
+            </h3>
+
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              La formule gratuite vous permet d'enregistrer jusqu'à <strong className="text-amber-400 font-bold">2 clients maximum</strong> dans votre base de données CRM.
+            </p>
+
+            <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-300 text-left mb-6 space-y-2">
+              <div className="font-bold text-white flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span>Avec l'Abonnement Dokya Pro / VIP :</span>
+              </div>
+              <ul className="list-disc pl-5 space-y-1 text-slate-400">
+                <li>Enregistrement illimité de clients & entreprises</li>
+                <li>Relances automatiques par WhatsApp & relevés complets</li>
+                <li>Facturation & devis OHADA sans filigrane</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsClientQuotaAlertOpen(false)}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Fermer
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsClientQuotaAlertOpen(false);
+                  if (onOpenPricing) onOpenPricing();
+                }}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Débloquer l'accès Pro</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ALERTE QUOTA ENTREPRISES (1 MAX GRATUIT) */}
+      {isBusinessQuotaAlertOpen && (
+        <div 
+          className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setIsBusinessQuotaAlertOpen(false)}
+        >
+          <div 
+            className="w-full max-w-md rounded-3xl bg-slate-900 border border-amber-500/40 p-6 shadow-2xl shadow-amber-950/40 text-center animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto mb-4 text-amber-400">
+              <Building2 className="w-7 h-7" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black uppercase tracking-wider mb-2">
+              <span>👑 Quota Plan Gratuit : 1/1 Entreprise</span>
+            </div>
+
+            <h3 className="text-lg font-black text-white mb-2">
+              Limite multi-entreprises atteinte
+            </h3>
+
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              La formule gratuite vous permet d'enregistrer <strong className="text-amber-400 font-bold">1 entreprise émettrice maximum</strong> dans votre base de données.
+            </p>
+
+            <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-300 text-left mb-6 space-y-2">
+              <div className="font-bold text-white flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span>Avec l'Abonnement Dokya Pro / VIP :</span>
+              </div>
+              <ul className="list-disc pl-5 space-y-1 text-slate-400">
+                <li>Gestion multi-entreprises et filiales en illimité</li>
+                <li>Logos distincts et numéros NINEA multiples</li>
+                <li>Facturation et exports HD sans filigrane</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsBusinessQuotaAlertOpen(false)}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Fermer
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBusinessQuotaAlertOpen(false);
+                  if (onOpenPricing) onOpenPricing();
+                }}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Débloquer l'accès Pro</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

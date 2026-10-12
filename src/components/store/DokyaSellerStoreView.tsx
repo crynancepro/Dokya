@@ -128,6 +128,8 @@ function compressImageFile(
 
 interface DokyaSellerStoreViewProps {
   profile: CandidateProfile;
+  isVip?: boolean;
+  onOpenPricing?: () => void;
   onOpenPublicProduct?: (slug: string) => void;
   onOpenPublicStore?: (username: string) => void;
   onGenerateInvoiceForOrder?: (order: StoreOrder, storeProfile?: SellerStoreProfile | null) => void;
@@ -135,6 +137,8 @@ interface DokyaSellerStoreViewProps {
 
 export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
   profile,
+  isVip,
+  onOpenPricing,
   onOpenPublicProduct,
   onOpenPublicStore,
   onGenerateInvoiceForOrder
@@ -142,6 +146,15 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
   const currentUid = auth.currentUser?.uid || profile.uid || 'guest';
   const defaultUsername = slugify(profile.personalInfo?.firstName || profile.email?.split('@')[0] || 'vendeur');
   const { formatPrice, userCurrency } = useLocale();
+
+  const isSubscriber = Boolean(
+    isVip || 
+    profile.subscriptionStatus === 'active' || 
+    profile.subscriptionStatus === 'unlimited' || 
+    (profile as any).subscription?.status === 'active' ||
+    (profile as any).subscription?.status === 'ACTIVE'
+  );
+  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState<boolean>(false);
 
   // Sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<'products' | 'orders' | 'settings'>('products');
@@ -290,6 +303,12 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
 
   // Open Product Modal (New or Edit)
   const handleOpenAddProduct = () => {
+    // Règle du Plan Gratuit : Limite stricte de 2 produits/services max pour les comptes non abonnés
+    if (!isSubscriber && products.length >= 2) {
+      setIsQuotaModalOpen(true);
+      return;
+    }
+
     setEditingProduct(null);
     setProductTitle('');
     setProductDescription('');
@@ -336,6 +355,12 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
     e.preventDefault();
     if (!productTitle.trim()) {
       showToast('Veuillez renseigner un titre pour le produit');
+      return;
+    }
+
+    if (!editingProduct && !isSubscriber && products.length >= 2) {
+      showToast('Limite du plan gratuit atteinte : 2 produits/services maximum.');
+      setIsQuotaModalOpen(true);
       return;
     }
 
@@ -2009,6 +2034,71 @@ export const DokyaSellerStoreView: React.FC<DokyaSellerStoreViewProps> = ({
                     <span>Vider le catalogue</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL : ALERTE QUOTA DU PLAN GRATUIT (2 PRODUITS MAXIMUM)            */}
+      {/* ===================================================================== */}
+      {isQuotaModalOpen && (
+        <div 
+          className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setIsQuotaModalOpen(false)}
+        >
+          <div 
+            className="w-full max-w-md rounded-3xl bg-slate-900 border border-amber-500/40 p-6 shadow-2xl shadow-amber-950/40 text-center animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto mb-4 text-amber-400">
+              <ShoppingBag className="w-7 h-7" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black uppercase tracking-wider mb-2">
+              <span>👑 Quota Plan Gratuit : 2/2 Produits</span>
+            </div>
+
+            <h3 className="text-lg font-black text-white mb-2">
+              Limite de la formule gratuite atteinte
+            </h3>
+
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              La formule gratuite de Dokya vous permet d'enregistrer jusqu'à <strong className="text-amber-400 font-bold">2 produits ou services</strong> dans votre boutique vendeur.
+            </p>
+
+            <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-300 text-left mb-6 space-y-2">
+              <div className="font-bold text-white flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span>Avec l'Abonnement Dokya Pro / VIP :</span>
+              </div>
+              <ul className="list-disc pl-5 space-y-1 text-slate-400">
+                <li>Création de produits & services illimitée</li>
+                <li>Liens de commande directe WhatsApp sans restriction</li>
+                <li>Génération de factures & devis OHADA sans filigrane</li>
+                <li>Visibilité prioritaire auprès des télévendeurs</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsQuotaModalOpen(false)}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Fermer
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsQuotaModalOpen(false);
+                  if (onOpenPricing) onOpenPricing();
+                }}
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Passer à Dokya Pro</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>

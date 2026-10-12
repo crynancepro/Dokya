@@ -9,7 +9,7 @@ import {
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
   Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity,
   MessageSquare, Volume2, VolumeX, BellRing, Menu, Building2, Briefcase,
-  PanelLeftClose, PanelLeftOpen, Zap, Copy, Terminal, MoreVertical
+  PanelLeftClose, PanelLeftOpen, Zap, Copy, Terminal, MoreVertical, Smartphone
 } from 'lucide-react';
 import { AdminSidebar, AdminTabType } from './admin/AdminSidebar';
 import { AdminSalesTrendCurve } from './admin/AdminSalesTrendCurve';
@@ -486,6 +486,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     let walletRevenue = 0;
     let internalWalletSpentRevenue = 0;
     let internalWalletSpentCount = 0;
+
+    // Répartition dépôts : Mobile Money vs Cryptomonnaie
+    let mobileMoneyDepositCount = 0;
+    let mobileMoneyDepositRevenue = 0;
+    let cryptoDepositCount = 0;
+    let cryptoDepositRevenue = 0;
+
     const creditedUsersSet = new Set<string>();
 
     transactionsList.forEach((tx) => {
@@ -520,6 +527,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         creditedUsersSet.add(userKey);
       }
 
+      const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '') + ' ' + ((tx as any).paymentMethodType || '')).toLowerCase();
+      const cryptoNet = ((tx as any).cryptoNetwork || (tx as any).cryptoNetworkLabel || (tx as any).cryptoToken || '').toLowerCase();
+      const isCryptoTx = methodStr.includes('crypto') || cryptoNet.length > 0 || methodStr.includes('trc20') || methodStr.includes('bep20') || methodStr.includes('sol') || methodStr.includes('usdt') || methodStr.includes('usdc');
+
       if (isDoc) {
         documentCount++;
         documentRevenue += amt;
@@ -529,6 +540,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       } else {
         walletCount++;
         walletRevenue += amt;
+        // Dépôt dans le portefeuille
+        if (isCryptoTx) {
+          cryptoDepositCount++;
+          cryptoDepositRevenue += amt;
+        } else {
+          mobileMoneyDepositCount++;
+          mobileMoneyDepositRevenue += amt;
+        }
       }
     });
 
@@ -543,6 +562,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       walletRevenue,
       internalWalletSpentRevenue,
       internalWalletSpentCount,
+      mobileMoneyDepositCount,
+      mobileMoneyDepositRevenue,
+      cryptoDepositCount,
+      cryptoDepositRevenue,
       creditedUsersCount: creditedUsersSet.size,
     };
   }, [transactionsList]);
@@ -627,10 +650,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       if (txMethodFilter !== 'all') {
-        const currentMethod = ((t.paymentMethod || '') + ' ' + ((t as any).operator || '')).toLowerCase();
+        const currentMethod = ((t.paymentMethod || '') + ' ' + ((t as any).operator || '') + ' ' + ((t as any).paymentMethodType || '')).toLowerCase();
+        const cryptoNet = ((t as any).cryptoNetwork || (t as any).cryptoNetworkLabel || (t as any).cryptoToken || '').toLowerCase();
+        const isCrypto = currentMethod.includes('crypto') || cryptoNet.length > 0 || currentMethod.includes('trc20') || currentMethod.includes('bep20') || currentMethod.includes('sol') || currentMethod.includes('usdt') || currentMethod.includes('usdc');
         const target = txMethodFilter.toLowerCase();
-        if (target === 'card' || target === 'qr') {
-          if (!currentMethod.includes('card') && !currentMethod.includes('carte') && !currentMethod.includes('qr') && !currentMethod.includes('visa') && !currentMethod.includes('mastercard')) return false;
+
+        if (target === 'mobile_money') {
+          // Mobile Money (Wave, Orange, MTN, Moov, Free Money, etc.) et non crypto
+          const isMm = currentMethod.includes('mobile_money') || currentMethod.includes('wave') || currentMethod.includes('orange') || currentMethod.includes('om') || currentMethod.includes('free') || currentMethod.includes('mtn') || currentMethod.includes('moov') || currentMethod.includes('perfect') || (!isCrypto && currentMethod.includes('moneyfusion'));
+          if (!isMm || isCrypto) return false;
+        } else if (target === 'crypto') {
+          if (!isCrypto) return false;
+        } else if (target === 'crypto_trc20') {
+          if (!cryptoNet.includes('trc20') && !currentMethod.includes('trc20')) return false;
+        } else if (target === 'crypto_bep20') {
+          if (!cryptoNet.includes('bep20') && !cryptoNet.includes('bsc') && !currentMethod.includes('bep20') && !currentMethod.includes('bsc')) return false;
+        } else if (target === 'crypto_sol') {
+          if (!cryptoNet.includes('sol') && !currentMethod.includes('sol')) return false;
+        } else if (target === 'crypto_usdc') {
+          if (!cryptoNet.includes('usdc') && !currentMethod.includes('usdc')) return false;
         } else if (target === 'wave') {
           if (!currentMethod.includes('wave')) return false;
         } else if (target === 'orange_money') {
@@ -864,7 +902,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditCity(user.city || '');
     setEditTargetJob(user.targetJob || '');
     setEditBalance(user.balance || 0);
-    setEditSubscription(user.subscriptionStatus || 'free');
+    const mappedSub: 'free' | 'pro' | 'unlimited' = (user.subscriptionStatus === 'unlimited' || user.subscriptionStatus === 'active')
+      ? 'unlimited'
+      : (user.subscriptionStatus === 'pro' ? 'pro' : 'free');
+    setEditSubscription(mappedSub);
     setEditRole(user.role === 'admin' ? 'admin' : 'user');
     setEditStatus(user.status === 'suspended' ? 'suspendu' : 'actif');
   };
@@ -4020,7 +4061,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recharges Wallet</span>
                   <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
-                    <CreditCard className="w-5 h-5" />
+                    <Wallet className="w-5 h-5" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-black text-white tracking-tight">
@@ -4030,6 +4071,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
                   <span>{moneyFusionMetrics.walletRevenue.toLocaleString('fr-FR')} XOF crédités</span>
                 </p>
+              </div>
+            </div>
+
+            {/* BANNIÈRE DE RÉPARTITION DES DÉPÔTS : MOBILE MONEY VS CRYPTOMONNAIE (Requirement 3) */}
+            <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      ⚡ Répartition des Dépôts & Recharges
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      Chiffre d'Affaires Flux Entrants : <strong className="text-white font-mono">{moneyFusionMetrics.walletRevenue.toLocaleString('fr-FR')} FCFA</strong>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Ventilation en temps réel entre les rechargements par opérateurs Mobile Money Afrique et Cryptomonnaies (Blockchain).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 shrink-0">
+                  {/* Mobile Money Afrique */}
+                  <div className="p-3 rounded-2xl bg-slate-950/80 border border-blue-500/30 space-y-1">
+                    <div className="flex items-center gap-1.5 text-blue-400 text-xs font-black">
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Mobile Money</span>
+                    </div>
+                    <div className="text-base sm:text-lg font-black text-white font-mono">
+                      {moneyFusionMetrics.mobileMoneyDepositRevenue.toLocaleString('fr-FR')} <span className="text-xs font-normal text-blue-300">FCFA</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {moneyFusionMetrics.mobileMoneyDepositCount} dépôt(s) validé(s)
+                    </div>
+                  </div>
+
+                  {/* Cryptomonnaies */}
+                  <div className="p-3 rounded-2xl bg-slate-950/80 border border-amber-500/30 space-y-1">
+                    <div className="flex items-center gap-1.5 text-amber-400 text-xs font-black">
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Cryptomonnaie</span>
+                    </div>
+                    <div className="text-base sm:text-lg font-black text-amber-300 font-mono">
+                      {moneyFusionMetrics.cryptoDepositRevenue.toLocaleString('fr-FR')} <span className="text-xs font-normal text-amber-400">FCFA</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {moneyFusionMetrics.cryptoDepositCount} dépôt(s) crypto
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -4093,21 +4183,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="wallet" className="bg-slate-900 text-white">💳 Rechargement Wallet</option>
                 </select>
 
-                {/* Filtre Méthode */}
+                {/* Filtre Méthode de Paiement (Mobile Money vs Crypto) */}
                 <select
                   value={txMethodFilter}
                   onChange={(e: any) => setTxMethodFilter(e.target.value)}
                   className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs !text-white focus:outline-none focus:border-blue-500 cursor-pointer font-semibold"
                 >
                   <option value="all" className="bg-slate-900 text-white">Tous les Modes de Paiement</option>
-                  <option value="wave" className="bg-slate-900 text-white">Wave</option>
-                  <option value="orange_money" className="bg-slate-900 text-white">Orange Money</option>
-                  <option value="free" className="bg-slate-900 text-white">Free Money</option>
-                  <option value="mtn" className="bg-slate-900 text-white">MTN Money</option>
-                  <option value="moov" className="bg-slate-900 text-white">Moov Money</option>
-                  <option value="card" className="bg-slate-900 text-white">QR Code / Carte</option>
-                  <option value="moneyfusion" className="bg-slate-900 text-white">Money Fusion</option>
-                  <option value="wallet" className="bg-slate-900 text-white">Solde Dokya</option>
+                  <option value="mobile_money" className="bg-slate-900 text-white">📱 Mobile Money (Tous)</option>
+                  <option value="crypto" className="bg-slate-900 text-white">⚡ Cryptomonnaies (Toutes)</option>
+                  <option value="wave" className="bg-slate-900 text-white">🌊 Wave Mobile</option>
+                  <option value="orange_money" className="bg-slate-900 text-white">🍊 Orange Money</option>
+                  <option value="free" className="bg-slate-900 text-white">🟣 Free Money</option>
+                  <option value="mtn" className="bg-slate-900 text-white">💛 MTN Money</option>
+                  <option value="moov" className="bg-slate-900 text-white">🟢 Moov Money</option>
+                  <option value="crypto_trc20" className="bg-slate-900 text-white">💎 USDT TRC20</option>
+                  <option value="crypto_bep20" className="bg-slate-900 text-white">⚡ USDT BEP20</option>
+                  <option value="crypto_sol" className="bg-slate-900 text-white">🟣 Solana (SOL)</option>
+                  <option value="crypto_usdc" className="bg-slate-900 text-white">🪙 USDC BEP20</option>
+                  <option value="wallet" className="bg-slate-900 text-white">💳 Solde Dokya Wallet</option>
                 </select>
 
                 <button
@@ -4271,9 +4365,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       typeBadge = { label: 'Abonnement VIP', icon: '👑', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
                     }
 
-                    const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '') + ' ' + (tx.network || '')).toLowerCase();
+                    const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '') + ' ' + ((tx as any).paymentMethodType || '')).toLowerCase();
+                    const cryptoNetwork = String((tx as any).cryptoNetwork || (tx as any).cryptoNetworkLabel || (tx as any).cryptoToken || '');
+                    const isTxCrypto = (tx as any).paymentMethodType === 'crypto' ||
+                      (tx.paymentMethod || '').toLowerCase() === 'crypto' ||
+                      ((tx as any).operator || '').toLowerCase() === 'crypto' ||
+                      cryptoNetwork.length > 0 ||
+                      methodStr.includes('trc20') || methodStr.includes('bep20') || methodStr.includes('sol') || methodStr.includes('usdt') || methodStr.includes('usdc');
+                    const txHash = (tx as any).transactionHash || (tx as any).hash || (tx as any).blockchainTxHash || null;
+
                     let methodBadge = { label: 'Money Fusion', icon: '⚡', className: 'bg-blue-500/15 text-blue-300 border-blue-500/30' };
-                    if (methodStr.includes('wallet') || methodStr.includes('solde')) {
+                    if (isTxCrypto) {
+                      let cLabel = 'USDT (Crypto)';
+                      let cIcon = '⚡';
+                      const netUpper = cryptoNetwork.toUpperCase();
+                      if (netUpper.includes('TRC20')) {
+                        cLabel = 'USDT-TRC20';
+                        cIcon = '💎';
+                      } else if (netUpper.includes('BSC') || netUpper.includes('BEP20')) {
+                        cLabel = netUpper.includes('USDC') ? 'USDC-BEP20' : 'USDT-BEP20';
+                        cIcon = '⚡';
+                      } else if (netUpper.includes('SOL')) {
+                        cLabel = 'Solana (SOL)';
+                        cIcon = '🟣';
+                      } else if ((tx as any).cryptoNetworkLabel) {
+                        cLabel = (tx as any).cryptoNetworkLabel;
+                      }
+                      methodBadge = { label: cLabel, icon: cIcon, className: 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-black' };
+                    } else if (methodStr.includes('wallet') || methodStr.includes('solde')) {
                       methodBadge = { label: 'Solde Dokya', icon: '💳', className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
                     } else if (methodStr.includes('wave')) {
                       methodBadge = { label: 'Wave', icon: '🌊', className: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
@@ -4281,8 +4400,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       methodBadge = { label: 'Orange Money', icon: '🍊', className: 'bg-orange-500/15 text-orange-300 border-orange-500/30' };
                     } else if (methodStr.includes('free')) {
                       methodBadge = { label: 'Free Money', icon: '🟣', className: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30' };
-                    } else if (methodStr.includes('card') || methodStr.includes('carte')) {
-                      methodBadge = { label: 'Carte / QR', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+                    } else if (methodStr.includes('mtn')) {
+                      methodBadge = { label: 'MTN Money', icon: '💛', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
+                    } else if (methodStr.includes('moov')) {
+                      methodBadge = { label: 'Moov Money', icon: '🟢', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
                     }
 
                     const userName = (tx as any).userName || (tx as any).user_name || (tx as any).name || (tx as any).userEmail?.split('@')[0] || 'Client Dokya';
@@ -4480,14 +4601,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           };
                         }
 
-                        // Identify payment method
-                        const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '') + ' ' + (tx.network || '')).toLowerCase();
+                        // Identify payment method & Crypto network
+                        const methodStr = ((tx.paymentMethod || '') + ' ' + ((tx as any).operator || '') + ' ' + ((tx as any).paymentMethodType || '')).toLowerCase();
+                        const cryptoNetwork = String((tx as any).cryptoNetwork || (tx as any).cryptoNetworkLabel || (tx as any).cryptoToken || '');
+                        const isTxCrypto = (tx as any).paymentMethodType === 'crypto' ||
+                          (tx.paymentMethod || '').toLowerCase() === 'crypto' ||
+                          ((tx as any).operator || '').toLowerCase() === 'crypto' ||
+                          cryptoNetwork.length > 0 ||
+                          methodStr.includes('trc20') || methodStr.includes('bep20') || methodStr.includes('sol') || methodStr.includes('usdt') || methodStr.includes('usdc');
+                        const txHash = (tx as any).transactionHash || (tx as any).hash || (tx as any).blockchainTxHash || null;
+
                         let methodBadge = {
                           label: 'Money Fusion',
                           icon: '⚡',
                           className: 'bg-blue-500/15 text-blue-300 border-blue-500/30'
                         };
-                        if (methodStr.includes('wallet') || methodStr.includes('solde')) {
+                        if (isTxCrypto) {
+                          let cLabel = 'USDT (Crypto)';
+                          let cIcon = '⚡';
+                          const netUpper = cryptoNetwork.toUpperCase();
+                          if (netUpper.includes('TRC20')) {
+                            cLabel = 'USDT-TRC20';
+                            cIcon = '💎';
+                          } else if (netUpper.includes('BSC') || netUpper.includes('BEP20')) {
+                            cLabel = netUpper.includes('USDC') ? 'USDC-BEP20' : 'USDT-BEP20';
+                            cIcon = '⚡';
+                          } else if (netUpper.includes('SOL')) {
+                            cLabel = 'Solana (SOL)';
+                            cIcon = '🟣';
+                          } else if ((tx as any).cryptoNetworkLabel) {
+                            cLabel = (tx as any).cryptoNetworkLabel;
+                          }
+                          methodBadge = {
+                            label: cLabel,
+                            icon: cIcon,
+                            className: 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-black'
+                          };
+                        } else if (methodStr.includes('wallet') || methodStr.includes('solde')) {
                           methodBadge = { label: 'Solde Dokya', icon: '💳', className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' };
                         } else if (methodStr.includes('wave')) {
                           methodBadge = { label: 'Wave', icon: '🌊', className: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
@@ -4499,8 +4649,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           methodBadge = { label: 'MTN Money', icon: '💛', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
                         } else if (methodStr.includes('moov')) {
                           methodBadge = { label: 'Moov Money', icon: '🟢', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
-                        } else if (methodStr.includes('card') || methodStr.includes('carte') || methodStr.includes('qr')) {
-                          methodBadge = { label: 'Carte / QR', icon: '💳', className: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
                         }
 
                         const userName = (tx as any).userName || (tx as any).user_name || (tx as any).name || (tx as any).userEmail?.split('@')[0] || 'Client Dokya';
@@ -4545,7 +4693,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </td>
 
-                            {/* 3. ID Transaction Money Fusion avec Copie */}
+                            {/* 3. ID Transaction Money Fusion / Hash avec Copie */}
                             <td className="py-3.5 px-3">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-mono text-xs font-bold text-amber-300 tracking-wide truncate max-w-[145px]" title={txReference}>
@@ -4567,10 +4715,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   )}
                                 </button>
                               </div>
-                              <div className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1">
-                                <Zap className="w-3 h-3 text-blue-400" />
-                                <span>Money Fusion ID</span>
-                              </div>
+                              {isTxCrypto ? (
+                                <div className="text-[10px] text-amber-300/90 font-mono mt-0.5 flex items-center gap-1 truncate max-w-[160px]" title={txHash || txReference}>
+                                  <span className="text-[9px] font-black uppercase px-1 py-0.2 rounded bg-amber-500/20 text-amber-300">HASH</span>
+                                  <span>{txHash ? `${txHash.slice(0, 10)}...` : 'Blockchain'}</span>
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1">
+                                  <Zap className="w-3 h-3 text-blue-400" />
+                                  <span>Money Fusion ID</span>
+                                </div>
+                              )}
                             </td>
 
                             {/* 4. Type de Transaction (Document, Abonnement, Wallet) */}

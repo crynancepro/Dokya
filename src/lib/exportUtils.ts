@@ -29,7 +29,7 @@ export async function exportCVToDocx(
         spacing: { after: 150 },
         children: [
           new TextRun({
-            text: '⚡ CRÉÉ AVEC DOKYA (DOKYA.SN) — VERSION GRATUITE',
+            text: '⚡ CRÉÉ AVEC DOKYA.SITE — VERSION GRATUITE',
             bold: true,
             size: 16,
             color: '64748B',
@@ -529,7 +529,7 @@ export async function exportLetterToDocx(
         spacing: { after: 150 },
         children: [
           new TextRun({
-            text: '⚡ CRÉÉ AVEC DOKYA (DOKYA.SN) — VERSION GRATUITE',
+            text: '⚡ CRÉÉ AVEC DOKYA.SITE — VERSION GRATUITE',
             bold: true,
             size: 16,
             color: '64748B',
@@ -712,7 +712,7 @@ export async function exportBusinessDocToDocx(
         spacing: { after: 150 },
         children: [
           new TextRun({
-            text: '⚡ CRÉÉ AVEC DOKYA (DOKYA.SN) — VERSION GRATUITE',
+            text: '⚡ CRÉÉ AVEC DOKYA.SITE — VERSION GRATUITE',
             bold: true,
             size: 16,
             color: '64748B',

@@ -585,7 +585,7 @@ export async function preloadAllImages(element: HTMLElement): Promise<void> {
 /**
  * Applique un filigrane Dokya semi-transparent officiel sur un canevas de document
  */
-export function applyWatermarkToCanvas(canvas: HTMLCanvasElement, watermarkText = 'Créé avec Dokya • dokya.sn'): void {
+export function applyWatermarkToCanvas(canvas: HTMLCanvasElement, watermarkText = 'Créé avec Dokya.site'): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
@@ -601,7 +601,7 @@ export function applyWatermarkToCanvas(canvas: HTMLCanvasElement, watermarkText 
   ctx.rotate(-Math.PI / 4);
   ctx.fillText(watermarkText, 0, 0);
   ctx.font = 'bold 22px sans-serif';
-  ctx.fillText('dokya.sn • Version Gratuite', 0, 50);
+  ctx.fillText('Dokya.site • Version Gratuite', 0, 50);
   ctx.restore();
 
   // 2. Bandeau discret en bas de page
@@ -616,7 +616,7 @@ export function applyWatermarkToCanvas(canvas: HTMLCanvasElement, watermarkText 
   ctx.fillStyle = '#475569';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('⚡ Créé avec Dokya (dokya.sn) — Formule Gratuite • Débloquez Dokya Pro pour retirer ce filigrane', canvas.width / 2, canvas.height - 19);
+  ctx.fillText('⚡ Créé avec Dokya.site — Formule Gratuite • Débloquez Dokya Pro pour retirer ce filigrane', canvas.width / 2, canvas.height - 19);
   ctx.restore();
 }
 

@@ -63,15 +63,10 @@ const FluidCVThumbnail: React.FC<{
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState<number>(0.32);
 
-  const isLocked = !isVipActive && !template.isFree;
+  const isProTemplate = !template.isFree;
 
   const handleAction = () => {
-    if (isLocked) {
-      if (onOpenPaywall) {
-        onOpenPaywall(template);
-      }
-      return;
-    }
+    // Débloque complètement l'accès aux modèles PRO : n'importe quel utilisateur peut sélectionner, remplir et prévisualiser
     onSelect();
   };
 
@@ -147,9 +142,9 @@ const FluidCVThumbnail: React.FC<{
               <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[3]" />
               <span>Actif</span>
             </div>
-          ) : isLocked ? (
+          ) : isProTemplate ? (
             <div className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] sm:text-[10px] font-black tracking-wider flex items-center gap-1 shadow-md border border-amber-400">
-              <Lock className="w-2.5 h-2.5" />
+              <Sparkles className="w-2.5 h-2.5" />
               <span>PRO</span>
             </div>
           ) : (
@@ -190,8 +185,6 @@ const FluidCVThumbnail: React.FC<{
             className={`flex-1 py-1.5 px-2 rounded-lg font-black text-[11px] flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer shadow-xs ${
               isSelected
                 ? 'bg-emerald-600 text-white'
-                : isLocked
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
                 : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
             }`}
           >
@@ -199,11 +192,6 @@ const FluidCVThumbnail: React.FC<{
               <>
                 <Check className="w-3 h-3 stroke-[3]" />
                 <span>Actif</span>
-              </>
-            ) : isLocked ? (
-              <>
-                <Lock className="w-3 h-3" />
-                <span>Débloquer</span>
               </>
             ) : (
               <>
@@ -251,9 +239,9 @@ const FluidCVThumbnail: React.FC<{
                 <span>100% ATS</span>
               </span>
             )}
-            {isLocked ? (
+            {isProTemplate ? (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 backdrop-blur-md flex items-center gap-1 border border-amber-400 shadow-xs">
-                <Lock className="w-3 h-3" />
+                <Sparkles className="w-3 h-3 text-slate-950" />
                 <span>PRO</span>
               </span>
             ) : (
@@ -287,18 +275,11 @@ const FluidCVThumbnail: React.FC<{
             className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer ${
               isSelected
                 ? 'bg-emerald-600 text-white'
-                : isLocked
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/40'
                 : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-indigo-600/50'
             }`}
           >
             {isSelected ? (
               <span>✓ Modèle sélectionné</span>
-            ) : isLocked ? (
-              <>
-                <Lock className="w-4 h-4" />
-                <span>Débloquer ce modèle Pro</span>
-              </>
             ) : (
               <>
                 <span>Sélectionner ce modèle</span>

@@ -333,6 +333,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
         isTelemarketerCertified: true,
         certifiedBadgePurchased: true,
         telemarketerBadge: true,
+        teleSellerBadge: true,
         certifiedBadgeDate: new Date().toISOString()
       };
 
@@ -341,6 +342,7 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
         try {
           localStorage.setItem(`dokya_badge_${currentUid}`, 'true');
           localStorage.setItem(`dokya_tel_badge_${currentUid}`, 'true');
+          localStorage.setItem(`dokya_teleSellerBadge_${currentUid}`, 'true');
         } catch (_e) {}
       }
 
@@ -358,7 +360,8 @@ export const DokyaTelemarketerPortal: React.FC<DokyaTelemarketerPortalProps> = (
             balance: newBalance,
             walletBalance: newBalance,
             isTelemarketerCertified: true,
-            telemarketerBadge: true
+            telemarketerBadge: true,
+            teleSellerBadge: true
           }, { merge: true });
         } catch (_e) {}
       }

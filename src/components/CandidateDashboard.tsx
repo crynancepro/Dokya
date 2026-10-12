@@ -1748,13 +1748,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
               <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-400">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Paiement sécurisé UEMOA garanti : Wave, Orange Money, Free Money & Cartes Bancaires.</span>
+                  <span>Paiement sécurisé garanti : Mobile Money Afrique & Cryptomonnaies (Money Fusion).</span>
                 </div>
                 <div className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
                   <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">Wave</span>
                   <span className="px-2 py-0.5 rounded bg-slate-800 text-orange-400 font-bold">Orange Money</span>
-                  <span className="px-2 py-0.5 rounded bg-slate-800 text-teal-400 font-bold">Free Money</span>
-                  <span className="px-2 py-0.5 rounded bg-slate-800 text-blue-400 font-bold">Visa / MC</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-teal-400 font-bold">Free / Moov</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-400 font-bold">Crypto USDT / SOL</span>
                 </div>
               </div>
 
@@ -2096,6 +2096,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             <div className="space-y-6 animate-in fade-in">
               <DokyaBusinessView
                 initialActiveTab={activeSidebarTab === 'inventory' ? 'inventory' : 'clients'}
+                isVip={isSubscriptionActive}
+                onOpenPricing={() => handleSelectTab('tarifs')}
                 onOpenInvoiceGenerator={(customer, type, business) => {
                   if (onOpenInvoiceGenerator) {
                     onOpenInvoiceGenerator(customer, type, business);
@@ -2119,6 +2121,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             <div className="space-y-6 animate-in fade-in">
               <DokyaSellerStoreView
                 profile={profile}
+                isVip={isSubscriptionActive}
+                onOpenPricing={() => handleSelectTab('tarifs')}
                 onOpenPublicProduct={onOpenPublicProduct}
                 onOpenPublicStore={onOpenPublicStore}
                 onGenerateInvoiceForOrder={onGenerateInvoiceForOrder}

@@ -361,7 +361,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
     const isFree = finalAmount === 0;
     const discountLabel = promo.discountType === 'percentage' 
       ? `-${promo.discountValue}%` 
-      : (isUSDItem ? `-${promo.discountValue} $` : `-${promo.discountValue} FCFA`);
+      : `-${formatPrice(promo.discountValue, userCurrency)}`;
 
     const promoInfo: AppliedPromoInfo = {
       code: promo.code,
@@ -1759,7 +1759,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                             type="text"
                             value={promoInput}
                             onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                            placeholder="Ex: PROMO50, VIP100, DAKAR2026..."
+                            placeholder="Entrez votre code promo..."
                             className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs uppercase font-mono !text-white !placeholder:text-slate-400 focus:outline-hidden focus:border-emerald-500 caret-blue-500"
                             onKeyDown={(e) => e.key === 'Enter' && handleApplyPromo()}
                           />
@@ -1858,7 +1858,7 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                           <>
                             <Unlock className="w-4 h-4 text-amber-300" />
                             <span>
-                              Débloquer avec mon solde ({isUSDItem ? `${priceInFCFA.toLocaleString('fr-FR')} FCFA (${payablePrice.toFixed(2)} $)` : `${payablePrice.toLocaleString('fr-FR')} FCFA`})
+                              Débloquer avec mon solde ({payablePrice === 0 ? 'GRATUIT' : formatPrice(payablePrice, userCurrency)})
                             </span>
                           </>
                         )}

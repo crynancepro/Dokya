@@ -252,11 +252,11 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
   const faqs = [
     {
       q: 'Comment fonctionne le paiement à l\'acte ?',
-      a: 'Avec le paiement à l\'acte, vous ne payez que le document précis que vous créez (1.99 $ pour un CV ou une Lettre, 2.99 $ pour un Pack Duo). Vous bénéficiez d\'exports haute définition sans aucun filigrane. Aucun abonnement n\'est prélevé automatiquement.'
+      a: 'Avec le paiement à l\'acte, vous ne payez que le document précis que vous créez (1 000 FCFA / 1.70 $ pour un CV ou une Lettre, 1 500 FCFA / 2.50 $ pour un Pack Duo). Vous bénéficiez d\'exports haute définition sans aucun filigrane. Aucun abonnement n\'est prélevé automatiquement.'
     },
     {
       q: 'Qu\'inclut la formule Gratuite (Free) ?',
-      a: 'La formule Gratuite (0 $ / mois) vous permet de créer 1 CV, 1 Lettre de motivation, 1 Facture et 1 Devis par mois avec filigrane Dokya obligatoire sur les exports finaux. Pour supprimer le filigrane ou obtenir des exports illimités, vous pouvez passer à l\'achat à l\'acte (1.99 $) ou à un abonnement Premium.'
+      a: 'La formule Gratuite vous permet de créer 1 CV, 1 Lettre de motivation, 1 Facture et 1 Devis par mois avec filigrane Dokya obligatoire sur les exports finaux. Pour supprimer le filigrane ou obtenir des exports illimités, vous pouvez passer à l\'achat à l\'acte (dès 1 000 FCFA / 1.70 $) ou à un abonnement Premium.'
     },
     {
       q: 'Quels sont les moyens de paiement acceptés ?',
@@ -402,7 +402,7 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                     handleApplyPromoOnPage();
                   }
                 }}
-                placeholder="Ex: PROMO50, DAKAR2026, VIP100..."
+                placeholder="Entrez votre code promo..."
                 className="flex-1 bg-slate-950 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-white placeholder-slate-500 text-xs px-3.5 py-2.5 rounded-xl uppercase font-mono tracking-wider transition-all"
               />
               <button
@@ -418,27 +418,6 @@ export const PricingOffersView: React.FC<PricingOffersViewProps> = ({
                 )}
                 <span>Appliquer</span>
               </button>
-            </div>
-
-            {/* Suggestions de codes promo */}
-            <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-              <span className="text-slate-400">Codes populaires :</span>
-              {[
-                { code: 'PROMO50', label: '🔥 -50%' },
-                { code: 'DAKAR2026', label: '⚡ -30%' },
-                { code: 'TERANGA20', label: '🌊 -20%' },
-                { code: 'VIP100', label: '👑 -100%' }
-              ].map((s) => (
-                <button
-                  key={s.code}
-                  type="button"
-                  onClick={() => handleApplyPromoOnPage(s.code)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-slate-700 hover:border-amber-500/40 text-[10px] font-mono transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <span className="font-bold">{s.code}</span>
-                  <span className="text-amber-400 font-sans">{s.label}</span>
-                </button>
-              ))}
             </div>
 
             {promoError && (

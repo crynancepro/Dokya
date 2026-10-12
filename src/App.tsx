@@ -1154,28 +1154,8 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     setTimeout(() => setSuccessMessage(null), 3500);
   };
 
-  // Main Submit Call using Gemini SDK
+  // Main Submit Call using Gemini SDK - Création libre pour tous les utilisateurs (gratuit, invité ou abonné)
   const handleGenerate = async () => {
-    // 1. Restriction IA pour utilisateurs gratuits : bloquer l'assistant de rédaction/optimisation automatique
-    const isSubscriber = isVip || (userProfile?.subscriptionStatus === 'active' || userProfile?.subscriptionStatus === 'unlimited');
-    const isAdmin = currentUser?.email ? isAdminEmail(currentUser.email) : false;
-    
-    if (!isSubscriber && !isAdmin) {
-      setPaywallRestrictionReason('ai_assistant');
-      setPaymentDocTitle('Assistant IA & Optimisation Automatique');
-      setIsPaymentModalOpen(true);
-      return;
-    }
-
-    // 2. Limite d'utilisation mensuelle gratuite (1 document / mois)
-    const genCount = Number(userProfile?.generationCount || 0);
-    if (!isSubscriber && !isAdmin && genCount >= 1) {
-      setPaywallRestrictionReason('limit_reached');
-      setPaymentDocTitle('Quota Mensuel Atteint (1 doc gratuit)');
-      setIsPaymentModalOpen(true);
-      return;
-    }
-
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -1188,7 +1168,7 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
 
       setAiData(result.data);
 
-      // Incrémentation du compteur de générations
+      // Incrémentation informative du compteur de générations
       setUserProfile(prev => ({
         ...prev,
         generationCount: (prev.generationCount || 0) + 1
@@ -1319,20 +1299,95 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Gestion des quotas mensuels et contrôle d'accès (Paywall) à l'export
+  const checkAndConsumeQuota = async (category: 'cv_letter' | 'invoice'): Promise<{ allowed: boolean; watermark: boolean }> => {
+    // 1. Utilisateurs abonnés ou document déjà débloqué à l'acte : accès illimité direct HD sans filigrane
+    const isSubscriber = isVip || userProfile?.subscriptionStatus === 'active' || userProfile?.subscriptionStatus === 'unlimited';
+    if (isSubscriber || isCurrentDocPaid) {
+      return { allowed: true, watermark: false };
+    }
+
+    // 2. Utilisateurs gratuits : Vérifier quota mensuel (1 CV / Lettre par mois, 1 Facture / Devis par mois)
+    const currentMonthKey = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+    const uid = currentUser?.uid || 'guest';
+    const localMonthKey = `dokya_quota_month_${uid}`;
+    const localCountKey = category === 'cv_letter' ? `dokya_cv_quota_count_${uid}` : `dokya_invoice_quota_count_${uid}`;
+
+    const savedMonth = localStorage.getItem(localMonthKey);
+    let count = 0;
+    if (savedMonth === currentMonthKey) {
+      count = Number(localStorage.getItem(localCountKey) || 0);
+    } else {
+      localStorage.setItem(localMonthKey, currentMonthKey);
+      localStorage.setItem(`dokya_cv_quota_count_${uid}`, '0');
+      localStorage.setItem(`dokya_invoice_quota_count_${uid}`, '0');
+      count = 0;
+    }
+
+    // Synchronisation avec les quotas enregistrés en BDD dans userProfile
+    const bddMonth = category === 'cv_letter' ? (userProfile as any)?.cvQuotaMonth : (userProfile as any)?.invoiceQuotaMonth;
+    const bddCount = category === 'cv_letter' ? Number((userProfile as any)?.cvQuotaCount || 0) : Number((userProfile as any)?.invoiceQuotaCount || 0);
+    if (bddMonth === currentMonthKey && bddCount > count) {
+      count = bddCount;
+    }
+
+    // Si quota mensuel gratuit dépassé (>= 1), déclencher le paywall
+    if (count >= 1) {
+      return { allowed: false, watermark: true };
+    }
+
+    // Quota mensuel disponible : autoriser avec filigrane et incrémenter
+    const newCount = count + 1;
+    localStorage.setItem(localCountKey, String(newCount));
+
+    if (currentUser?.uid && currentUser.uid !== 'guest') {
+      try {
+        const updateData = category === 'cv_letter'
+          ? { cvQuotaMonth: currentMonthKey, cvQuotaCount: newCount }
+          : { invoiceQuotaMonth: currentMonthKey, invoiceQuotaCount: newCount };
+        await setDoc(doc(db, 'users', currentUser.uid), updateData, { merge: true });
+        await setDoc(doc(db, 'candidates', currentUser.uid), updateData, { merge: true });
+      } catch (e) {
+        console.warn('Erreur mise à jour quota BDD:', e);
+      }
+    }
+
+    setUserProfile(prev => ({
+      ...prev,
+      ...(category === 'cv_letter'
+        ? { cvQuotaMonth: currentMonthKey, cvQuotaCount: newCount }
+        : { invoiceQuotaMonth: currentMonthKey, invoiceQuotaCount: newCount })
+    }));
+
+    return { allowed: true, watermark: true };
+  };
+
   // PDF Downloads (avec filigrane automatique pour les gratuits, sans filigrane si abonné ou débloqué)
   const downloadCVPDF = async () => {
+    const quotaCheck = await checkAndConsumeQuota('cv_letter');
+    if (!quotaCheck.allowed) {
+      setPaywallRestrictionReason('quota_exceeded');
+      setPaymentDocTitle('Téléchargement CV Pro (Quota mensuel gratuit de 1 CV atteint)');
+      setPaymentDocType('cv');
+      setIsPaymentModalOpen(true);
+      return;
+    }
+
     setIsGeneratingPDF(true);
     setErrorMessage(null);
     try {
-      const isUnlocked = isVip || isCurrentDocPaid;
       const fullName = `${formData?.personalInfo?.firstName || ''}_${formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat';
       const fileName = `CV_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
       const success = await downloadElementAsPDF('cv-preview', fileName, {
-        watermark: !isUnlocked,
-        watermarkText: '⚡ Créé avec Dokya (dokya.sn)'
+        watermark: quotaCheck.watermark,
+        watermarkText: 'Créé avec Dokya.site'
       });
       if (success) {
         handlePostDownloadArchival('PDF');
+        if (quotaCheck.watermark) {
+          setSuccessMessage("CV exporté avec succès (1/1 génération gratuite du mois avec filigrane Dokya.site) !");
+          setTimeout(() => setSuccessMessage(null), 4000);
+        }
       }
     } catch (err: any) {
       console.error('Erreur lors du téléchargement du CV:', err);
@@ -1343,18 +1398,30 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   };
 
   const downloadLetterPDF = async () => {
+    const quotaCheck = await checkAndConsumeQuota('cv_letter');
+    if (!quotaCheck.allowed) {
+      setPaywallRestrictionReason('quota_exceeded');
+      setPaymentDocTitle('Téléchargement Lettre de Motivation (Quota mensuel gratuit de 1 lettre atteint)');
+      setPaymentDocType('letter');
+      setIsPaymentModalOpen(true);
+      return;
+    }
+
     setIsGeneratingPDF(true);
     setErrorMessage(null);
     try {
-      const isUnlocked = isVip || isCurrentDocPaid;
       const fullName = `${formData?.personalInfo?.firstName || ''}_${formData?.personalInfo?.lastName || ''}`.trim() || 'Candidat';
       const fileName = `Lettre_Motivation_${fullName.replace(/[\s\/\\]+/g, '_')}.pdf`;
       const success = await downloadElementAsPDF('letter-preview', fileName, {
-        watermark: !isUnlocked,
-        watermarkText: '⚡ Créé avec Dokya (dokya.sn)'
+        watermark: quotaCheck.watermark,
+        watermarkText: 'Créé avec Dokya.site'
       });
       if (success) {
         handlePostDownloadArchival('PDF');
+        if (quotaCheck.watermark) {
+          setSuccessMessage("Lettre exportée avec succès (1/1 génération gratuite du mois avec filigrane Dokya.site) !");
+          setTimeout(() => setSuccessMessage(null), 4000);
+        }
       }
     } catch (err: any) {
       console.error('Erreur lors du téléchargement de la Lettre:', err);
@@ -1365,15 +1432,29 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
   };
 
   const downloadBusinessDocPDF = async () => {
+    const quotaCheck = await checkAndConsumeQuota('invoice');
+    if (!quotaCheck.allowed) {
+      setPaywallRestrictionReason('quota_exceeded');
+      setPaymentDocTitle(businessDocData.type === 'devis' ? 'Devis Pro OHADA (Quota mensuel gratuit atteint)' : 'Facture Client OHADA (Quota mensuel gratuit atteint)');
+      setPaymentDocType(businessDocData.type === 'devis' ? 'devis' : 'facture');
+      setIsPaymentModalOpen(true);
+      return;
+    }
+
     setIsGeneratingPDF(true);
     try {
-      const isUnlocked = isVip || isCurrentDocPaid;
       const fileName = `${businessDocData.type === 'devis' ? 'Devis' : 'Facture'}_${businessDocData.docNumber || 'Pro'}.pdf`;
-      await downloadElementAsPDF('business-doc-preview', fileName, {
-        watermark: !isUnlocked,
-        watermarkText: '⚡ Créé avec Dokya (dokya.sn)'
+      const success = await downloadElementAsPDF('business-doc-preview', fileName, {
+        watermark: quotaCheck.watermark,
+        watermarkText: 'Créé avec Dokya.site'
       });
-      handlePostDownloadArchival('PDF');
+      if (success) {
+        handlePostDownloadArchival('PDF');
+        if (quotaCheck.watermark) {
+          setSuccessMessage("Document commercial exporté avec succès (1/1 création gratuite du mois avec filigrane Dokya.site) !");
+          setTimeout(() => setSuccessMessage(null), 4000);
+        }
+      }
     } catch (err) {
       console.error('Error generating Business Doc PDF:', err);
       setErrorMessage('Erreur lors de la création du fichier PDF.');
@@ -1382,17 +1463,22 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     }
   };
 
-  // Export as Word (.docx) - Bloqué pour les comptes gratuits si la formule à l'acte n'a pas été payée
+  // Export as Word (.docx) - Paywall à l'export si le quota gratuit est dépassé ou sans abonnement
   const handleExportDOCX = async () => {
-    const isUnlocked = isVip || isCurrentDocPaid;
-    if (!isUnlocked) {
+    const isDocxDocLetter = activeTab.startsWith('letter');
+    const isDocxDocBusiness = activeTab.startsWith('devis') || activeTab.startsWith('facture') || activeTab.startsWith('pack_business');
+    const category = isDocxDocBusiness ? 'invoice' : 'cv_letter';
+
+    const quotaCheck = await checkAndConsumeQuota(category);
+    if (!quotaCheck.allowed) {
       setPaywallRestrictionReason('docx_export');
       setPaymentDocTitle(
-        activeTab.startsWith('letter') ? 'Lettre de Motivation (Word .docx)' :
+        isDocxDocLetter ? 'Lettre de Motivation (Word .docx)' :
         activeTab.startsWith('devis') ? 'Devis Professionnel (Word .docx)' :
         activeTab.startsWith('facture') ? 'Facture Client (Word .docx)' :
         'CV Professionnel (Word .docx)'
       );
+      setPaymentDocType(isDocxDocBusiness ? (activeTab.startsWith('devis') ? 'devis' : 'facture') : (isDocxDocLetter ? 'letter' : 'cv'));
       setIsPaymentModalOpen(true);
       return;
     }
@@ -1400,18 +1486,18 @@ export default function App({ onOpenAdmin, onOpenPublicProduct, onOpenPublicStor
     setIsGeneratingDocx(true);
     setErrorMessage(null);
     try {
-      if (activeTab === 'letter' || activeTab === 'letter_preview') {
-        await exportLetterToDocx(formData, aiData, { watermark: !isUnlocked });
-      } else if (
-        activeTab === 'devis' || activeTab === 'devis_preview' ||
-        activeTab === 'facture' || activeTab === 'facture_preview' ||
-        activeTab === 'pack_business' || activeTab === 'pack_business_preview'
-      ) {
-        await exportBusinessDocToDocx(businessDocData, { watermark: !isUnlocked });
+      if (isDocxDocLetter) {
+        await exportLetterToDocx(formData, aiData, { watermark: quotaCheck.watermark });
+      } else if (isDocxDocBusiness) {
+        await exportBusinessDocToDocx(businessDocData, { watermark: quotaCheck.watermark });
       } else {
-        await exportCVToDocx(formData, aiData, { watermark: !isUnlocked });
+        await exportCVToDocx(formData, aiData, { watermark: quotaCheck.watermark });
       }
       handlePostDownloadArchival('DOCX');
+      if (quotaCheck.watermark) {
+        setSuccessMessage("Document Word (.docx) exporté avec succès (1/1 création gratuite du mois avec filigrane Dokya.site) !");
+        setTimeout(() => setSuccessMessage(null), 4000);
+      }
     } catch (err: any) {
       console.error("Erreur lors de l'export DOCX:", err);
       setErrorMessage("Impossible de générer le fichier Word (.docx).");

@@ -122,13 +122,10 @@ const FluidLetterThumbnail: React.FC<{
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState<number>(0.32);
 
-  const isLocked = !isVipActive && !template.isFree;
+  const isProTemplate = !template.isFree;
 
   const handleAction = () => {
-    if (isLocked) {
-      if (onOpenPaywall) onOpenPaywall();
-      return;
-    }
+    // Débloque complètement l'accès aux modèles PRO : n'importe quel utilisateur peut sélectionner, remplir et prévisualiser
     onSelect();
   };
 
@@ -199,9 +196,9 @@ const FluidLetterThumbnail: React.FC<{
               <Check className="w-3 h-3 stroke-[3]" />
               <span>Actif</span>
             </div>
-          ) : isLocked ? (
+          ) : isProTemplate ? (
             <div className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black tracking-wider flex items-center gap-1 shadow-md border border-amber-400">
-              <Lock className="w-2.5 h-2.5" />
+              <Sparkles className="w-2.5 h-2.5" />
               <span>PRO</span>
             </div>
           ) : (
@@ -242,8 +239,6 @@ const FluidLetterThumbnail: React.FC<{
             className={`flex-1 py-2 px-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md ${
               isSelected
                 ? 'bg-emerald-600 text-white'
-                : isLocked
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
                 : 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white'
             }`}
           >
@@ -251,11 +246,6 @@ const FluidLetterThumbnail: React.FC<{
               <>
                 <Check className="w-3.5 h-3.5 stroke-[3]" />
                 <span>Sélectionnée</span>
-              </>
-            ) : isLocked ? (
-              <>
-                <Lock className="w-3.5 h-3.5 text-slate-950" />
-                <span>Débloquer Pro</span>
               </>
             ) : (
               <>
@@ -292,9 +282,9 @@ const FluidLetterThumbnail: React.FC<{
             >
               {template.badge}
             </span>
-            {isLocked ? (
+            {isProTemplate ? (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 backdrop-blur-md flex items-center gap-1 border border-amber-400 shadow-xs">
-                <Lock className="w-3 h-3" />
+                <Sparkles className="w-3 h-3 text-slate-950" />
                 <span>PRO</span>
               </span>
             ) : (
@@ -328,18 +318,11 @@ const FluidLetterThumbnail: React.FC<{
             className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer ${
               isSelected
                 ? 'bg-emerald-600 text-white'
-                : isLocked
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/40'
                 : 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-blue-600/50'
             }`}
           >
             {isSelected ? (
               <span>✓ Modèle sélectionné</span>
-            ) : isLocked ? (
-              <>
-                <Lock className="w-4 h-4 text-slate-950" />
-                <span>Débloquer ce modèle Pro</span>
-              </>
             ) : (
               <>
                 <span>Sélectionner ce modèle</span>

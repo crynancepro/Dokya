@@ -32,6 +32,8 @@ interface DevisFactureFormProps {
   onPreview?: () => void;
   hideTypeSwitch?: boolean;
   onChangeTemplateRequest?: () => void;
+  isVip?: boolean;
+  onOpenPaywall?: () => void;
 }
 
 export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
@@ -41,7 +43,9 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
   onPreviewToggle,
   onPreview,
   hideTypeSwitch = false,
-  onChangeTemplateRequest
+  onChangeTemplateRequest,
+  isVip = false,
+  onOpenPaywall
 }) => {
   const isQuote = data.type === 'devis';
   const currency = data.currency || 'FCFA';
@@ -211,6 +215,13 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
       setTimeout(() => setBusinessSuccessMsg(null), 3000);
       return;
     }
+
+    if (!isVip && !selectedBusinessId && savedBusinesses.length >= 1) {
+      setBusinessSuccessMsg("Limite du plan gratuit atteinte (1 entreprise max). Passez à Dokya Pro pour en ajouter d'autres.");
+      setTimeout(() => setBusinessSuccessMsg(null), 4000);
+      return;
+    }
+
     setIsSavingBusiness(true);
     try {
       const currentUid = auth.currentUser?.uid || 'guest';
@@ -300,6 +311,12 @@ export const DevisFactureForm: React.FC<DevisFactureFormProps> = ({
     if (!phone) {
       setCustomerSuccessMsg('Veuillez renseigner le numéro WhatsApp du client.');
       setTimeout(() => setCustomerSuccessMsg(null), 3500);
+      return;
+    }
+
+    if (!isVip && !selectedCustomerId && savedCustomers.length >= 2) {
+      setCustomerSuccessMsg("Limite du plan gratuit atteinte (2 clients max). Passez à Dokya Pro pour un CRM illimité.");
+      setTimeout(() => setCustomerSuccessMsg(null), 4000);
       return;
     }
 

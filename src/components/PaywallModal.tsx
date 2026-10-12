@@ -641,7 +641,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                     type="text"
                     value={promoInput}
                     onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                    placeholder="Code Promo (ex: PETER, VIP100)"
+                    placeholder="Entrez votre code promo..."
                     disabled={isCheckingPromo}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 uppercase font-mono tracking-wider"
                   />

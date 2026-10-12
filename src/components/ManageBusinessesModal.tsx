@@ -16,6 +16,8 @@ interface ManageBusinessesModalProps {
   businesses: UserBusiness[];
   onSelectBusiness?: (business: UserBusiness) => void;
   initialEditingBusiness?: UserBusiness | null;
+  isVip?: boolean;
+  onOpenPricing?: () => void;
 }
 
 export const ManageBusinessesModal: React.FC<ManageBusinessesModalProps> = ({
@@ -23,7 +25,9 @@ export const ManageBusinessesModal: React.FC<ManageBusinessesModalProps> = ({
   onClose,
   businesses,
   onSelectBusiness,
-  initialEditingBusiness = null
+  initialEditingBusiness = null,
+  isVip = false,
+  onOpenPricing
 }) => {
   const currentUid = auth.currentUser?.uid || 'guest';
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +74,10 @@ export const ManageBusinessesModal: React.FC<ManageBusinessesModalProps> = ({
   };
 
   const handleStartCreate = () => {
+    if (!isVip && businesses.length >= 1) {
+      setErrorMessage("Limite du plan gratuit atteinte : 1 entreprise maximum. Passez à un abonnement Dokya Pro / VIP pour gérer plusieurs entreprises.");
+      return;
+    }
     resetForm();
     setIsDefault(businesses.length === 0);
     setViewMode('form');
@@ -124,6 +132,11 @@ export const ManageBusinessesModal: React.FC<ManageBusinessesModalProps> = ({
     const cleanName = companyName.trim();
     if (!cleanName) {
       setErrorMessage("La raison sociale de l'entreprise est obligatoire.");
+      return;
+    }
+
+    if (!editingId && !isVip && businesses.length >= 1) {
+      setErrorMessage("Limite du plan gratuit atteinte : 1 entreprise maximum. Passez à un abonnement Dokya Pro / VIP pour gérer plusieurs entreprises.");
       return;
     }
 
