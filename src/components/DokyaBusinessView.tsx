@@ -1039,6 +1039,10 @@ export const DokyaBusinessView: React.FC<DokyaBusinessViewProps> = ({
             <button
               type="button"
               onClick={() => {
+                if (!isVip && businesses.length >= 1) {
+                  setIsBusinessQuotaAlertOpen(true);
+                  return;
+                }
                 setEditingBusinessForModal(null);
                 setIsManageBusinessesModalOpen(true);
               }}

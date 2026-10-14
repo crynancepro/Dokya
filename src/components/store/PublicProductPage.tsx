@@ -142,6 +142,56 @@ export const PublicProductPage: React.FC<PublicProductPageProps> = ({
     return () => { isMounted = false; };
   }, [slug]);
 
+  // Synchronisation dynamique des cartes de partage social (Open Graph & Twitter)
+  useEffect(() => {
+    if (!product) return;
+
+    const formattedPrice = `${Number(product.price || 0).toLocaleString('fr-FR')} ${product.currency || 'FCFA'}`;
+    const pageTitle = `${product.title} - ${formattedPrice} | Dokya`;
+    document.title = pageTitle;
+
+    const rawDesc = (product.description || `Découvrez ${product.title} au prix de ${formattedPrice} sur Dokya.site.`)
+      .replace(/<[^>]*>?/gm, '')
+      .replace(/[\r\n]+/g, ' ')
+      .trim();
+    const cleanDesc = rawDesc.length > 200 ? rawDesc.substring(0, 197) + '...' : rawDesc;
+
+    const firstImage = product.images?.[0] || product.imageUrl || '';
+    let ogImageUrl = firstImage;
+    if (firstImage.startsWith('data:image/')) {
+      ogImageUrl = `${window.location.origin}/api/product-image/${encodeURIComponent(product.id || product.slug)}`;
+    } else if (firstImage.startsWith('/')) {
+      ogImageUrl = `${window.location.origin}${firstImage}`;
+    }
+
+    const setMetaTag = (attrName: 'property' | 'name', attrVal: string, content: string) => {
+      let tag = document.querySelector(`meta[${attrName}="${attrVal}"]`);
+      if (!tag) {
+        tag = document.createElement('meta');
+        tag.setAttribute(attrName, attrVal);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', content);
+    };
+
+    setMetaTag('property', 'og:title', `${product.title} - ${formattedPrice}`);
+    setMetaTag('property', 'og:description', cleanDesc);
+    if (ogImageUrl) {
+      setMetaTag('property', 'og:image', ogImageUrl);
+      setMetaTag('property', 'og:image:secure_url', ogImageUrl);
+    }
+    setMetaTag('property', 'og:url', window.location.href);
+    setMetaTag('property', 'og:type', 'product');
+
+    setMetaTag('name', 'description', cleanDesc);
+    setMetaTag('name', 'twitter:card', 'summary_large_image');
+    setMetaTag('name', 'twitter:title', `${product.title} - ${formattedPrice}`);
+    setMetaTag('name', 'twitter:description', cleanDesc);
+    if (ogImageUrl) {
+      setMetaTag('name', 'twitter:image', ogImageUrl);
+    }
+  }, [product]);
+
   // Fichiers inclus pour les produits digitaux
   const digitalFilesList: DigitalFileItem[] = useMemo(() => {
     if (product?.digitalFiles && product.digitalFiles.length > 0) {

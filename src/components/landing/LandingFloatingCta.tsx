@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Briefcase, Receipt, X, Sparkles, ArrowRight } from 'lucide-react';
+import { Briefcase, Receipt, X, Sparkles, Store } from 'lucide-react';
 
 interface LandingFloatingCtaProps {
-  onSelectService: (service: 'cv' | 'facture') => void;
+  onSelectService: (service: 'cv' | 'facture' | 'store' | 'televendeur') => void;
 }
 
 export const LandingFloatingCta: React.FC<LandingFloatingCtaProps> = ({ onSelectService }) => {
@@ -26,8 +26,8 @@ export const LandingFloatingCta: React.FC<LandingFloatingCtaProps> = ({ onSelect
   if (!isVisible || isDismissed) return null;
 
   return (
-    <aside aria-label="Actions rapides" className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 animate-in fade-in slide-in-from-bottom-5 duration-300">
-      <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-950/95 backdrop-blur-xl border border-indigo-500/30 shadow-2xl shadow-slate-950/80 flex items-center justify-between gap-3">
+    <aside aria-label="Actions rapides" className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-lg z-50 animate-in fade-in slide-in-from-bottom-5 duration-300">
+      <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/95 backdrop-blur-xl border border-indigo-500/30 shadow-2xl shadow-slate-950/80 flex items-center justify-between gap-3">
         
         {/* Info gauche */}
         <div className="flex items-center gap-2.5 min-w-0">
@@ -45,32 +45,42 @@ export const LandingFloatingCta: React.FC<LandingFloatingCtaProps> = ({ onSelect
         </div>
 
         {/* Boutons d'action rapides */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => onSelectService('cv')}
-            className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-black flex items-center gap-1 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+            className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-black flex items-center gap-1 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
             title="Créer un CV ATS"
           >
             <Briefcase className="w-3.5 h-3.5 text-amber-300" />
-            <span className="hidden xs:inline sm:inline">CV ATS</span>
+            <span>CV ATS</span>
           </button>
 
           <button
             type="button"
             onClick={() => onSelectService('facture')}
-            className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black flex items-center gap-1 shadow-md shadow-emerald-600/30 transition-all cursor-pointer active:scale-95"
+            className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black flex items-center gap-1 shadow-md shadow-emerald-600/30 transition-all cursor-pointer active:scale-95"
             title="Créer une Facture OHADA"
           >
             <Receipt className="w-3.5 h-3.5 text-emerald-200" />
-            <span className="hidden xs:inline sm:inline">Facture</span>
+            <span>Facture</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelectService('store')}
+            className="hidden sm:inline-flex px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-black items-center gap-1 transition-all cursor-pointer active:scale-95"
+            title="Boutique & Télévendeur"
+          >
+            <Store className="w-3.5 h-3.5 text-amber-400" />
+            <span>Store</span>
           </button>
 
           {/* Fermer */}
           <button
             type="button"
             onClick={() => setIsDismissed(true)}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ml-1"
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ml-0.5"
             title="Masquer"
           >
             <X className="w-4 h-4" />

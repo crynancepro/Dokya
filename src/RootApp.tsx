@@ -25,13 +25,19 @@ function parseRoute(): { view: AppViewMode; slug?: string; username?: string } {
     return { view: 'public_store', username: searchParams.get('b') || '' };
   }
 
-  // Check pathname: /p/[slug]
+  // Check pathname: /p/[slug] or /p/[id]
   const productPathMatch = pathname.match(/^\/p\/([^\/]+)/);
   if (productPathMatch) {
     return { view: 'public_product', slug: productPathMatch[1] };
   }
 
-  // Check pathname: /b/[username]
+  // Check pathname: /b/[seller]/[product]
+  const sellerProductPathMatch = pathname.match(/^\/b\/([^\/]+)\/([^\/]+)/);
+  if (sellerProductPathMatch) {
+    return { view: 'public_product', slug: sellerProductPathMatch[2], username: sellerProductPathMatch[1] };
+  }
+
+  // Check pathname: /b/[username] (store vitrine)
   const storePathMatch = pathname.match(/^\/b\/([^\/]+)/);
   if (storePathMatch) {
     return { view: 'public_store', username: storePathMatch[1] };
@@ -41,6 +47,12 @@ function parseRoute(): { view: AppViewMode; slug?: string; username?: string } {
   const productHashMatch = hash.match(/^#\/?p\/([^\/]+)/);
   if (productHashMatch) {
     return { view: 'public_product', slug: productHashMatch[1] };
+  }
+
+  // Check hash: #/b/[seller]/[product]
+  const sellerProductHashMatch = hash.match(/^#\/?b\/([^\/]+)\/([^\/]+)/);
+  if (sellerProductHashMatch) {
+    return { view: 'public_product', slug: sellerProductHashMatch[2], username: sellerProductHashMatch[1] };
   }
 
   // Check hash: #/b/[username] or #b/[username]

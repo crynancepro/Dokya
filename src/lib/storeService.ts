@@ -13,7 +13,7 @@ import {
   increment 
 } from 'firebase/firestore';
 import { ProductItem, StoreOrder, SellerStoreProfile, StoreOrderStatus, SellerReview } from '../types';
-import { createNotification } from './firebase';
+import { createNotification, recordTransactionEverywhere } from './firebase';
 
 const PRODUCTS_COLLECTION = 'products';
 const STORE_ORDERS_COLLECTION = 'store_orders';
@@ -1157,5 +1157,271 @@ export async function fetchSellerReviews(sellerId?: string): Promise<SellerRevie
 
   const reviews = Array.from(reviewsMap.values());
   return reviews.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+/**
+ * ============================================================================
+ * FONCTIONS D'ADMINISTRATION : COMMANDES TÉLÉVENTES & MODÉRATION DES AVIS
+ * ============================================================================
+ */
+
+/**
+ * Récupère l'intégralité des commandes de télévente (pour le panneau Super Admin)
+ */
+export async function fetchAllTelemarketerOrders(): Promise<StoreOrder[]> {
+  const ordersMap = new Map<string, StoreOrder>();
+
+  // 1. Firestore query
+  try {
+    const q = query(collection(db, STORE_ORDERS_COLLECTION));
+    const snap = await getDocs(q);
+    snap.forEach(d => {
+      const order = d.data() as StoreOrder;
+      if (order && order.id) {
+        ordersMap.set(order.id, order);
+      }
+    });
+  } catch (err) {
+    console.warn('[StoreService] Erreur fetchAllTelemarketerOrders Firestore:', err);
+  }
+
+  // 2. LocalStorage scan fallback
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith(LOCAL_TELEMARKETER_ORDERS_PREFIX) || k.startsWith(LOCAL_ORDERS_PREFIX))) {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const list: StoreOrder[] = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              list.forEach(o => {
+                if (o && o.id && !ordersMap.has(o.id)) ordersMap.set(o.id, o);
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (_e) {}
+
+  const orders = Array.from(ordersMap.values());
+  return orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+/**
+ * Validation forcée d'une commission télévendeur par l'Administrateur
+ * Crédite immédiatement le solde du télévendeur et envoie une notification
+ */
+export async function adminForceValidateCommission(params: {
+  orderId: string;
+  adminEmail: string;
+  note?: string;
+}): Promise<boolean> {
+  const { orderId, adminEmail, note } = params;
+  const now = new Date().toISOString();
+
+  try {
+    // 1. Récupération de la commande
+    const orderDocRef = doc(db, STORE_ORDERS_COLLECTION, orderId);
+    const snap = await getDoc(orderDocRef);
+    if (!snap.exists()) {
+      throw new Error(`Commande introuvable : ${orderId}`);
+    }
+    const order = snap.data() as StoreOrder;
+
+    const netCommission = Number(order.commissionNet || order.commissionGross || 0);
+    const telemarketerId = order.telemarketerId;
+
+    // 2. Mise à jour de la commande
+    await updateDoc(orderDocRef, {
+      status: 'delivered',
+      commissionStatus: 'paid',
+      forceValidatedByAdmin: true,
+      adminValidatedAt: now,
+      adminValidatorEmail: adminEmail,
+      adminValidationNote: note || 'Commission validée administrativement par le Super Admin',
+      updatedAt: now
+    });
+
+    // 3. Crédit du solde du télévendeur
+    if (telemarketerId && netCommission > 0) {
+      try {
+        const userRef = doc(db, 'users', telemarketerId);
+        const userSnap = await getDoc(userRef);
+        const curBal = userSnap.exists() ? Number(userSnap.data().balance || userSnap.data().walletBalance || 0) : 0;
+        const newBal = curBal + netCommission;
+
+        await updateDoc(userRef, {
+          balance: newBal,
+          walletBalance: newBal,
+          updatedAt: now
+        });
+
+        try {
+          await updateDoc(doc(db, 'candidates', telemarketerId), {
+            balance: newBal,
+            walletBalance: newBal,
+            updatedAt: now
+          });
+        } catch (_cErr) {}
+
+        // Enregistrer la transaction d'ajustement
+        const txId = `TX-COMM-FORCE-${Date.now()}`;
+        await recordTransactionEverywhere({
+          id: txId,
+          transactionId: txId,
+          userId: telemarketerId,
+          userEmail: order.telemarketerEmail || 'televendeur@dokya.sn',
+          userName: order.telemarketerName || 'Télévendeur Dokya',
+          type: 'commission',
+          amount: netCommission,
+          expectedAmount: netCommission,
+          currency: order.currency || 'FCFA',
+          description: `Commission validée par l'admin (Commande ${order.id} : ${order.productTitle})`,
+          status: 'SUCCESS',
+          aiStatus: 'COMPLETED',
+          paymentMethod: 'wallet',
+          createdAt: now,
+          updatedAt: now
+        });
+
+        // Notification instantanée
+        await createNotification(telemarketerId, {
+          title: 'Commission Validée par l\'Admin !',
+          message: `Votre commission de +${netCommission.toLocaleString('fr-FR')} ${order.currency || 'FCFA'} sur la commande ${order.id} a été validée et créditée sur votre solde.`,
+          type: 'success',
+          tabTarget: 'orders'
+        });
+      } catch (balErr) {
+        console.warn('[AdminForceValidate] Erreur crédit solde télévendeur:', balErr);
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[AdminForceValidate] Erreur:', err);
+    throw err;
+  }
+}
+
+/**
+ * Annulation d'une commission télévendeur injustifiée par l'Administrateur
+ */
+export async function adminCancelCommission(params: {
+  orderId: string;
+  adminEmail: string;
+  reason: string;
+}): Promise<boolean> {
+  const { orderId, adminEmail, reason } = params;
+  const now = new Date().toISOString();
+
+  try {
+    const orderDocRef = doc(db, STORE_ORDERS_COLLECTION, orderId);
+    const snap = await getDoc(orderDocRef);
+    if (!snap.exists()) {
+      throw new Error(`Commande introuvable : ${orderId}`);
+    }
+    const order = snap.data() as StoreOrder;
+
+    await updateDoc(orderDocRef, {
+      status: 'cancelled',
+      commissionStatus: 'cancelled',
+      isCommissionCancelled: true,
+      adminCancelledAt: now,
+      adminCancellerEmail: adminEmail,
+      adminCancellationReason: reason,
+      updatedAt: now
+    });
+
+    // Notification au télévendeur
+    if (order.telemarketerId) {
+      await createNotification(order.telemarketerId, {
+        title: 'Commission Annulée par l\'Admin',
+        message: `La commission sur la commande ${order.id} (${order.productTitle}) a été annulée. Motif : ${reason}`,
+        type: 'warning',
+        tabTarget: 'orders'
+      });
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[AdminCancelCommission] Erreur:', err);
+    throw err;
+  }
+}
+
+/**
+ * Approuve un avis déposé par un télévendeur
+ */
+export async function adminApproveSellerReview(reviewId: string, adminEmail: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  try {
+    const docRef = doc(db, SELLER_REVIEWS_COLLECTION, reviewId);
+    await updateDoc(docRef, {
+      status: 'approved',
+      moderatedAt: now,
+      moderatedBy: adminEmail
+    });
+
+    // Mettre à jour dans localStorage
+    if (typeof localStorage !== 'undefined') {
+      const globalKey = 'dokya_all_seller_reviews';
+      const raw = localStorage.getItem(globalKey);
+      if (raw) {
+        const list: SellerReview[] = JSON.parse(raw);
+        const item = list.find(r => r.id === reviewId);
+        if (item) {
+          item.status = 'approved';
+          item.moderatedAt = now;
+          item.moderatedBy = adminEmail;
+          localStorage.setItem(globalKey, JSON.stringify(list));
+        }
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[AdminApproveSellerReview] Erreur:', err);
+    throw err;
+  }
+}
+
+/**
+ * Supprime définitivement un avis litigieux ou diffamatoire
+ */
+export async function adminDeleteSellerReview(reviewId: string): Promise<boolean> {
+  try {
+    const docRef = doc(db, SELLER_REVIEWS_COLLECTION, reviewId);
+    await deleteDoc(docRef);
+
+    // Supprimer des caches locaux
+    if (typeof localStorage !== 'undefined') {
+      const globalKey = 'dokya_all_seller_reviews';
+      const raw = localStorage.getItem(globalKey);
+      if (raw) {
+        const list: SellerReview[] = JSON.parse(raw);
+        const filtered = list.filter(r => r.id !== reviewId);
+        localStorage.setItem(globalKey, JSON.stringify(filtered));
+      }
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(LOCAL_REVIEWS_PREFIX)) {
+          const rRaw = localStorage.getItem(k);
+          if (rRaw) {
+            const rList: SellerReview[] = JSON.parse(rRaw);
+            const rFiltered = rList.filter(r => r.id !== reviewId);
+            localStorage.setItem(k, JSON.stringify(rFiltered));
+          }
+        }
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[AdminDeleteSellerReview] Erreur:', err);
+    throw err;
+  }
 }
 

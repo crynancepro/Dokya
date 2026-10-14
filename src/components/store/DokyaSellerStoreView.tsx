@@ -24,6 +24,7 @@ import {
   Settings, 
   Link as LinkIcon, 
   ArrowUpRight, 
+  ArrowRight,
   DollarSign, 
   Calendar, 
   User, 

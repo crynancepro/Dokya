@@ -26,7 +26,12 @@ import {
   Menu,
   X,
   Award,
-  Coins
+  Coins,
+  Store,
+  Share2,
+  Calculator,
+  TrendingUp,
+  Target
 } from 'lucide-react';
 import { DokyaLogo } from './DokyaLogo';
 import { auth } from '../lib/firebase';
@@ -40,6 +45,9 @@ import { LandingAtsSimulator } from './landing/LandingAtsSimulator';
 import { LandingComparison } from './landing/LandingComparison';
 import { LandingTestimonials } from './landing/LandingTestimonials';
 import { LandingFloatingCta } from './landing/LandingFloatingCta';
+import { LandingStoreShowcase } from './landing/LandingStoreShowcase';
+import { LandingTelesellerSection } from './landing/LandingTelesellerSection';
+import { LandingRoiCalculator } from './landing/LandingRoiCalculator';
 import { useLocale } from '../contexts/LocaleContext';
 import { usePricing } from '../contexts/PricingContext';
 
@@ -70,16 +78,16 @@ export interface PricingPlan {
 const PRICING_PLANS: PricingPlan[] = [
   {
     id: 'free',
-    title: 'Formule Gratuite',
+    title: 'Formule Découverte',
     amountXOF: 0,
     periodLabel: '/ mois',
-    subtitle: 'Idéal pour tester la plateforme Dokya sans engagement',
-    tag: 'Découverte Gratuite',
+    subtitle: 'Idéal pour tester Dokya sans engagement',
+    tag: 'Accès Gratuit',
     colorScheme: 'slate',
     features: [
-      '1 CV ATS par mois avec filigrane Dokya obligatoire',
-      '1 Lettre de motivation par mois avec filigrane Dokya',
-      '1 Facture & 1 Devis par mois avec filigrane Dokya',
+      '1 CV ATS par mois avec filigrane Dokya.site',
+      '1 Lettre de motivation par mois avec filigrane',
+      '1 Facture & 1 Devis par mois avec filigrane',
       'Accès aux 50+ modèles et assistant IA de rédaction',
       'Aperçu interactif et stockage de vos documents'
     ]
@@ -90,14 +98,14 @@ const PRICING_PLANS: PricingPlan[] = [
     amountXOF: 1000,
     periodLabel: '/ document',
     subtitle: 'Paiement unique sans abonnement pour débloquer votre document',
-    tag: 'Paiement Unique',
+    tag: 'Sans Engagement',
     colorScheme: 'indigo',
     features: [
-      'Téléchargement haute définition sans filigrane',
-      'Exports illimités en PDF vectoriel HD & Word (.docx)',
+      'Téléchargement HD haute fidélité SANS FILIGRANE',
+      'Exports illimités en PDF vectoriel & Word (.docx)',
       'Score de conformité ATS supérieur à 98%',
       'Archivage sécurisé et ré-édition sans frais supplémentaires',
-      'Accès instantané via votre solde ou Mobile Money'
+      'Règlement instantané Wave, OM ou Carte bancaire'
     ]
   },
   {
@@ -107,11 +115,11 @@ const PRICING_PLANS: PricingPlan[] = [
     periodLabel: '/ mois',
     subtitle: 'Accès complet illimité • Idéal pour booster votre carrière et vos ventes',
     popular: true,
-    tag: '🔥 Le Plus Choisi',
+    tag: 'Recommandé Pro',
     colorScheme: 'amber',
     features: [
       'CV & Lettres de motivation ILLIMITÉS SANS FILIGRANE',
-      'Boutique vendeur Dokya Store intégrée en 1-clic',
+      'Boutique vendeur Dokya Store en ligne (URL exclusive)',
       'Factures & Devis professionnels OHADA illimités',
       'Gestion complète de vos Clients & Suivi des Stocks',
       'Simulateur d\'entretien RH & Support prioritaire WhatsApp'
@@ -123,10 +131,10 @@ const PRICING_PLANS: PricingPlan[] = [
     amountXOF: 25000,
     periodLabel: '/ 6 mois',
     subtitle: 'Économisez 20% sur votre abonnement complet',
-    tag: '💎 Forfait 6 Mois (-20%)',
+    tag: 'Pack 6 Mois (-20%)',
     colorScheme: 'indigo',
     features: [
-      'Accès complet illimité pendant 6 mois complets',
+      'Accès complet illimité pendant 6 mois entiers',
       'CV & Lettres illimités sans filigrane',
       'Boutique vendeur, Factures & Devis illimités',
       'Gestion Clientèle & Gestion des Stocks avancée',
@@ -139,7 +147,7 @@ const PRICING_PLANS: PricingPlan[] = [
     amountXOF: 45000,
     periodLabel: '/ an',
     subtitle: 'Économisez 40% sur toute l\'année',
-    tag: '👑 Meilleure Offre (-40%)',
+    tag: 'Offre VIP (-40%)',
     colorScheme: 'emerald',
     features: [
       'Accès VIP Illimité pendant 1 an complet (365 jours)',
@@ -161,6 +169,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedHeroPillar, setSelectedHeroPillar] = useState<'cv' | 'facture' | 'store' | 'televendeur'>('cv');
   
   const currentUser = auth.currentUser;
   const { publishedPromo, calculateDiscountedPrice } = usePricing();
@@ -174,7 +183,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
-  const handleActionClick = (service?: 'cv' | 'letter' | 'devis' | 'facture') => {
+  const handleActionClick = (service?: 'cv' | 'letter' | 'devis' | 'facture' | 'store' | 'televendeur') => {
+    if (service === 'televendeur') {
+      if (onGoToTelemarketer) {
+        onGoToTelemarketer();
+      } else if (currentUser) {
+        onGoToDashboard();
+      } else {
+        onGoToAuth('signup');
+      }
+      return;
+    }
+
+    if (service === 'store') {
+      const el = document.getElementById('boutique-store');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      } else if (currentUser) {
+        onGoToDashboard();
+      } else {
+        onGoToAuth('signup');
+      }
+      return;
+    }
+
     if (currentUser) {
       if (service) {
         onSelectService(service);
@@ -188,28 +220,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const faqs = [
     {
-      q: "Comment fonctionne la double solution CV ATS & Factures OHADA sur Dokya ?",
-      a: "Dokya regroupe sur une seule interface intelligente les deux outils documentaires indispensables : 1. Pour votre carrière, un générateur de CV certifiés ATS conformes aux exigences des recruteurs internationaux et locaux. 2. Pour votre activité, un module de facturation et devis strictement conforme au droit comptable OHADA (UEMOA/CEMAC) avec calculs automatisés et mentions légales obligatoires."
+      q: "Quelles sont les 4 grandes solutions réunies sur Dokya ?",
+      a: "Dokya regroupe sur une plateforme unique et ultra-rapide 4 outils d'exception : 1. CV ATS & Lettres IA : plus de 50 modèles vectoriels conformes aux exigences des recruteurs mondiaux (Workday, Taleo, Greenhouse). 2. Factures & Devis OHADA : conformité comptable SYSCOHADA (UEMOA/CEMAC), TVA 18%, NINEA et arrêté en toutes lettres. 3. Boutique Dokya Store : création de vitrines e-commerce sans code avec URL dédiée et fiches produits partagées sur WhatsApp. 4. Réseau Télévendeurs : monétisation de votre audience en recommandant des produits vérifiés avec versement immédiat des commissions par Mobile Money."
     },
     {
       q: "Pourquoi les CV Dokya garantissent-ils un score ATS supérieur à 98% ?",
       a: "Nos modèles utilisent une structure de balisage sémantique vectorielle sans tableaux imbriqués opaques ni éléments graphiques non parsables. Ils sont testés et validés auprès des principaux moteurs de filtrage (Workday, Taleo, Greenhouse, BambooHR) pour assurer une extraction exacte de vos compétences et expériences."
     },
     {
-      q: "Comment s'effectue le paiement instantané via Money Fusion ?",
-      a: "Le paiement est 100% automatisé et sans délai : dès que vous cliquez sur le bouton de paiement, vous êtes redirigé vers la passerelle sécurisée Money Fusion. Vous pouvez régler directement via Wave Sénégal, Orange Money, MTN Moov ou par QR Code Express. Dès validation, votre document ou abonnement est activé immédiatement sans envoi de capture d'écran."
+      q: "Comment fonctionne la Boutique Vendeur Dokya Store ?",
+      a: "Chaque vendeur dispose d'une page publique personnalisée (ex: dokya.site/b/votre-nom) accessible dans le monde entier. Vos clients peuvent parcourir vos articles, commander par WhatsApp ou payer directement. Les fiches produits intègrent des vignettes HD optimisées pour les réseaux sociaux et peuvent être promues par des télévendeurs affiliés."
     },
     {
-      q: "Les factures et devis sont-ils conformes aux normes fiscales OHADA / UEMOA ?",
-      a: "Oui, à 100%. Nos factures intègrent automatiquement le Numéro d'Identification Nationale des Entreprises et Associations (NINEA), le Registre de Commerce (RC), la TVA (18%), l'arrêté de la somme en toutes lettres ainsi que les coordonnées de règlement Mobile Money et bancaires."
+      q: "Comment devenir Télévendeur Indépendant et toucher des commissions ?",
+      a: "L'inscription comme télévendeur est gratuite. Vous choisissez des articles dans le catalogue vendeur, partagez vos liens trackés et touchez 20% de commission par défaut sur les ventes générées. Avec le Mode VIP, vous touchez 100% de la commission sans retenue de plateforme. Les gains sont retirables immédiatement par Wave ou Orange Money."
     },
     {
-      q: "Quelles sont les formules tarifaires proposées ?",
-      a: "Dokya propose une formule Gratuite (0 $ / mois avec 1 CV, 1 lettre, 1 facture et 1 devis par mois avec filigrane Dokya), l'achat à l'acte à 1.99 $ par CV et 1.99 $ par lettre sans filigrane, et des abonnements Premium complets (Mensuel à 9.99 $, 6 Mois à 47.95 $ et Annuel à 71.90 $) donnant un accès illimité à tous les documents sans filigrane, à la boutique vendeur, à la facturation OHADA et à la gestion de stock et clients."
+      q: "Comment s'effectue le paiement instantané sans délai ?",
+      a: "Le paiement est 100% automatisé : dès validation via Money Fusion ou nos passerelles intégrées, vous réglez par Wave, Orange Money, MTN, Moov, Carte bancaire ou Apple Pay. Vos documents et abonnements sont débloqués immédiatement sans avoir à envoyer de capture d'écran."
     },
     {
       q: "Puis-je exporter mes documents au format Word (.docx) et PDF ?",
-      a: "Oui. Chaque document généré peut être téléchargé instantanément en PDF vectoriel A4 prêt pour l'impression ou l'envoi email, ainsi qu'au format Word (.docx) entièrement éditable sur Microsoft Word, Google Docs ou LibreOffice."
+      a: "Oui ! Chaque document généré (CV, lettre de motivation, devis, facture) peut être téléchargé instantanément en PDF A4 vectoriel haute fidélité pour impression et en fichier Word (.docx) 100% éditable sur Microsoft Word, Google Docs ou LibreOffice."
     }
   ];
 
@@ -228,8 +260,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           />
 
-          {/* Nav items compact & streamlined */}
-          <nav className="hidden lg:flex items-center gap-4 xl:gap-6 text-xs font-semibold text-slate-300">
+          {/* Navigation Links (Typographie épurée sans pills parasites) */}
+          <nav className="hidden lg:flex items-center gap-5 xl:gap-7 text-xs font-semibold text-slate-300">
             <a 
               href="#carrousels-section" 
               className="hover:text-cyan-400 transition-colors cursor-pointer whitespace-nowrap"
@@ -243,8 +275,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Simulateur IA
             </a>
             <a 
-              href="#tarifs" 
+              href="#boutique-store" 
+              className="hover:text-amber-400 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Boutique Store
+            </a>
+            <a 
+              href="#televendeurs" 
               className="hover:text-emerald-400 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Télévendeurs
+            </a>
+            <a 
+              href="#calculateur-impact" 
+              className="hover:text-teal-400 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Calculateur ROI
+            </a>
+            <a 
+              href="#tarifs" 
+              className="hover:text-amber-300 transition-colors cursor-pointer whitespace-nowrap"
             >
               Tarifs
             </a>
@@ -258,7 +308,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           {/* Action CTAs */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Lien direct Portail Télévendeurs */}
+            {/* Bouton Portail Télévendeurs */}
             <button
               type="button"
               onClick={onGoToTelemarketer ? onGoToTelemarketer : onGoToDashboard}
@@ -331,13 +381,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <span>Modèles Réels 3D (CV &amp; Factures)</span>
               </a>
               <a
-                href="#comment-ca-marche"
-                onClick={() => setMobileMenuOpen(false)}
-                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
-              >
-                Comment ça marche (3 étapes)
-              </a>
-              <a
                 href="#simulateur-ats"
                 onClick={() => setMobileMenuOpen(false)}
                 className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-indigo-400 transition-colors flex items-center gap-2"
@@ -346,26 +389,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <span>Simulateur ATS &amp; Reformulation IA</span>
               </a>
               <a
-                href="#comparatif"
+                href="#boutique-store"
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors flex items-center gap-2"
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-amber-400 transition-colors flex items-center gap-2"
               >
-                <Award className="w-4 h-4 text-amber-400" />
-                <span>Tableau Comparatif Dokya</span>
+                <Store className="w-4 h-4 text-amber-400" />
+                <span>Boutique Vendeur Dokya Store</span>
               </a>
               <a
-                href="#tech-3d"
+                href="#televendeurs"
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-emerald-400 transition-colors flex items-center gap-2"
               >
-                Piliers Technologiques
+                <Briefcase className="w-4 h-4 text-emerald-400" />
+                <span>Espace Télévendeurs &amp; Affiliés</span>
               </a>
               <a
-                href="#services"
+                href="#calculateur-impact"
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-white transition-colors"
+                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-teal-400 transition-colors flex items-center gap-2"
               >
-                Double Solution (Carrière &amp; PME)
+                <Calculator className="w-4 h-4 text-teal-400" />
+                <span>Calculateur ROI &amp; Gains</span>
               </a>
               <a
                 href="#tarifs"
@@ -374,13 +419,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               >
                 <Zap className="w-4 h-4 text-emerald-400" />
                 <span>Tarifs &amp; Mobile Money (Dès 1 000 F)</span>
-              </a>
-              <a
-                href="#avis"
-                onClick={() => setMobileMenuOpen(false)}
-                className="py-2 px-3 rounded-lg hover:bg-slate-900 hover:text-amber-300 transition-colors"
-              >
-                Avis Clients &amp; Réussites
               </a>
               <a
                 href="#faq"
@@ -399,7 +437,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 className="w-full py-2.5 px-3 rounded-xl bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 font-bold text-xs flex items-center gap-2 text-left"
               >
                 <Briefcase className="w-4 h-4 text-emerald-400" />
-                <span>Espace Télévendeurs &amp; Affiliés</span>
+                <span>Portail Télévendeurs &amp; Affiliés</span>
               </button>
             </nav>
 
@@ -432,68 +470,171 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </header>
 
       {/* ========================================================================= */}
-      {/* 2. HERO SECTION AVEC VITRINE 3D SPATIALE                                  */}
+      {/* 2. HERO SECTION AMÉLIORÉE (4 PILIERS INTERACTIFS & VITRINE 3D SPATIALE)   */}
       {/* ========================================================================= */}
-      <section id="hero-section" className="relative overflow-hidden pt-7 pb-12 sm:pt-10 sm:pb-16 border-b border-slate-800/70">
+      <section id="hero-section" className="relative overflow-hidden pt-8 pb-14 sm:pt-12 sm:pb-20 border-b border-slate-800/70">
         
         {/* Glows d'ambiance volumétriques */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-gradient-to-tr from-indigo-600/20 via-cyan-600/15 to-emerald-500/10 blur-3xl pointer-events-none rounded-full" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[850px] h-[550px] bg-gradient-to-tr from-indigo-600/20 via-cyan-600/15 to-emerald-500/15 blur-3xl pointer-events-none rounded-full" />
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center space-y-8">
           
-          {/* Badge International */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-bold text-slate-300 shadow-md">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-            <Globe className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-cyan-300">Portée Internationale &amp; Afrique UEMOA</span>
-            <span className="text-slate-600">•</span>
-            <span className="text-slate-300">Standard Mondial ATS &amp; OHADA</span>
+          {/* Metadata Bar Anti-Slop (Texte épuré avec séparateurs discrets) */}
+          <div className="flex items-center justify-center gap-2 sm:gap-3 text-xs text-slate-400 font-medium flex-wrap">
+            <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+              Standard Mondial ATS &amp; OHADA
+            </span>
+            <span aria-hidden="true" className="text-slate-600">·</span>
+            <span>50+ Modèles Réels Vectoriels</span>
+            <span aria-hidden="true" className="text-slate-600">·</span>
+            <span>Boutiques E-Commerce</span>
+            <span aria-hidden="true" className="text-slate-600">·</span>
+            <span>Réseau Télévendeurs</span>
           </div>
 
-          {/* Headline Principal avec Double Proposition de Valeur */}
+          {/* Headline Principal avec les 4 Pôles Majeurs */}
           <div className="space-y-4 max-w-5xl mx-auto">
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.16]">
-              CV ATS Internationaux &amp; Factures Pro <br className="hidden sm:inline" />
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.14]">
+              CV ATS Internationaux, Factures OHADA <br className="hidden sm:inline" />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-cyan-300 to-emerald-400">
-                propulsés par l'Intelligence Artificielle
+                &amp; Boutiques Vendeurs propulsés par l'IA
               </span>
             </h1>
             <p className="text-base sm:text-lg text-slate-300 max-w-3xl mx-auto font-normal leading-relaxed">
-              Propulsez votre carrière à l’international et professionnalisez votre facturation d’entreprise. 
-              Dokya combine la rédaction intelligente par l’IA, le respect strict des filtres ATS et la conformité légale OHADA.
+              Propulsez votre carrière à l'international, professionnalisez votre facturation d'entreprise, ouvrez votre boutique en ligne et monétisez votre audience grâce au réseau de télévendeurs Dokya.
             </p>
           </div>
 
-          {/* DEUX BOUTONS D'ACTION DISTINCTS */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
-            
-            {/* Bouton 1: Créer mon CV Pro */}
-            <button
-              type="button"
-              onClick={() => handleActionClick('cv')}
-              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-black text-sm sm:text-base shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 transition-all hover:scale-102 cursor-pointer active:scale-95 group"
-            >
-              <Briefcase className="w-5 h-5 text-amber-300" />
-              <span>Créer mon CV Pro (ATS)</span>
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </button>
+          {/* SÉLECTEUR INTERACTIF DES 4 PILIERS DE LA PLATEFORME */}
+          <div className="flex justify-center pt-1">
+            <div className="p-1 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl flex items-center gap-1 flex-wrap justify-center">
+              <button
+                type="button"
+                onClick={() => setSelectedHeroPillar('cv')}
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedHeroPillar === 'cv'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Briefcase className="w-3.5 h-3.5 text-amber-300" />
+                <span>1. CV ATS &amp; Carrière</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedHeroPillar('facture')}
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedHeroPillar === 'facture'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Receipt className="w-3.5 h-3.5 text-emerald-200" />
+                <span>2. Facturation OHADA</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedHeroPillar('store')}
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedHeroPillar === 'store'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5 text-amber-300" />
+                <span>3. Dokya Store</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedHeroPillar('televendeur')}
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedHeroPillar === 'televendeur'
+                    ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5 text-teal-200" />
+                <span>4. Espace Télévendeurs</span>
+              </button>
+            </div>
+          </div>
 
-            {/* Bouton 2: Créer une Facture */}
-            <button
-              type="button"
-              onClick={() => handleActionClick('facture')}
-              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-black text-sm sm:text-base shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-3 transition-all hover:scale-102 cursor-pointer active:scale-95 group"
-            >
-              <Receipt className="w-5 h-5 text-emerald-200" />
-              <span>Créer une Facture (OHADA)</span>
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </button>
-
+          {/* DÉTAIL DU PILIER SÉLECTIONNÉ & BOUTONS D'ACTION */}
+          <div className="max-w-3xl mx-auto p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-300 animate-in fade-in duration-300">
+            {selectedHeroPillar === 'cv' && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-left space-y-1">
+                  <div className="font-black text-white text-sm">Générateur de CV &amp; Lettres de Motivation ATS</div>
+                  <p className="text-slate-400">Score de parsing garanti 98%+, compatible Workday &amp; Taleo, IA de reformulation Gemini et simulation d'entretien RH.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleActionClick('cv')}
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shrink-0 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+                >
+                  <Briefcase className="w-4 h-4 text-amber-300" />
+                  <span>Créer mon CV ATS</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+            {selectedHeroPillar === 'facture' && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-left space-y-1">
+                  <div className="font-black text-white text-sm">Module Facturation Pro &amp; Devis Commerciaux OHADA</div>
+                  <p className="text-slate-400">Conforme SYSCOHADA (UEMOA/CEMAC), calcul automatique TVA 18%, mentions légales NINEA &amp; RC, conversion devis en 1-clic.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleActionClick('facture')}
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shrink-0 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                >
+                  <Receipt className="w-4 h-4 text-emerald-200" />
+                  <span>Créer une Facture Pro</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+            {selectedHeroPillar === 'store' && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-left space-y-1">
+                  <div className="font-black text-white text-sm">Boutique Vendeur Dokya Store E-Commerce</div>
+                  <p className="text-slate-400">Ouvrez votre boutique en ligne avec URL personnalisée dokya.site/b/[nom], fiches WhatsApp optimisées et gestion de stock.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleActionClick('store')}
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-2 shrink-0 shadow-lg shadow-amber-600/30 transition-all cursor-pointer"
+                >
+                  <Store className="w-4 h-4 text-amber-200" />
+                  <span>Explorer le Store</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+            {selectedHeroPillar === 'televendeur' && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-left space-y-1">
+                  <div className="font-black text-white text-sm">Réseau Télévendeurs Indépendants &amp; Affiliés</div>
+                  <p className="text-slate-400">Recommandez des produits du catalogue, partagez vos liens trackés et touchez 20% à 100% de commission payée par Mobile Money.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleActionClick('televendeur')}
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 shrink-0 shadow-lg shadow-teal-600/30 transition-all cursor-pointer"
+                >
+                  <Coins className="w-4 h-4 text-teal-200" />
+                  <span>Devenir Télévendeur</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* VITRINE 3D INTERACTIVE HERO (CV ATS & FACTURE EN RELIEF) */}
-          <div className="pt-4">
-            <LandingHero3DShowcase onSelectService={handleActionClick} />
+          <div className="pt-2">
+            <LandingHero3DShowcase onSelectService={(service) => handleActionClick(service)} />
           </div>
 
           {/* RUBAN DÉFILANT DES VRAIS LOGOS DE PAIEMENT (WAVE, OM, MTN, MOOV, VISA, MASTERCARD, APPLE PAY, STRIPE) */}
@@ -501,7 +642,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <LandingPaymentMarquee />
           </div>
 
-          {/* Social Proof & Indicateurs d'Excellence */}
+          {/* Indicateurs de Confiance & Performance */}
           <div className="pt-2 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs font-semibold text-slate-400">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -513,7 +654,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span>Exports PDF Haute Définition &amp; Word</span>
+              <span>Exports PDF Vectoriel &amp; Word (.docx)</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
@@ -541,7 +682,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <span>Vrais Modèles Réels Dokya • Aperçus A4 Haute Définition &amp; Zoom Plein Écran</span>
           </div>
           <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight">
-            Explorez les Vrais Modèles de Votre Compte Dokya
+            Explorez les 50 Modèles de Votre Compte Dokya
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 max-w-3xl mx-auto">
             Défilement continu automatique des 50 vrais modèles de CV ATS et des 10 vrais modèles de factures et devis OHADA. Survolez pour figer le mouvement et explorer, zoomez en plein écran HD ou basculez en grille d'un simple clic.
@@ -560,7 +701,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <span>30 Sans Photo (ATS Pur) + 20 Avec Photo • Filtres Workday &amp; Taleo</span>
             </span>
           </div>
-          {/* Bande défilante continue avec les 50 vrais modèles de CV */}
           <LandingCvCarousel 
             onSelectCvTemplate={() => handleActionClick('cv')}
           />
@@ -578,7 +718,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <span>SYSCOHADA &amp; Droit UEMOA • NINEA, RC &amp; TVA 18%</span>
             </span>
           </div>
-          {/* Bande défilante continue avec les 10 vrais modèles de factures/devis */}
           <LandingInvoicesCarousel 
             onSelectBusinessDoc={(service) => handleActionClick(service)}
           />
@@ -597,12 +736,35 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <LandingAtsSimulator onStartDoc={handleActionClick} />
 
       {/* ========================================================================= */}
-      {/* 3.3 TABLEAU COMPARATIF : DOKYA VS WORD / EXCEL VS CANVA                  */}
+      {/* 3.3 BOUTIQUE VENDEUR DOKYA STORE E-COMMERCE (NOUVEAU)                     */}
+      {/* ========================================================================= */}
+      <LandingStoreShowcase 
+        onGoToAuth={onGoToAuth}
+      />
+
+      {/* ========================================================================= */}
+      {/* 3.4 RÉSEAU TÉLÉVENDEURS INDÉPENDANTS & AFFILIÉS (NOUVEAU)                */}
+      {/* ========================================================================= */}
+      <LandingTelesellerSection 
+        onGoToTelemarketer={onGoToTelemarketer}
+        onGoToAuth={onGoToAuth}
+      />
+
+      {/* ========================================================================= */}
+      {/* 3.5 CALCULATEUR D'IMPACT CONCRET & ROI (NOUVEAU)                          */}
+      {/* ========================================================================= */}
+      <LandingRoiCalculator 
+        onSelectService={handleActionClick}
+        onGoToAuth={onGoToAuth}
+      />
+
+      {/* ========================================================================= */}
+      {/* 3.6 TABLEAU COMPARATIF : DOKYA VS WORD / EXCEL VS CANVA                  */}
       {/* ========================================================================= */}
       <LandingComparison onSelectService={handleActionClick} />
 
       {/* ========================================================================= */}
-      {/* 4. BLOC TECHNIQUE & PERFORMANCE 3D : L'ARCHITETURE DOKYA                  */}
+      {/* 4. BLOC TECHNIQUE & PERFORMANCE 3D : L'ARCHITECTURE DOKYA                 */}
       {/* ========================================================================= */}
       <section id="tech-3d" className="py-16 sm:py-24 border-b border-slate-800/70 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
@@ -709,142 +871,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 5. PRÉSENTATION DÉTAILLÉE DE LA DOUBLE SOLUTION                           */}
-      {/* ========================================================================= */}
-      <section id="services" className="py-16 sm:py-24 border-b border-slate-800/70">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          
-          <div className="text-center space-y-3 max-w-3xl mx-auto">
-            <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
-              Deux Pôles d'Excellence Réunis dans une Seule Plateforme
-            </h2>
-            <p className="text-sm text-slate-400">
-              Des technologies conçues pour éliminer les blocages d'embauche et sécuriser vos relations commerciales.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            
-            {/* Pôle 1 : CV ATS & Carrière */}
-            <Landing3DCard depth={10} className="h-full">
-              <div className="p-8 rounded-3xl bg-gradient-to-br from-indigo-950/50 via-slate-900 to-slate-900 border border-indigo-500/40 space-y-6 shadow-xl relative overflow-hidden h-full flex flex-col justify-between">
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                      <Briefcase className="w-6 h-6" />
-                    </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      Standard International
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-black text-white">
-                      CV ATS &amp; Candidatures d'Élite
-                    </h3>
-                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                      Passez les filtres des logiciels de recrutement automatisés sans être rejeté. 
-                      Nos gabarits sont construits pour mettre en valeur vos compétences clés et votre parcours avec une clarté irréprochable.
-                    </p>
-                  </div>
-
-                  <ul className="space-y-2.5 text-xs text-slate-300">
-                    <li className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>50+ Modèles certifiés compatibles avec les filtres ATS internationaux</span>
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Rédaction et reformulation optimisée par l'IA Gemini</span>
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Générateur de lettres de motivation ultra ciblées</span>
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Simulateur d'entretien d'embauche avec questions de recruteurs réels</span>
-                    </li>
-                  </ul>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleActionClick('cv')}
-                  className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-indigo-600/25 mt-4"
-                >
-                  <span>Accéder au Générateur de CV ATS</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </Landing3DCard>
-
-            {/* Pôle 2 : Facturation & Devis OHADA */}
-            <Landing3DCard depth={10} className="h-full">
-              <div className="p-8 rounded-3xl bg-gradient-to-br from-emerald-950/50 via-slate-900 to-slate-900 border border-emerald-500/40 space-y-6 shadow-xl relative overflow-hidden h-full flex flex-col justify-between">
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                      <Building2 className="w-6 h-6" />
-                    </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      Conforme OHADA / UEMOA
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-black text-white">
-                      Factures Pro &amp; Devis Commerciaux
-                    </h3>
-                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                      Émettez des documents comptables juridiquement irréprochables pour vos clients. 
-                      Calcul automatique de la TVA (18%), arrêté de la somme en toutes lettres et conversion devis en facture en un clic.
-                    </p>
-                  </div>
-
-                  <ul className="space-y-2.5 text-xs text-slate-300">
-                    <li className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Mentions obligatoires intégrées : NINEA, Registre de Commerce (RC), adresse fiscale</span>
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Calcul automatique des totaux HT, TVA 18%, acomptes et Net à payer</span>
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Conversion immédiate d'un devis accepté en facture d'acompte ou de solde</span>
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Gestion du répertoire clients et suivi des règlements Mobile Money &amp; Virement</span>
-                    </li>
-                  </ul>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleActionClick('facture')}
-                  className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-600/25 mt-4"
-                >
-                  <span>Accéder au Module Facturation Pro</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </Landing3DCard>
-
-          </div>
-
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 5.1 AVIS CLIENTS CERTIFIÉS & STATS D'ADOPTION                             */}
+      {/* 5. AVIS CLIENTS CERTIFIÉS & STATS D'ADOPTION                              */}
       {/* ========================================================================= */}
       <LandingTestimonials />
 
       {/* ========================================================================= */}
-      {/* 6. SECTION TARIFICATION CLAIRE EN USD (OFFRES SYNCHRONISÉES & CODES PROMO) */}
+      {/* 6. SECTION TARIFICATION CLAIRE (OFFRES SYNCHRONISÉES & CODES PROMO)        */}
       {/* ========================================================================= */}
       <section id="tarifs" className="py-16 sm:py-24 bg-slate-900/30 border-b border-slate-800/70">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
@@ -858,11 +890,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Des tarifs simples, transparents &amp; sans surprise
             </h2>
             <p className="text-sm text-slate-400">
-              Formule gratuite avec filigrane, achat à l'acte direct ou abonnements illimités sans engagement.
+              Formule gratuite avec filigrane Dokya.site, achat à l'acte direct ou abonnements complets illimités.
             </p>
           </div>
 
-          {/* BANDEAU CODE PROMO PUBLIÉ ACTIF (SYNCHRONISATION ADMIN AUTOMATIQUE) */}
+          {/* BANDEAU CODE PROMO ACTIF */}
           {publishedPromo && (
             <div className="max-w-4xl mx-auto p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-teal-950/70 border-2 border-emerald-500/50 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl shadow-emerald-500/10 animate-in fade-in">
               <div className="flex items-center gap-3.5 text-center sm:text-left">
@@ -893,9 +925,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           )}
 
-          {/* GRILLE DES OFFRES TARIFFAIRE */}
+          {/* GRILLE DES OFFRES TARIFAIRES */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            
             {PRICING_PLANS.map((plan) => {
               const isFree = plan.amountXOF === 0;
               const discount = !isFree ? calculateDiscountedPrice(plan.amountXOF) : null;
@@ -995,7 +1026,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                       <p className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1">
                         <Lock className="w-3 h-3 text-emerald-400" />
-                        <span>Paiement sécurisé • Sans engagement</span>
+                        <span>Paiement sécurisé Money Fusion • Sans engagement</span>
                       </p>
                     </div>
 
@@ -1003,7 +1034,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </Landing3DCard>
               );
             })}
+          </div>
 
+          {/* Bandeau d'information Télévendeurs */}
+          <div className="max-w-4xl mx-auto p-4 sm:p-5 rounded-3xl bg-emerald-950/30 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <div className="text-xs">
+                <div className="font-bold text-white">Vous souhaitez devenir Télévendeur Dokya ?</div>
+                <div className="text-slate-400">L'inscription est 100% gratuite (commission de 20%). Le Mode VIP 100% Commission est disponible à 25 000 FCFA/mois.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onGoToTelemarketer ? onGoToTelemarketer : onGoToDashboard}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shrink-0 transition-all cursor-pointer"
+            >
+              Accéder au Portail Télévendeur
+            </button>
           </div>
 
         </div>
@@ -1020,7 +1070,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Questions Fréquemment Posées
             </h2>
             <p className="text-xs sm:text-sm text-slate-400">
-              Toutes les réponses pour propulser votre carrière et votre facturation sur Dokya.
+              Toutes les réponses pour propulser votre carrière, votre facturation et vos ventes sur Dokya.
             </p>
           </div>
 
@@ -1084,6 +1134,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <span>Créer ma Facture OHADA</span>
               <ArrowRight className="w-4 h-4" />
             </button>
+            <button
+              type="button"
+              onClick={() => handleActionClick('store')}
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-black text-sm shadow-xl shadow-amber-600/40 inline-flex items-center justify-center gap-3 transition-all hover:scale-102 cursor-pointer"
+            >
+              <Store className="w-4 h-4" />
+              <span>Explorer la Boutique Store</span>
+            </button>
           </div>
         </div>
       </section>
@@ -1095,13 +1153,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <DokyaLogo size="xs" variant="compact" showBadge={false} />
-            <span className="text-slate-600">•</span>
-            <span>Suite Documentaire Internationale &amp; Recrutement IA</span>
+            <span className="text-slate-600">·</span>
+            <span>Suite Documentaire Internationale, E-Commerce &amp; Recrutement IA</span>
           </div>
-          <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex items-center gap-4 text-[11px] text-slate-500">
             <span>Dakar, Sénégal (Zone UEMOA) &amp; International</span>
-            <span>•</span>
-            <span>Paiements Sécurisés Money Fusion (Wave, OM, QR Code)</span>
+            <span>·</span>
+            <span>Paiements Sécurisés Wave, OM, MTN, Moov, CB</span>
           </div>
         </div>
       </footer>

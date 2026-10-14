@@ -1369,36 +1369,6 @@ export const DokyaPaymentModal: React.FC<DokyaPaymentModalProps> = ({
                           </p>
                         )}
                       </div>
-
-                      {/* Sélection de l'opérateur Mobile Money */}
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                          Opérateur Mobile Money :
-                        </label>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {RECHARGE_OPERATORS.map((op) => {
-                            const isSelected = selectedOperator === op.id;
-                            return (
-                              <button
-                                key={op.id}
-                                type="button"
-                                onClick={() => setSelectedOperator(op.id)}
-                                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-blue-600/20 border-blue-500 text-white shadow-sm ring-1 ring-blue-500'
-                                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-base">{op.icon}</span>
-                                  <span className="text-[11px] font-bold truncate">{op.name}</span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
                       {/* Indicateur de pays et saisie du numéro de téléphone */}
                       <div>
                         <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">

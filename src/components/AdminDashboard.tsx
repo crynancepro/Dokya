@@ -9,7 +9,7 @@ import {
   Scan, Receipt, Image as ImageIcon, ZoomIn, CheckCircle, XCircle, FileSearch,
   Phone, Globe, Flame, Crown, History, CheckCheck, UserMinus, UserPlus, Infinity,
   MessageSquare, Volume2, VolumeX, BellRing, Menu, Building2, Briefcase,
-  PanelLeftClose, PanelLeftOpen, Zap, Copy, Terminal, MoreVertical, Smartphone
+  PanelLeftClose, PanelLeftOpen, Zap, Copy, Terminal, MoreVertical, Smartphone, ShoppingBag
 } from 'lucide-react';
 import { AdminSidebar, AdminTabType } from './admin/AdminSidebar';
 import { AdminSalesTrendCurve } from './admin/AdminSalesTrendCurve';
@@ -60,6 +60,11 @@ import {
 import { AdminAffiliationView } from './AdminAffiliationView';
 import { AdminSupportChatView } from './AdminSupportChatView';
 import { AdminBusinessView } from './admin/AdminBusinessView';
+import { AdminTeleSellersView } from './admin/AdminTeleSellersView';
+import { AdminTeleSalesOrdersView } from './admin/AdminTeleSalesOrdersView';
+import { AdminReviewsModerationView } from './admin/AdminReviewsModerationView';
+import { fetchAllTelemarketerOrders } from '../lib/storeService';
+import { StoreOrder } from '../types';
 import { 
   startEmergencyAlarm, 
   stopEmergencyAlarm, 
@@ -83,6 +88,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (typeof window !== 'undefined') {
       const hash = window.location.hash.toLowerCase();
       const path = window.location.pathname.toLowerCase();
+      if (hash.includes('teleseller') || path.includes('/admin/teleseller')) {
+        return 'telesellers';
+      }
+      if (hash.includes('telesale') || path.includes('/admin/telesale')) {
+        return 'telesales_orders';
+      }
+      if (hash.includes('review') || path.includes('/admin/review')) {
+        return 'reviews_moderation';
+      }
       if (hash.includes('affiliat') || path.includes('/admin/affiliat')) {
         return 'affiliations';
       }
@@ -95,6 +109,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     return 'overview';
   });
+  const [teleSalesOrders, setTeleSalesOrders] = useState<StoreOrder[]>([]);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -354,6 +369,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       } catch (apiErr) {
         console.warn('[AdminDashboard] Synchronisation API silencieuse:', apiErr);
+      }
+
+      // 5. Chargement des commandes de télévente
+      try {
+        const telOrders = await fetchAllTelemarketerOrders();
+        setTeleSalesOrders(telOrders);
+      } catch (telErr) {
+        console.warn('[AdminDashboard] Erreur chargement commandes téléventes:', telErr);
       }
 
       // 6. Nettoyage et purge automatique des reçus expirés (>24h) en arrière-plan
@@ -1897,7 +1920,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               }`}
             >
               <Briefcase className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Affiliation</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('telesellers')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'telesellers'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
               <span>Télévendeurs</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('telesales_orders')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'telesales_orders'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Commandes Téléventes</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('reviews_moderation')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'reviews_moderation'
+                  ? 'bg-rose-600 text-white shadow-md'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-rose-400" />
+              <span>Modération Avis</span>
             </button>
 
             <button
@@ -1910,7 +1972,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               }`}
             >
               <Building2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Boutiques</span>
+              <span>Business B2B</span>
             </button>
 
             <button
@@ -4854,6 +4916,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             usersList={usersList}
             transactionsList={transactionsList}
             onNavigateToPricing={() => setActiveTab('pricing')}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB: GESTION DES TÉLÉVENDEURS (RÔLES, BADGES, VIP & MODÉRATION)           */}
+        {/* ========================================================================= */}
+        {activeTab === 'telesellers' && (
+          <AdminTeleSellersView
+            usersList={usersList}
+            allOrders={teleSalesOrders}
+            onRefreshUsers={loadAdminData}
+            adminEmail={currentUser?.email || PRIMARY_ADMIN_EMAIL}
+            onNavigateToOrders={() => {
+              setActiveTab('telesales_orders');
+              if (typeof window !== 'undefined') {
+                window.location.hash = 'admin/telesales-orders';
+              }
+            }}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB: COMMANDES TÉLÉVENTES & MODÉRATION DES LITIGES                         */}
+        {/* ========================================================================= */}
+        {activeTab === 'telesales_orders' && (
+          <AdminTeleSalesOrdersView
+            adminEmail={currentUser?.email || PRIMARY_ADMIN_EMAIL}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB: MODÉRATION DES AVIS TÉLÉVENDEURS SUR LES VENDEURS                     */}
+        {/* ========================================================================= */}
+        {activeTab === 'reviews_moderation' && (
+          <AdminReviewsModerationView
+            adminEmail={currentUser?.email || PRIMARY_ADMIN_EMAIL}
           />
         )}
 

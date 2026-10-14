@@ -5783,6 +5783,136 @@ if (!process.env.VERCEL) {
   setTimeout(runPeriodicStorageCleanup, 30 * 1000); // 30s après démarrage
 }
 
+// ============================================================================
+// DYNAMIC OPEN GRAPH & METADATA FOR PRODUCTS (/p/[id] & /b/[seller]/[product])
+// ============================================================================
+
+async function fetchProductForOg(identifier: string) {
+  if (!identifier) return null;
+  const clean = identifier.toLowerCase().trim();
+
+  try {
+    const docSnap = await dbAdmin.collection('products').doc(identifier).get();
+    if (docSnap.exists) {
+      return { id: docSnap.id, ...(docSnap.data() as any) };
+    }
+  } catch (_e) {}
+
+  try {
+    const qSnap = await dbAdmin.collection('products').where('slug', '==', clean).limit(1).get();
+    if (!qSnap.empty) {
+      const doc = qSnap.docs[0];
+      return { id: doc.id, ...(doc.data() as any) };
+    }
+  } catch (_e) {}
+
+  try {
+    const qSnap2 = await dbAdmin.collection('products').where('slug', '==', identifier).limit(1).get();
+    if (!qSnap2.empty) {
+      const doc = qSnap2.docs[0];
+      return { id: doc.id, ...(doc.data() as any) };
+    }
+  } catch (_e) {}
+
+  return null;
+}
+
+// Endpoint to serve product image (for base64 or redirects) for WhatsApp/FB/Twitter crawlers
+app.get('/api/product-image/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const product = await fetchProductForOg(id);
+    if (!product) {
+      return res.redirect('/src/assets/images/dokya_ai_logo_1788695212236.jpg');
+    }
+    const rawImage = product.images?.[0] || product.imageUrl || product.image || '';
+    if (!rawImage) {
+      return res.redirect('/src/assets/images/dokya_ai_logo_1788695212236.jpg');
+    }
+    if (rawImage.startsWith('data:image/')) {
+      const matches = rawImage.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (matches) {
+        const mimeType = matches[1];
+        const buffer = Buffer.from(matches[2], 'base64');
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+        return res.send(buffer);
+      }
+    }
+    if (rawImage.startsWith('http://') || rawImage.startsWith('https://')) {
+      return res.redirect(302, rawImage);
+    }
+    return res.redirect(302, rawImage);
+  } catch (err) {
+    console.warn('[OG Image API] Error serving product image:', err);
+    return res.redirect('/src/assets/images/dokya_ai_logo_1788695212236.jpg');
+  }
+});
+
+function injectProductOgTags(html: string, product: any, reqUrl: string, host: string, protocol: string): string {
+  const title = (product.title || product.name || 'Produit Dokya').replace(/"/g, '&quot;');
+  const price = Number(product.price || 0).toLocaleString('fr-FR');
+  const currency = product.currency || 'FCFA';
+  const fullTitle = `${title} - ${price} ${currency}`;
+
+  const rawDesc = (product.description || `Découvrez ${title} sur Dokya.site au prix de ${price} ${currency}. Commandez en ligne avec livraison rapide ou téléchargement immédiat.`)
+    .replace(/<[^>]*>?/gm, '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
+  const cleanDesc = (rawDesc.length > 200 ? rawDesc.substring(0, 197) + '...' : rawDesc).replace(/"/g, '&quot;');
+
+  const rawImage = product.images?.[0] || product.imageUrl || product.image || '';
+  const baseUrl = `${protocol}://${host}`;
+  let ogImageUrl = `${baseUrl}/src/assets/images/dokya_ai_logo_1788695212236.jpg`;
+
+  if (rawImage) {
+    if (rawImage.startsWith('data:image/')) {
+      ogImageUrl = `${baseUrl}/api/product-image/${encodeURIComponent(product.id || product.slug)}`;
+    } else if (rawImage.startsWith('http://') || rawImage.startsWith('https://')) {
+      ogImageUrl = rawImage;
+    } else if (rawImage.startsWith('/')) {
+      ogImageUrl = `${baseUrl}${rawImage}`;
+    } else {
+      ogImageUrl = `${baseUrl}/${rawImage}`;
+    }
+  }
+
+  const canonicalUrl = `${baseUrl}${reqUrl}`;
+
+  // Replace <title>
+  let modifiedHtml = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${fullTitle} | Dokya</title>`);
+  // Replace <meta name="description" ...>
+  modifiedHtml = modifiedHtml.replace(/<meta\s+name=["']description["'][\s\S]*?>/i, `<meta name="description" content="${cleanDesc}" />`);
+  // Replace <meta property="og:title" ...>
+  modifiedHtml = modifiedHtml.replace(/<meta\s+property=["']og:title["'][\s\S]*?>/i, `<meta property="og:title" content="${fullTitle}" />`);
+  // Replace <meta property="og:description" ...>
+  modifiedHtml = modifiedHtml.replace(/<meta\s+property=["']og:description["'][\s\S]*?>/i, `<meta property="og:description" content="${cleanDesc}" />`);
+
+  const ogTagsToInsert = `
+    <!-- Dynamic Product Open Graph & Twitter Card (Dokya.site) -->
+    <meta property="og:type" content="product" />
+    <meta property="og:url" content="${canonicalUrl}" />
+    <meta property="og:site_name" content="Dokya" />
+    <meta property="og:image" content="${ogImageUrl}" />
+    <meta property="og:image:secure_url" content="${ogImageUrl}" />
+    <meta property="og:image:alt" content="${fullTitle}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="product:price:amount" content="${product.price || 0}" />
+    <meta property="product:price:currency" content="${currency}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${fullTitle}" />
+    <meta name="twitter:description" content="${cleanDesc}" />
+    <meta name="twitter:image" content="${ogImageUrl}" />
+  `;
+
+  if (modifiedHtml.includes('</head>')) {
+    modifiedHtml = modifiedHtml.replace('</head>', `${ogTagsToInsert}\n  </head>`);
+  }
+
+  return modifiedHtml;
+}
+
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
@@ -5790,10 +5920,53 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: 'spa',
     });
+
+    // Intercept product routes to inject dynamic OG tags for WhatsApp/FB/Twitter crawlers and previews
+    app.get(['/p/:slug', '/p/:slug/*', '/b/:seller/:product'], async (req, res, next) => {
+      try {
+        const slug = req.params.slug || req.params.product;
+        const product = await fetchProductForOg(slug);
+        const protocol = req.headers['x-forwarded-proto'] ? String(req.headers['x-forwarded-proto']).split(',')[0] : req.protocol;
+        const host = req.get('host') || 'dokya.site';
+
+        const indexPath = path.join(process.cwd(), 'index.html');
+        let html = await fs.promises.readFile(indexPath, 'utf-8');
+        html = await vite.transformIndexHtml(req.originalUrl, html);
+
+        if (product) {
+          html = injectProductOgTags(html, product, req.originalUrl, host, protocol);
+        }
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      } catch (e) {
+        next(e);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+
+    // Intercept product routes to inject dynamic OG tags in production
+    app.get(['/p/:slug', '/p/:slug/*', '/b/:seller/:product'], async (req, res, next) => {
+      try {
+        const slug = req.params.slug || req.params.product;
+        const product = await fetchProductForOg(slug);
+        const protocol = req.headers['x-forwarded-proto'] ? String(req.headers['x-forwarded-proto']).split(',')[0] : req.protocol;
+        const host = req.get('host') || 'dokya.site';
+
+        const indexPath = path.join(distPath, 'index.html');
+        let html = await fs.promises.readFile(indexPath, 'utf-8');
+
+        if (product) {
+          html = injectProductOgTags(html, product, req.originalUrl, host, protocol);
+        }
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      } catch (e) {
+        next(e);
+      }
+    });
+
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

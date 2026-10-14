@@ -897,12 +897,18 @@ export interface AdminUserRecord {
   targetJob?: string;
   balance: number;
   credits: number;
-  role: 'admin' | 'candidate' | 'user' | 'seller';
+  role: 'admin' | 'candidate' | 'user' | 'seller' | 'telemarketer';
+  userRole?: 'seller' | 'telemarketer' | 'candidate';
   subscriptionPlan?: SubscriptionPlan;
   subscriptionStatus: 'free' | 'pro' | 'unlimited' | 'active' | 'inactive' | 'expired';
   subscriptionExpiresAt?: any;
   subscription?: UserSubscription;
   teleSellerBadge?: boolean;
+  telemarketerBadge?: boolean;
+  isTelemarketerCertified?: boolean;
+  telemarketerPlan?: 'standard' | 'vip';
+  telemarketerMode?: 'standard' | 'vip';
+  totalSalesVolume?: number;
   generationCount?: number;
   status?: 'active' | 'suspended';
   suspendedReason?: string;
@@ -918,9 +924,7 @@ export interface AdminUserRecord {
   affiliateBalance?: number; // Solde d'affiliation disponible
   totalAffiliateEarnings?: number; // Total des commissions générées
   totalReferred?: number; // Nombre de filleuls apportés
-  isTelemarketerCertified?: boolean;
   certifiedBadgePurchased?: boolean;
-  telemarketerPlan?: 'standard' | 'vip';
   createdAt: string;
   updatedAt: string;
 }
@@ -1235,6 +1239,15 @@ export interface StoreOrder {
   commissionNet?: number; // Montant net après prélèvement 20% (si standard) ou 100% (si VIP)
   commissionRateDokya?: number; // 20 si standard, 0 si VIP
   telemarketerMode?: 'standard' | 'vip';
+  commissionStatus?: 'pending' | 'paid' | 'cancelled';
+  forceValidatedByAdmin?: boolean;
+  adminValidatedAt?: string;
+  adminValidatorEmail?: string;
+  adminValidationNote?: string;
+  isCommissionCancelled?: boolean;
+  adminCancelledAt?: string;
+  adminCancellerEmail?: string;
+  adminCancellationReason?: string;
   proofUrl?: string; // Image ou document de preuve (conversation WhatsApp, bordereau, etc.)
   proofNote?: string;
   sourceType?: 'direct_store' | 'telemarketer_offsite'; // Source commande
@@ -1252,6 +1265,10 @@ export interface SellerReview {
   rating: number; // 1 à 5 étoiles
   comment: string;
   tags?: string[]; // ex: ['Paiement rapide', 'Produit conforme', 'Support réactif']
+  status?: 'approved' | 'pending' | 'rejected';
+  moderatedAt?: string;
+  moderatedBy?: string;
+  moderationReason?: string;
   createdAt: string;
 }
 

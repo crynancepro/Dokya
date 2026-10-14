@@ -16,7 +16,9 @@ import {
   X,
   Zap,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  ShieldCheck,
+  ShoppingBag
 } from 'lucide-react';
 
 export type AdminTabType =
@@ -28,7 +30,10 @@ export type AdminTabType =
   | 'transactions'
   | 'affiliations'
   | 'support'
-  | 'business';
+  | 'business'
+  | 'telesellers'
+  | 'telesales_orders'
+  | 'reviews_moderation';
 
 export interface AdminSidebarProps {
   activeTab: AdminTabType;
@@ -67,12 +72,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const isPricingTab = activeTab === 'pricing' || activeTab === 'subscriptions' || activeTab === 'promo';
   const [isPricingDropdownOpen, setIsPricingDropdownOpen] = useState<boolean>(isPricingTab);
 
+  // Dropdown state for Téléventes & Marketplace
+  const isTeleSalesTab = activeTab === 'telesellers' || activeTab === 'telesales_orders' || activeTab === 'reviews_moderation';
+  const [isTeleSalesDropdownOpen, setIsTeleSalesDropdownOpen] = useState<boolean>(isTeleSalesTab);
+
   // Automatically keep dropdown open when a sub-menu tab is active
   useEffect(() => {
     if (isPricingTab) {
       setIsPricingDropdownOpen(true);
     }
   }, [isPricingTab]);
+
+  useEffect(() => {
+    if (isTeleSalesTab) {
+      setIsTeleSalesDropdownOpen(true);
+    }
+  }, [isTeleSalesTab]);
 
   const handleNavClick = (tab: AdminTabType) => {
     setActiveTab(tab);
@@ -474,6 +489,112 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     {promoCodesCount}
                   </span>
                 )}
+              </button>
+
+            </div>
+          )}
+        </div>
+
+        {/* Item 8: Téléventes & Marketplace (Menu Déroulant Dropdown) */}
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={() => {
+              if (isCollapsed) {
+                handleNavClick('telesellers');
+              } else {
+                setIsTeleSalesDropdownOpen(!isTeleSalesDropdownOpen);
+              }
+            }}
+            title="Téléventes & Marketplace (Comptes, Commandes & Avis)"
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center p-2.5' : 'justify-between px-2.5 py-2'} rounded-xl text-xs font-bold transition-all cursor-pointer group ${
+              isTeleSalesTab
+                ? 'bg-slate-800/90 text-white border border-amber-500/40'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className={`w-7.5 h-7.5 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+                isTeleSalesTab
+                  ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30'
+                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-sm shadow-amber-500/10 group-hover:bg-amber-500/20'
+              }`}>
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              {!isCollapsed && <span className="truncate text-xs">Téléventes</span>}
+            </div>
+
+            {!isCollapsed && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  MARKET
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                  isTeleSalesDropdownOpen ? 'rotate-180 text-amber-400' : ''
+                }`} />
+              </div>
+            )}
+          </button>
+
+          {/* Sub-menu Dropdown List */}
+          {!isCollapsed && isTeleSalesDropdownOpen && (
+            <div className="mt-1 ml-3 pl-2.5 border-l-2 border-slate-800/80 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+              
+              {/* Sub-menu 1: Télévendeurs */}
+              <button
+                type="button"
+                onClick={() => handleNavClick('telesellers')}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'telesellers'
+                    ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40 font-bold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="truncate">Télévendeurs</span>
+                </div>
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40 shrink-0">
+                  RÔLES
+                </span>
+              </button>
+
+              {/* Sub-menu 2: Commandes Téléventes */}
+              <button
+                type="button"
+                onClick={() => handleNavClick('telesales_orders')}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'telesales_orders'
+                    ? 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/40 font-bold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <ShoppingBag className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span className="truncate">Commandes & Litiges</span>
+                </div>
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800/40 shrink-0">
+                  COMM.
+                </span>
+              </button>
+
+              {/* Sub-menu 3: Modération Avis */}
+              <button
+                type="button"
+                onClick={() => handleNavClick('reviews_moderation')}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'reviews_moderation'
+                    ? 'bg-rose-500/20 text-rose-200 border border-rose-500/40 font-bold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <MessageSquare className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span className="truncate">Modération Avis</span>
+                </div>
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-rose-950/60 text-rose-300 border border-rose-800/40 shrink-0">
+                  AVIS
+                </span>
               </button>
 
             </div>
